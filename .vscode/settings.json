@@ -1,0 +1,28 @@
+{
+    "python.defaultInterpreterPath": ".venv\\Scripts\\python.exe",
+
+    "python.analysis.typeCheckingMode": "basic",
+
+    "editor.formatOnSave": true,
+
+    "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit",
+        "source.organizeImports": "explicit"
+    },
+
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+
+    "python.analysis.autoImportCompletions": true,
+
+    "docker.showStartPage": false
+}

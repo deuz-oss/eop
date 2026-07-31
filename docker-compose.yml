@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:17
+
+    container_name: eop-postgres
+
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: eop
+      POSTGRES_USER: eop
+      POSTGRES_PASSWORD: eop
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eop -d eop"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8-alpine
+
+    container_name: eop-redis
+
+    restart: unless-stopped
+
+    ports:
+      - "6379:6379"
+
+    command:
+      - redis-server
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./services/api
+
+    container_name: eop-api
+
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      redis:
+        condition: service_healthy
+
+    environment:
+      APP_NAME: Enterprise Operations Platform
+
+      ENVIRONMENT: development
+
+      DATABASE_URL: postgresql+asyncpg://eop:eop@postgres:5432/eop
+
+      REDIS_URL: redis://redis:6379/0
+
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
