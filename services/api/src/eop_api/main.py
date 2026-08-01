@@ -8,6 +8,9 @@ from eop_api.api.health import router as health_router
 from eop_api.core.config import settings
 from eop_api.core.logging import configure_logging
 from eop_api.db.engine import engine
+from eop_api.exceptions.handlers import unhandled_exception_handler
+from eop_api.middleware.request_id import RequestIDMiddleware
+from eop_api.middleware.request_logging import RequestLoggingMiddleware
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -27,6 +30,11 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(RequestIDMiddleware)
+
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(health_router)
 

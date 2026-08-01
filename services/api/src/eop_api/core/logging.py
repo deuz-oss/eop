@@ -36,3 +36,7 @@ def configure_logging() -> None:
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,
     )
+
+
+def get_logger(name: str | None = None) -> structlog.typing.FilteringBoundLogger:
+    return structlog.get_logger(name)
