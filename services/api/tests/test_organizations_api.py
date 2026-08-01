@@ -147,6 +147,64 @@ def test_list_organizations_paginated_negative_limit_is_rejected(client: TestCli
     assert response.status_code == 422
 
 
+def test_list_organizations_paginated_search(client: TestClient):
+    client.post("/organizations", json={"name": "Open Robotics"})
+    client.post("/organizations", json={"name": "Closed Systems"})
+
+    response = client.get("/organizations/paginated", params={"q": "open"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [item["name"] for item in body["items"]] == ["Open Robotics"]
+
+
+def test_list_organizations_paginated_search_is_case_insensitive(client: TestClient):
+    client.post("/organizations", json={"name": "Open Robotics"})
+
+    response = client.get("/organizations/paginated", params={"q": "OPEN"})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+def test_list_organizations_paginated_search_and_pagination_together(client: TestClient):
+    for i in range(5):
+        client.post("/organizations", json={"name": f"Open Org {i}"})
+    client.post("/organizations", json={"name": "Closed Org"})
+
+    response = client.get(
+        "/organizations/paginated", params={"q": "open", "offset": 1, "limit": 2}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 5
+    assert body["offset"] == 1
+    assert body["limit"] == 2
+    assert len(body["items"]) == 2
+
+
+def test_list_organizations_paginated_empty_query_returns_all(client: TestClient):
+    client.post("/organizations", json={"name": "Alpha"})
+    client.post("/organizations", json={"name": "Beta"})
+
+    response = client.get("/organizations/paginated", params={"q": ""})
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+
+
+def test_list_organizations_paginated_no_query_returns_all(client: TestClient):
+    client.post("/organizations", json={"name": "Alpha"})
+    client.post("/organizations", json={"name": "Beta"})
+
+    response = client.get("/organizations/paginated")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+
+
 def test_update_organization(client: TestClient):
     created = client.post("/organizations", json={"name": "Before"}).json()
 
