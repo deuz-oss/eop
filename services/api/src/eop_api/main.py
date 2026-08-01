@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from eop_api.api.assignments import router as assignments_router
 from eop_api.api.auth import router as auth_router
+from eop_api.api.dashboard import router as dashboard_router
 from eop_api.api.employees import router as employees_router
 from eop_api.api.health import router as health_router
 from eop_api.api.organizations import router as organizations_router
@@ -51,6 +52,7 @@ app.include_router(employees_router)
 app.include_router(assignments_router)
 app.include_router(tasks_router)
 app.include_router(roles_router)
+app.include_router(dashboard_router)
 
 
 @app.get("/", tags=["Root"])
