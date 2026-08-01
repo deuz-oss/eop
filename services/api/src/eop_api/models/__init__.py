@@ -2,14 +2,18 @@ from eop_api.models.assignment import Assignment
 from eop_api.models.employee import Employee
 from eop_api.models.organization import Organization
 from eop_api.models.project import Project
+from eop_api.models.role import Role
 from eop_api.models.task import Task
 from eop_api.models.user import User
+from eop_api.models.user_role import user_roles
 
 __all__ = [
     "Assignment",
     "Employee",
     "Organization",
     "Project",
+    "Role",
     "Task",
     "User",
+    "user_roles",
 ]
