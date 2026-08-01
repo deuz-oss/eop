@@ -5,6 +5,7 @@ import structlog
 from fastapi import FastAPI
 
 from eop_api.api.assignments import router as assignments_router
+from eop_api.api.auth import router as auth_router
 from eop_api.api.employees import router as employees_router
 from eop_api.api.health import router as health_router
 from eop_api.api.organizations import router as organizations_router
@@ -42,6 +43,7 @@ app.add_middleware(RequestIDMiddleware)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(organizations_router)
 app.include_router(projects_router)
 app.include_router(employees_router)
