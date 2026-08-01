@@ -18,6 +18,10 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://redis:6379"
 
+    jwt_secret: str = "dev-secret-key-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_minutes: int = 30
+
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,

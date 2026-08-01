@@ -3,6 +3,7 @@ from eop_api.models.employee import Employee
 from eop_api.models.organization import Organization
 from eop_api.models.project import Project
 from eop_api.models.task import Task
+from eop_api.models.user import User
 
 __all__ = [
     "Assignment",
@@ -10,4 +11,5 @@ __all__ = [
     "Organization",
     "Project",
     "Task",
+    "User",
 ]
