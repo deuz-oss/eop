@@ -3,11 +3,13 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from eop_api.dependencies.pagination import Pagination
 from eop_api.schemas.organization import (
     OrganizationCreate,
     OrganizationResponse,
     OrganizationUpdate,
 )
+from eop_api.schemas.pagination import Page
 from eop_api.services.organization import OrganizationService
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
@@ -32,6 +34,19 @@ async def create_organization(
 async def list_organizations(service: OrganizationServiceDep) -> list[OrganizationResponse]:
     organizations = await service.list()
     return [OrganizationResponse.model_validate(organization) for organization in organizations]
+
+
+@router.get("/paginated", response_model=Page[OrganizationResponse])
+async def list_organizations_paginated(
+    service: OrganizationServiceDep, pagination: Pagination
+) -> Page[OrganizationResponse]:
+    page = await service.list_paginated(pagination)
+    return Page(
+        items=[OrganizationResponse.model_validate(item) for item in page.items],
+        total=page.total,
+        offset=page.offset,
+        limit=page.limit,
+    )
 
 
 @router.get("/{organization_id}", response_model=OrganizationResponse)

@@ -9,6 +9,7 @@ from eop_api import models  # noqa: F401 -- registers all models on Base.metadat
 from eop_api.core.config import settings
 from eop_api.db.base import Base
 from eop_api.schemas.organization import OrganizationCreate, OrganizationUpdate
+from eop_api.schemas.pagination import PaginationParams
 from eop_api.services.organization import OrganizationService
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
 
@@ -89,6 +90,29 @@ async def test_delete_existing(service: OrganizationService):
 
 async def test_delete_missing_returns_false(service: OrganizationService):
     assert await service.delete(uuid.uuid4()) is False
+
+
+async def test_list_paginated_passes_through_offset_and_limit(service: OrganizationService):
+    for i in range(5):
+        await service.create(OrganizationCreate(name=f"Org {i}"))
+
+    page = await service.list_paginated(PaginationParams(offset=1, limit=2))
+
+    assert page.total == 5
+    assert page.offset == 1
+    assert page.limit == 2
+    assert len(page.items) == 2
+
+
+async def test_list_paginated_defaults(service: OrganizationService):
+    await service.create(OrganizationCreate(name="Solo"))
+
+    page = await service.list_paginated(PaginationParams(offset=0, limit=50))
+
+    assert page.total == 1
+    assert page.offset == 0
+    assert page.limit == 50
+    assert len(page.items) == 1
 
 
 async def test_create_commits_and_is_visible_from_a_new_session(service: OrganizationService):

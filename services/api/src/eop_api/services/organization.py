@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from eop_api.models.organization import Organization
 from eop_api.repositories.organization import OrganizationRepository
 from eop_api.schemas.organization import OrganizationCreate, OrganizationUpdate
+from eop_api.schemas.pagination import Page, PaginationParams
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
 
 
@@ -50,6 +51,13 @@ class OrganizationService:
             organizations = await repo.list()
             uow.session.expunge_all()
             return organizations
+
+    async def list_paginated(self, pagination: PaginationParams) -> Page[Organization]:
+        async with self._uow_factory() as uow:
+            repo = OrganizationRepository(uow.session)
+            page = await repo.paginate(offset=pagination.offset, limit=pagination.limit)
+            uow.session.expunge_all()
+            return page
 
     async def update(
         self, organization_id: uuid.UUID, data: OrganizationUpdate
