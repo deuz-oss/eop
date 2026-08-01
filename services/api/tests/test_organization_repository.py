@@ -100,3 +100,36 @@ async def test_delete_existing(repo: OrganizationRepository):
 
 async def test_delete_missing_returns_false(repo: OrganizationRepository):
     assert await repo.delete(uuid.uuid4()) is False
+
+
+async def test_paginate_returns_total_and_page_slice(repo: OrganizationRepository):
+    for i in range(5):
+        await repo.create(name=f"Org {i}")
+
+    page = await repo.paginate(offset=1, limit=2)
+
+    assert page.total == 5
+    assert page.offset == 1
+    assert page.limit == 2
+    assert len(page.items) == 2
+
+
+async def test_paginate_defaults(repo: OrganizationRepository):
+    for i in range(3):
+        await repo.create(name=f"Org {i}")
+
+    page = await repo.paginate()
+
+    assert page.offset == 0
+    assert page.limit == 50
+    assert page.total == 3
+    assert len(page.items) == 3
+
+
+async def test_paginate_offset_beyond_total_returns_empty(repo: OrganizationRepository):
+    await repo.create(name="Only Org")
+
+    page = await repo.paginate(offset=10, limit=10)
+
+    assert page.total == 1
+    assert page.items == []

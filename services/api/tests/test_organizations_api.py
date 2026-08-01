@@ -86,6 +86,67 @@ def test_list_organizations(client: TestClient):
     assert {"Alpha", "Beta"}.issubset(names)
 
 
+def test_list_organizations_paginated_default_pagination(client: TestClient):
+    for i in range(3):
+        client.post("/organizations", json={"name": f"Org {i}"})
+
+    response = client.get("/organizations/paginated")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["offset"] == 0
+    assert body["limit"] == 50
+    assert body["total"] == 3
+    assert len(body["items"]) == 3
+
+
+def test_list_organizations_paginated_custom_offset(client: TestClient):
+    for i in range(5):
+        client.post("/organizations", json={"name": f"Org {i}"})
+
+    response = client.get("/organizations/paginated", params={"offset": 2})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["offset"] == 2
+    assert body["total"] == 5
+    assert len(body["items"]) == 3
+
+
+def test_list_organizations_paginated_custom_limit(client: TestClient):
+    for i in range(5):
+        client.post("/organizations", json={"name": f"Org {i}"})
+
+    response = client.get("/organizations/paginated", params={"limit": 2})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["limit"] == 2
+    assert body["total"] == 5
+    assert len(body["items"]) == 2
+
+
+def test_list_organizations_paginated_limit_above_maximum_is_clamped(client: TestClient):
+    client.post("/organizations", json={"name": "Org"})
+
+    response = client.get("/organizations/paginated", params={"limit": 500})
+
+    assert response.status_code == 200
+    assert response.json()["limit"] == 100
+
+
+def test_list_organizations_paginated_negative_offset_is_rejected(client: TestClient):
+    response = client.get("/organizations/paginated", params={"offset": -1})
+
+    assert response.status_code == 422
+
+
+def test_list_organizations_paginated_negative_limit_is_rejected(client: TestClient):
+    response = client.get("/organizations/paginated", params={"limit": -1})
+
+    assert response.status_code == 422
+
+
 def test_update_organization(client: TestClient):
     created = client.post("/organizations", json={"name": "Before"}).json()
 

@@ -63,7 +63,7 @@ class BaseRepository[ModelT: BaseEntity]:
         result = await self.session.execute(stmt)
         return result.scalar_one()
 
-    async def paginate(self, *, offset: int = 0, limit: int = 20) -> Page[ModelT]:
+    async def paginate(self, *, offset: int = 0, limit: int = 50) -> Page[ModelT]:
         items_stmt = select(self.model).offset(offset).limit(limit)
         items_result = await self.session.execute(items_stmt)
         items = list(items_result.scalars().all())
