@@ -18,6 +18,12 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://redis:6379"
 
+    minio_endpoint: str = "minio:9000"
+    minio_access_key: str = "minioadmin"
+    minio_secret_key: str = "minioadmin"
+    minio_secure: bool = False
+    minio_bucket: str = "eop-files"
+
     jwt_secret: str = "dev-secret-key-change-in-production"
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 30

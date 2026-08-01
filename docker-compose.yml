@@ -42,6 +42,36 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+
+    container_name: eop-minio
+
+    restart: unless-stopped
+
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
+    command:
+      - server
+      - /data
+      - --console-address
+      - ":9001"
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    volumes:
+      - minio_data:/data
+
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: ./services/api
@@ -57,6 +87,9 @@ services:
       redis:
         condition: service_healthy
 
+      minio:
+        condition: service_healthy
+
     environment:
       APP_NAME: Enterprise Operations Platform
 
@@ -65,6 +98,16 @@ services:
       DATABASE_URL: postgresql+asyncpg://eop:eop@postgres:5432/eop
 
       REDIS_URL: redis://redis:6379/0
+
+      MINIO_ENDPOINT: minio:9000
+
+      MINIO_ACCESS_KEY: minioadmin
+
+      MINIO_SECRET_KEY: minioadmin
+
+      MINIO_SECURE: "false"
+
+      MINIO_BUCKET: eop-files
 
     ports:
       - "8000:8000"
@@ -78,3 +121,4 @@ services:
 
 volumes:
   postgres_data:
+  minio_data:
