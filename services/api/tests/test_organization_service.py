@@ -10,6 +10,7 @@ from eop_api.core.config import settings
 from eop_api.db.base import Base
 from eop_api.schemas.organization import OrganizationCreate, OrganizationUpdate
 from eop_api.schemas.pagination import PaginationParams
+from eop_api.schemas.search import SearchParams
 from eop_api.services.organization import OrganizationService
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
 
@@ -113,6 +114,27 @@ async def test_list_paginated_defaults(service: OrganizationService):
     assert page.offset == 0
     assert page.limit == 50
     assert len(page.items) == 1
+
+
+async def test_list_paginated_passes_through_search(service: OrganizationService):
+    await service.create(OrganizationCreate(name="Open Robotics"))
+    await service.create(OrganizationCreate(name="Closed Systems"))
+
+    page = await service.list_paginated(
+        PaginationParams(offset=0, limit=50), SearchParams(q="open")
+    )
+
+    assert page.total == 1
+    assert page.items[0].name == "Open Robotics"
+
+
+async def test_list_paginated_without_search_returns_all(service: OrganizationService):
+    await service.create(OrganizationCreate(name="Alpha"))
+    await service.create(OrganizationCreate(name="Beta"))
+
+    page = await service.list_paginated(PaginationParams(offset=0, limit=50))
+
+    assert page.total == 2
 
 
 async def test_create_commits_and_is_visible_from_a_new_session(service: OrganizationService):

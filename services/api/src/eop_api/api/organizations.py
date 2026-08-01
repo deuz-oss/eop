@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.search import Search
 from eop_api.schemas.organization import (
     OrganizationCreate,
     OrganizationResponse,
@@ -38,9 +39,9 @@ async def list_organizations(service: OrganizationServiceDep) -> list[Organizati
 
 @router.get("/paginated", response_model=Page[OrganizationResponse])
 async def list_organizations_paginated(
-    service: OrganizationServiceDep, pagination: Pagination
+    service: OrganizationServiceDep, pagination: Pagination, search: Search
 ) -> Page[OrganizationResponse]:
-    page = await service.list_paginated(pagination)
+    page = await service.list_paginated(pagination, search)
     return Page(
         items=[OrganizationResponse.model_validate(item) for item in page.items],
         total=page.total,

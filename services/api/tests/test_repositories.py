@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from eop_api.core.config import settings
 from eop_api.db.base import BaseEntity
 from eop_api.repositories import BaseRepository
+from eop_api.schemas.search import FilterParams, SearchParams
 
 pytestmark = pytest.mark.anyio
 
@@ -18,6 +19,7 @@ class _Widget(BaseEntity):
     __tablename__ = "test_repository_widgets"
 
     name: Mapped[str] = mapped_column()
+    status: Mapped[str] = mapped_column(default="active")
 
 
 @pytest.fixture
@@ -121,3 +123,79 @@ async def test_paginate(repo: BaseRepository[_Widget]):
     assert page.offset == 1
     assert page.limit == 2
     assert len(page.items) == 2
+
+
+async def test_paginate_search_returns_matching_rows(repo: BaseRepository[_Widget]):
+    await repo.create(name="Alpha Widget")
+    await repo.create(name="Beta Gadget")
+
+    page = await repo.paginate(search=SearchParams(q="widget"), search_fields=(_Widget.name,))
+
+    assert page.total == 1
+    assert page.items[0].name == "Alpha Widget"
+
+
+async def test_paginate_empty_search_returns_all_rows(repo: BaseRepository[_Widget]):
+    await repo.create(name="Alpha")
+    await repo.create(name="Beta")
+
+    page = await repo.paginate(search=SearchParams(q=""), search_fields=(_Widget.name,))
+
+    assert page.total == 2
+
+
+async def test_paginate_search_is_case_insensitive(repo: BaseRepository[_Widget]):
+    await repo.create(name="Alpha Widget")
+
+    page = await repo.paginate(search=SearchParams(q="WIDGET"), search_fields=(_Widget.name,))
+
+    assert page.total == 1
+
+
+async def test_paginate_search_without_search_fields_is_noop(repo: BaseRepository[_Widget]):
+    await repo.create(name="Alpha")
+    await repo.create(name="Beta")
+
+    page = await repo.paginate(search=SearchParams(q="alpha"))
+
+    assert page.total == 2
+
+
+async def test_paginate_filters_returns_matching_rows(repo: BaseRepository[_Widget]):
+    await repo.create(name="Alpha", status="active")
+    await repo.create(name="Beta", status="archived")
+
+    page = await repo.paginate(
+        filters=FilterParams(values={"status": "active"}),
+        filterable_fields={"status": _Widget.status},
+    )
+
+    assert page.total == 1
+    assert page.items[0].name == "Alpha"
+
+
+async def test_paginate_filters_ignores_unknown_field(repo: BaseRepository[_Widget]):
+    await repo.create(name="Alpha", status="active")
+    await repo.create(name="Beta", status="archived")
+
+    page = await repo.paginate(
+        filters=FilterParams(values={"secret_column": "x"}),
+        filterable_fields={"status": _Widget.status},
+    )
+
+    assert page.total == 2
+
+
+async def test_paginate_filters_applies_allowed_and_ignores_unknown_together(
+    repo: BaseRepository[_Widget],
+):
+    await repo.create(name="Alpha", status="active")
+    await repo.create(name="Beta", status="archived")
+
+    page = await repo.paginate(
+        filters=FilterParams(values={"status": "active", "secret_column": "x"}),
+        filterable_fields={"status": _Widget.status},
+    )
+
+    assert page.total == 1
+    assert page.items[0].name == "Alpha"

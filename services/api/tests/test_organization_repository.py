@@ -13,6 +13,7 @@ from eop_api import models  # noqa: F401 -- registers all models on Base.metadat
 from eop_api.core.config import settings
 from eop_api.db.base import Base
 from eop_api.repositories.organization import OrganizationRepository
+from eop_api.schemas.search import SearchParams
 
 pytestmark = pytest.mark.anyio
 
@@ -133,3 +134,53 @@ async def test_paginate_offset_beyond_total_returns_empty(repo: OrganizationRepo
 
     assert page.total == 1
     assert page.items == []
+
+
+async def test_paginate_search_returns_matching_rows(repo: OrganizationRepository):
+    await repo.create(name="Open Robotics")
+    await repo.create(name="Closed Systems")
+
+    page = await repo.paginate(search=SearchParams(q="open"))
+
+    assert page.total == 1
+    assert [item.name for item in page.items] == ["Open Robotics"]
+
+
+async def test_paginate_empty_search_returns_all_rows(repo: OrganizationRepository):
+    await repo.create(name="Alpha")
+    await repo.create(name="Beta")
+
+    page = await repo.paginate(search=SearchParams(q=""))
+
+    assert page.total == 2
+
+
+async def test_paginate_no_search_returns_all_rows(repo: OrganizationRepository):
+    await repo.create(name="Alpha")
+    await repo.create(name="Beta")
+
+    page = await repo.paginate(search=None)
+
+    assert page.total == 2
+
+
+async def test_paginate_search_is_case_insensitive(repo: OrganizationRepository):
+    await repo.create(name="Open Robotics")
+
+    page = await repo.paginate(search=SearchParams(q="OPEN"))
+
+    assert page.total == 1
+    assert page.items[0].name == "Open Robotics"
+
+
+async def test_paginate_search_combined_with_offset_and_limit(repo: OrganizationRepository):
+    for i in range(5):
+        await repo.create(name=f"Open Org {i}")
+    await repo.create(name="Closed Org")
+
+    page = await repo.paginate(offset=1, limit=2, search=SearchParams(q="open"))
+
+    assert page.total == 5
+    assert page.offset == 1
+    assert page.limit == 2
+    assert len(page.items) == 2

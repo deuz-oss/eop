@@ -1,12 +1,14 @@
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import InstrumentedAttribute
 
 from eop_api.db.base import BaseEntity
 from eop_api.schemas.pagination import Page
+from eop_api.schemas.search import FilterParams, SearchParams
 
 
 class BaseRepository[ModelT: BaseEntity]:
@@ -63,11 +65,76 @@ class BaseRepository[ModelT: BaseEntity]:
         result = await self.session.execute(stmt)
         return result.scalar_one()
 
-    async def paginate(self, *, offset: int = 0, limit: int = 50) -> Page[ModelT]:
-        items_stmt = select(self.model).offset(offset).limit(limit)
+    def _apply_search(
+        self,
+        stmt: Select[Any],
+        search: SearchParams | None,
+        search_fields: Sequence[InstrumentedAttribute[Any]],
+    ) -> Select[Any]:
+        """Apply a case-insensitive partial-match filter across `search_fields`.
+
+        No-ops if there is no search, no searchable fields were configured,
+        or the search text is empty/whitespace-only.
+        """
+        if search is None or not search_fields:
+            return stmt
+
+        text = search.text
+        if text is None:
+            return stmt
+
+        pattern = f"%{text}%"
+        conditions = [column.ilike(pattern) for column in search_fields]
+        return stmt.where(or_(*conditions))
+
+    def _apply_filters(
+        self,
+        stmt: Select[Any],
+        filters: FilterParams | None,
+        filterable_fields: Mapping[str, InstrumentedAttribute[Any]],
+    ) -> Select[Any]:
+        """Apply equality filters, restricted to the given allowlist.
+
+        Only keys present in `filterable_fields` are applied; this is what
+        prevents a client-supplied field name from ever reaching a raw SQL
+        column. Keys outside the allowlist are silently ignored rather than
+        raising, so this foundation never surfaces as an unhandled error --
+        callers that want to reject unknown filter names should validate
+        them at the API layer, before building a `FilterParams`.
+        """
+        if not filters:
+            return stmt
+
+        for field_name, value in filters.values.items():
+            column = filterable_fields.get(field_name)
+            if column is None:
+                continue
+            stmt = stmt.where(column == value)
+
+        return stmt
+
+    async def paginate(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        search: SearchParams | None = None,
+        search_fields: Sequence[InstrumentedAttribute[Any]] = (),
+        filters: FilterParams | None = None,
+        filterable_fields: Mapping[str, InstrumentedAttribute[Any]] | None = None,
+    ) -> Page[ModelT]:
+        base_stmt = select(self.model)
+        base_stmt = self._apply_search(base_stmt, search, search_fields)
+        base_stmt = self._apply_filters(base_stmt, filters, filterable_fields or {})
+
+        items_stmt = base_stmt.offset(offset).limit(limit)
         items_result = await self.session.execute(items_stmt)
         items = list(items_result.scalars().all())
 
-        total = await self.count()
+        count_stmt = select(func.count()).select_from(self.model)
+        count_stmt = self._apply_search(count_stmt, search, search_fields)
+        count_stmt = self._apply_filters(count_stmt, filters, filterable_fields or {})
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar_one()
 
         return Page(items=items, total=total, offset=offset, limit=limit)
