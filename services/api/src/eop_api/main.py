@@ -9,6 +9,7 @@ from eop_api.api.employees import router as employees_router
 from eop_api.api.health import router as health_router
 from eop_api.api.organizations import router as organizations_router
 from eop_api.api.projects import router as projects_router
+from eop_api.api.tasks import router as tasks_router
 from eop_api.core.config import settings
 from eop_api.core.logging import configure_logging
 from eop_api.db.engine import engine
@@ -45,6 +46,7 @@ app.include_router(organizations_router)
 app.include_router(projects_router)
 app.include_router(employees_router)
 app.include_router(assignments_router)
+app.include_router(tasks_router)
 
 
 @app.get("/", tags=["Root"])
