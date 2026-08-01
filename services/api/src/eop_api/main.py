@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 
+from eop_api.api.employees import router as employees_router
 from eop_api.api.health import router as health_router
 from eop_api.api.organizations import router as organizations_router
 from eop_api.api.projects import router as projects_router
@@ -41,6 +42,7 @@ app.add_exception_handler(Exception, unhandled_exception_handler)
 app.include_router(health_router)
 app.include_router(organizations_router)
 app.include_router(projects_router)
+app.include_router(employees_router)
 
 
 @app.get("/", tags=["Root"])
