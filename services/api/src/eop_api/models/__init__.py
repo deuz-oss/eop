@@ -2,6 +2,8 @@ from eop_api.models.assignment import Assignment
 from eop_api.models.audit_log import AuditLog
 from eop_api.models.employee import Employee
 from eop_api.models.file_object import FileObject
+from eop_api.models.location import Location
+from eop_api.models.location_type import LocationType
 from eop_api.models.organization import Organization
 from eop_api.models.project import Project
 from eop_api.models.role import Role
@@ -14,6 +16,8 @@ __all__ = [
     "AuditLog",
     "Employee",
     "FileObject",
+    "Location",
+    "LocationType",
     "Organization",
     "Project",
     "Role",
