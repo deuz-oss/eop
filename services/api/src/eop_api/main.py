@@ -21,6 +21,7 @@ from eop_api.api.positions import router as positions_router
 from eop_api.api.projects import router as projects_router
 from eop_api.api.roles import router as roles_router
 from eop_api.api.tasks import router as tasks_router
+from eop_api.api.teams import router as teams_router
 from eop_api.core.config import settings
 from eop_api.core.logging import configure_logging
 from eop_api.db.engine import engine
@@ -78,6 +79,7 @@ app.include_router(locations_router, responses=PROBLEM_RESPONSES)
 app.include_router(location_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(departments_router, responses=PROBLEM_RESPONSES)
 app.include_router(positions_router, responses=PROBLEM_RESPONSES)
+app.include_router(teams_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
 app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
 app.include_router(roles_router, responses=PROBLEM_RESPONSES)

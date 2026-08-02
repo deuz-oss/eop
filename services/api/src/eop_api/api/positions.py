@@ -6,12 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.search import Search
+from eop_api.exceptions.department import DepartmentOrganizationMismatchError
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.position import PositionCreate, PositionResponse, PositionUpdate
 from eop_api.schemas.search import FilterParams
 from eop_api.services.position import (
     DepartmentNotFoundError,
-    DepartmentOrganizationMismatchError,
     DuplicatePositionCodeError,
     OrganizationNotFoundError,
     PositionService,

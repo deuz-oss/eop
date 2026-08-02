@@ -10,6 +10,7 @@ from eop_api.models.position import Position
 from eop_api.models.project import Project
 from eop_api.models.role import Role
 from eop_api.models.task import Task
+from eop_api.models.team import Team
 from eop_api.models.user import User
 from eop_api.models.user_role import user_roles
 
@@ -26,6 +27,7 @@ __all__ = [
     "Project",
     "Role",
     "Task",
+    "Team",
     "User",
     "user_roles",
 ]
