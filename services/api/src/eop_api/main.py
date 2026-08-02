@@ -13,6 +13,8 @@ from eop_api.api.dashboard import router as dashboard_router
 from eop_api.api.employees import router as employees_router
 from eop_api.api.files import router as files_router
 from eop_api.api.health import router as health_router
+from eop_api.api.location_types import router as location_types_router
+from eop_api.api.locations import router as locations_router
 from eop_api.api.organizations import router as organizations_router
 from eop_api.api.projects import router as projects_router
 from eop_api.api.roles import router as roles_router
@@ -67,6 +69,11 @@ app.include_router(auth_router, responses=PROBLEM_RESPONSES)
 app.include_router(organizations_router, responses=PROBLEM_RESPONSES)
 app.include_router(projects_router, responses=PROBLEM_RESPONSES)
 app.include_router(employees_router, responses=PROBLEM_RESPONSES)
+# TODO: Locations (and location types) are authenticated-only for now. Once the
+# platform defines administrative roles for master data, gate these routes with
+# RequireRole(...) the way roles.py does.
+app.include_router(locations_router, responses=PROBLEM_RESPONSES)
+app.include_router(location_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
 app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
 app.include_router(roles_router, responses=PROBLEM_RESPONSES)
