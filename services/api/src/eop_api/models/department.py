@@ -10,6 +10,7 @@ from eop_api.db.base import BaseEntity
 
 if TYPE_CHECKING:
     from eop_api.models.organization import Organization
+    from eop_api.models.position import Position
 
 
 class Department(BaseEntity):
@@ -44,6 +45,5 @@ class Department(BaseEntity):
     parent: Mapped[Department | None] = relationship(
         remote_side="Department.id", back_populates="children"
     )
-    children: Mapped[list[Department]] = relationship(
-        back_populates="parent", passive_deletes=True
-    )
+    children: Mapped[list[Department]] = relationship(back_populates="parent", passive_deletes=True)
+    positions: Mapped[list[Position]] = relationship(back_populates="department")
