@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from eop_api.models.employee import Employee
     from eop_api.models.position import Position
     from eop_api.models.project import Project
+    from eop_api.models.team import Team
 
 
 class Organization(BaseEntity):
@@ -33,3 +34,4 @@ class Organization(BaseEntity):
         cascade="all, delete-orphan",
     )
     positions: Mapped[list[Position]] = relationship(back_populates="organization")
+    teams: Mapped[list[Team]] = relationship(back_populates="organization")

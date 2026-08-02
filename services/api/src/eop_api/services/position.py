@@ -1,6 +1,7 @@
 import uuid
 from collections.abc import Callable, Sequence
 
+from eop_api.exceptions.department import DepartmentOrganizationMismatchError
 from eop_api.models.position import Position
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.organization import OrganizationRepository
@@ -21,10 +22,6 @@ class OrganizationNotFoundError(Exception):
 
 class DepartmentNotFoundError(Exception):
     """Raised when the department referenced by a Position does not exist."""
-
-
-class DepartmentOrganizationMismatchError(Exception):
-    """Raised when a Position's department belongs to a different organization."""
 
 
 class DuplicatePositionCodeError(Exception):
