@@ -10,6 +10,7 @@ from eop_api.api.assignments import router as assignments_router
 from eop_api.api.audit_logs import router as audit_logs_router
 from eop_api.api.auth import router as auth_router
 from eop_api.api.dashboard import router as dashboard_router
+from eop_api.api.departments import router as departments_router
 from eop_api.api.employees import router as employees_router
 from eop_api.api.files import router as files_router
 from eop_api.api.health import router as health_router
@@ -74,6 +75,7 @@ app.include_router(employees_router, responses=PROBLEM_RESPONSES)
 # RequireRole(...) the way roles.py does.
 app.include_router(locations_router, responses=PROBLEM_RESPONSES)
 app.include_router(location_types_router, responses=PROBLEM_RESPONSES)
+app.include_router(departments_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
 app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
 app.include_router(roles_router, responses=PROBLEM_RESPONSES)
