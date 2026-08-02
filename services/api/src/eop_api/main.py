@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from eop_api.api.assignments import router as assignments_router
 from eop_api.api.audit_logs import router as audit_logs_router
@@ -18,9 +20,21 @@ from eop_api.api.tasks import router as tasks_router
 from eop_api.core.config import settings
 from eop_api.core.logging import configure_logging
 from eop_api.db.engine import engine
-from eop_api.exceptions.handlers import unhandled_exception_handler
+from eop_api.exceptions.handlers import (
+    http_exception_handler,
+    unhandled_exception_handler,
+    validation_exception_handler,
+)
 from eop_api.middleware.request_id import RequestIDMiddleware
 from eop_api.middleware.request_logging import RequestLoggingMiddleware
+from eop_api.schemas.problem import Problem, ValidationProblem
+
+PROBLEM_RESPONSES: dict[int | str, dict[str, object]] = {
+    401: {"model": Problem, "description": "Unauthorized"},
+    403: {"model": Problem, "description": "Forbidden"},
+    404: {"model": Problem, "description": "Not Found"},
+    422: {"model": ValidationProblem, "description": "Validation Error"},
+}
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -44,19 +58,21 @@ app = FastAPI(
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RequestIDMiddleware)
 
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(Exception, unhandled_exception_handler)
 
 app.include_router(health_router)
-app.include_router(auth_router)
-app.include_router(organizations_router)
-app.include_router(projects_router)
-app.include_router(employees_router)
-app.include_router(assignments_router)
-app.include_router(tasks_router)
-app.include_router(roles_router)
-app.include_router(dashboard_router)
-app.include_router(audit_logs_router)
-app.include_router(files_router)
+app.include_router(auth_router, responses=PROBLEM_RESPONSES)
+app.include_router(organizations_router, responses=PROBLEM_RESPONSES)
+app.include_router(projects_router, responses=PROBLEM_RESPONSES)
+app.include_router(employees_router, responses=PROBLEM_RESPONSES)
+app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
+app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
+app.include_router(roles_router, responses=PROBLEM_RESPONSES)
+app.include_router(dashboard_router, responses=PROBLEM_RESPONSES)
+app.include_router(audit_logs_router, responses=PROBLEM_RESPONSES)
+app.include_router(files_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
