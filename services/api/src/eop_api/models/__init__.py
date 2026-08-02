@@ -2,6 +2,7 @@ from eop_api.models.assignment import Assignment
 from eop_api.models.audit_log import AuditLog
 from eop_api.models.department import Department
 from eop_api.models.employee import Employee
+from eop_api.models.employment_type import EmploymentType
 from eop_api.models.file_object import FileObject
 from eop_api.models.hr_employee import HrEmployee
 from eop_api.models.job_grade import JobGrade
@@ -21,6 +22,7 @@ __all__ = [
     "AuditLog",
     "Department",
     "Employee",
+    "EmploymentType",
     "FileObject",
     "HrEmployee",
     "JobGrade",
