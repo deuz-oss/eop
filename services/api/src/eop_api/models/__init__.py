@@ -4,6 +4,7 @@ from eop_api.models.department import Department
 from eop_api.models.employee import Employee
 from eop_api.models.file_object import FileObject
 from eop_api.models.hr_employee import HrEmployee
+from eop_api.models.job_grade import JobGrade
 from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
 from eop_api.models.organization import Organization
@@ -22,6 +23,7 @@ __all__ = [
     "Employee",
     "FileObject",
     "HrEmployee",
+    "JobGrade",
     "Location",
     "LocationType",
     "Organization",
