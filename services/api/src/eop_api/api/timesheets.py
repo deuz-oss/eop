@@ -15,6 +15,7 @@ from eop_api.schemas.timesheet import (
     TimesheetResponse,
     TimesheetUpdate,
 )
+from eop_api.services.approval import ApprovalService, InvalidApprovalStateError
 from eop_api.services.timesheet import (
     EmployeeNotFoundError,
     InvalidTimesheetDateRangeError,
@@ -29,6 +30,13 @@ def get_timesheet_service() -> TimesheetService:
 
 
 TimesheetServiceDep = Annotated[TimesheetService, Depends(get_timesheet_service)]
+
+
+def get_approval_service() -> ApprovalService:
+    return ApprovalService()
+
+
+ApprovalServiceDep = Annotated[ApprovalService, Depends(get_approval_service)]
 
 
 def get_timesheet_filters(
@@ -139,29 +147,32 @@ async def delete_timesheet(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet not found")
 
 
-@router.post("/{timesheet_id}/approve")
-async def approve_timesheet(timesheet_id: uuid.UUID, _: CurrentUser) -> None:
-    """Approval orchestration is intentionally deferred.
+@router.post("/{timesheet_id}/approve", response_model=TimesheetResponse)
+async def approve_timesheet(
+    timesheet_id: uuid.UUID,
+    service: ApprovalServiceDep,
+    current_user: CurrentUser,
+) -> TimesheetResponse:
+    try:
+        timesheet = await service.approve_timesheet(timesheet_id, current_user.id)
+    except InvalidApprovalStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if timesheet is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet not found")
+    return TimesheetResponse.model_validate(timesheet)
 
-    Which component decides/executes an approve/reject transition is an open
-    architectural question -- see `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md`
-    §10. This route exists to reserve the endpoint shape; it does not read or
-    write any `Timesheet` row.
-    """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Approval orchestration is not yet implemented",
-    )
 
-
-@router.post("/{timesheet_id}/reject")
+@router.post("/{timesheet_id}/reject", response_model=TimesheetResponse)
 async def reject_timesheet(
     timesheet_id: uuid.UUID,
     data: TimesheetRejectRequest,
-    _: CurrentUser,
-) -> None:
-    """Approval orchestration is intentionally deferred -- see `approve_timesheet`."""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Approval orchestration is not yet implemented",
-    )
+    service: ApprovalServiceDep,
+    current_user: CurrentUser,
+) -> TimesheetResponse:
+    try:
+        timesheet = await service.reject_timesheet(timesheet_id, current_user.id, data.reason)
+    except InvalidApprovalStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if timesheet is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet not found")
+    return TimesheetResponse.model_validate(timesheet)

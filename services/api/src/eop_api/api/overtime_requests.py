@@ -14,6 +14,7 @@ from eop_api.schemas.overtime_request import (
 )
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.search import FilterParams
+from eop_api.services.approval import ApprovalService, InvalidApprovalStateError
 from eop_api.services.overtime_request import (
     EmployeeNotFoundError,
     InvalidOvertimeTimeRangeError,
@@ -30,6 +31,13 @@ def get_overtime_request_service() -> OvertimeRequestService:
 OvertimeRequestServiceDep = Annotated[
     OvertimeRequestService, Depends(get_overtime_request_service)
 ]
+
+
+def get_approval_service() -> ApprovalService:
+    return ApprovalService()
+
+
+ApprovalServiceDep = Annotated[ApprovalService, Depends(get_approval_service)]
 
 
 def get_overtime_request_filters(
@@ -139,29 +147,40 @@ async def delete_overtime_request(
         )
 
 
-@router.post("/{overtime_request_id}/approve")
-async def approve_overtime_request(overtime_request_id: uuid.UUID, _: CurrentUser) -> None:
-    """Approval orchestration is intentionally deferred.
+@router.post("/{overtime_request_id}/approve", response_model=OvertimeRequestResponse)
+async def approve_overtime_request(
+    overtime_request_id: uuid.UUID,
+    service: ApprovalServiceDep,
+    current_user: CurrentUser,
+) -> OvertimeRequestResponse:
+    try:
+        overtime_request = await service.approve_overtime_request(
+            overtime_request_id, current_user.id
+        )
+    except InvalidApprovalStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if overtime_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Overtime request not found"
+        )
+    return OvertimeRequestResponse.model_validate(overtime_request)
 
-    Which component decides/executes an approve/reject transition is an open
-    architectural question -- see `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md`
-    §10. This route exists to reserve the endpoint shape; it does not read or
-    write any `OvertimeRequest` row.
-    """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Approval orchestration is not yet implemented",
-    )
 
-
-@router.post("/{overtime_request_id}/reject")
+@router.post("/{overtime_request_id}/reject", response_model=OvertimeRequestResponse)
 async def reject_overtime_request(
     overtime_request_id: uuid.UUID,
     data: OvertimeRequestRejectRequest,
-    _: CurrentUser,
-) -> None:
-    """Approval orchestration is intentionally deferred -- see `approve_overtime_request`."""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Approval orchestration is not yet implemented",
-    )
+    service: ApprovalServiceDep,
+    current_user: CurrentUser,
+) -> OvertimeRequestResponse:
+    try:
+        overtime_request = await service.reject_overtime_request(
+            overtime_request_id, current_user.id, data.reason
+        )
+    except InvalidApprovalStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if overtime_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Overtime request not found"
+        )
+    return OvertimeRequestResponse.model_validate(overtime_request)
