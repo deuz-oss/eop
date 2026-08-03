@@ -5,6 +5,7 @@ from eop_api.exceptions.department import DepartmentOrganizationMismatchError
 from eop_api.models.hr_employee import HrEmployee
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.hr_employee import HrEmployeeRepository
+from eop_api.repositories.job_grade import JobGradeRepository
 from eop_api.repositories.location import LocationRepository
 from eop_api.repositories.organization import OrganizationRepository
 from eop_api.repositories.position import PositionRepository
@@ -49,6 +50,10 @@ class TeamDepartmentMismatchError(Exception):
 
 class LocationNotFoundError(Exception):
     """Raised when the location referenced by an HrEmployee does not exist."""
+
+
+class JobGradeNotFoundError(Exception):
+    """Raised when the job grade referenced by an HrEmployee does not exist."""
 
 
 class ManagerNotFoundError(Exception):
@@ -129,6 +134,9 @@ class HrEmployeeService:
             if await LocationRepository(uow.session).get(data.location_id) is None:
                 raise LocationNotFoundError(str(data.location_id))
 
+            if not await JobGradeRepository(uow.session).exists(data.job_grade_id):
+                raise JobGradeNotFoundError(str(data.job_grade_id))
+
             if data.manager_id is not None:
                 if await repo.get(data.manager_id) is None:
                     raise ManagerNotFoundError(str(data.manager_id))
@@ -202,6 +210,7 @@ class HrEmployeeService:
             team_id = values.get("team_id", employee.team_id)
             location_id = values.get("location_id", employee.location_id)
             manager_id = values.get("manager_id", employee.manager_id)
+            job_grade_id = values.get("job_grade_id", employee.job_grade_id)
             employee_number = values.get("employee_number", employee.employee_number)
             email = values.get("email", employee.email)
 
@@ -231,6 +240,9 @@ class HrEmployeeService:
 
             if await LocationRepository(uow.session).get(location_id) is None:
                 raise LocationNotFoundError(str(location_id))
+
+            if not await JobGradeRepository(uow.session).exists(job_grade_id):
+                raise JobGradeNotFoundError(str(job_grade_id))
 
             if manager_id == employee_id:
                 raise SelfManagerError(str(employee_id))

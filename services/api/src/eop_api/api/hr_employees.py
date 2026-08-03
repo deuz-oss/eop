@@ -15,6 +15,7 @@ from eop_api.services.hr_employee import (
     DuplicateEmployeeEmailError,
     DuplicateEmployeeNumberError,
     HrEmployeeService,
+    JobGradeNotFoundError,
     LocationNotFoundError,
     ManagerNotFoundError,
     OrganizationNotFoundError,
@@ -108,6 +109,10 @@ async def create_hr_employee(
     except LocationNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Location not found"
+        ) from exc
+    except JobGradeNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job grade not found"
         ) from exc
     except ManagerNotFoundError as exc:
         raise HTTPException(
@@ -207,6 +212,10 @@ async def update_hr_employee(
     except LocationNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Location not found"
+        ) from exc
+    except JobGradeNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job grade not found"
         ) from exc
     except SelfManagerError as exc:
         raise HTTPException(
