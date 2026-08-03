@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import date
+from datetime import date, time
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +22,7 @@ from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
 from eop_api.models.organization import Organization
 from eop_api.models.position import Position
+from eop_api.models.shift import Shift
 from eop_api.models.team import Team
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.employment_status import EmploymentStatusRepository
@@ -32,6 +33,7 @@ from eop_api.repositories.location import LocationRepository
 from eop_api.repositories.location_type import LocationTypeRepository
 from eop_api.repositories.organization import OrganizationRepository
 from eop_api.repositories.position import PositionRepository
+from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
 from eop_api.schemas.search import FilterParams, SearchParams
 
@@ -136,6 +138,16 @@ async def employment_status(session: AsyncSession) -> EmploymentStatus:
 
 
 @pytest.fixture
+async def shift(session: AsyncSession) -> Shift:
+    return await ShiftRepository(session).create(
+        code="DAY",
+        name="Day Shift",
+        start_time=time(9, 0),
+        end_time=time(17, 0),
+    )
+
+
+@pytest.fixture
 def employee_kwargs(
     organization: Organization,
     department: Department,
@@ -145,6 +157,7 @@ def employee_kwargs(
     job_grade: JobGrade,
     employment_type: EmploymentType,
     employment_status: EmploymentStatus,
+    shift: Shift,
 ) -> dict:
     return {
         "organization_id": organization.id,
@@ -155,6 +168,7 @@ def employee_kwargs(
         "job_grade_id": job_grade.id,
         "employment_type_id": employment_type.id,
         "employment_status_id": employment_status.id,
+        "shift_id": shift.id,
         "hire_date": date(2024, 1, 15),
         "employment_status": "active",
     }
@@ -298,6 +312,35 @@ async def test_get_retrieves_employment_status_id(
 
     assert fetched is not None
     assert fetched.employment_status_id == employee_kwargs["employment_status_id"]
+
+
+async def test_create_persists_shift_id(repo: HrEmployeeRepository, employee_kwargs: dict):
+    employee = await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        **employee_kwargs,
+    )
+
+    assert employee.shift_id == employee_kwargs["shift_id"]
+
+
+async def test_get_retrieves_shift_id(repo: HrEmployeeRepository, employee_kwargs: dict):
+    employee = await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        **employee_kwargs,
+    )
+
+    fetched = await repo.get(employee.id)
+
+    assert fetched is not None
+    assert fetched.shift_id == employee_kwargs["shift_id"]
 
 
 async def test_get_missing_returns_none(repo: HrEmployeeRepository):
@@ -444,6 +487,25 @@ async def test_delete_employment_status_referenced_by_employee_is_restricted(
 
     with pytest.raises(IntegrityError):
         await EmploymentStatusRepository(session).delete(employment_status.id)
+
+
+async def test_delete_shift_referenced_by_employee_is_restricted(
+    session: AsyncSession,
+    repo: HrEmployeeRepository,
+    employee_kwargs: dict,
+    shift: Shift,
+):
+    await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        **employee_kwargs,
+    )
+
+    with pytest.raises(IntegrityError):
+        await ShiftRepository(session).delete(shift.id)
 
 
 async def test_get_by_employee_number(repo: HrEmployeeRepository, employee_kwargs: dict):
@@ -627,6 +689,7 @@ async def test_paginate_filters_by_organization_id(
     job_grade: JobGrade,
     employment_type: EmploymentType,
     employment_status: EmploymentStatus,
+    shift: Shift,
 ):
     other_department = await DepartmentRepository(session).create(
         organization_id=other_organization.id, code="ENG", name="Engineering (Globex)"
@@ -670,6 +733,7 @@ async def test_paginate_filters_by_organization_id(
         job_grade_id=job_grade.id,
         employment_type_id=employment_type.id,
         employment_status_id=employment_status.id,
+        shift_id=shift.id,
         hire_date=employee_kwargs["hire_date"],
         employment_status="active",
     )

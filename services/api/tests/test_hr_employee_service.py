@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import AsyncGenerator, Callable
-from datetime import date
+from datetime import date, time
 
 import pytest
 from sqlalchemy import text
@@ -19,6 +19,7 @@ from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
 from eop_api.models.organization import Organization
 from eop_api.models.position import Position
+from eop_api.models.shift import Shift
 from eop_api.models.team import Team
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.employment_status import EmploymentStatusRepository
@@ -28,6 +29,7 @@ from eop_api.repositories.location import LocationRepository
 from eop_api.repositories.location_type import LocationTypeRepository
 from eop_api.repositories.organization import OrganizationRepository
 from eop_api.repositories.position import PositionRepository
+from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
 from eop_api.schemas.hr_employee import EmployeeCreate, EmployeeUpdate
 from eop_api.schemas.pagination import PaginationParams
@@ -46,6 +48,7 @@ from eop_api.services.hr_employee import (
     PositionNotFoundError,
     PositionOrganizationMismatchError,
     SelfManagerError,
+    ShiftNotFoundError,
     TeamDepartmentMismatchError,
     TeamNotFoundError,
     TeamOrganizationMismatchError,
@@ -82,7 +85,7 @@ async def session_factory() -> AsyncGenerator[Callable[[], AsyncSession]]:
                 text(
                     "TRUNCATE TABLE hr_employees, teams, positions, locations, "
                     "location_types, departments, organizations, job_grades, "
-                    "employment_types, employment_statuses CASCADE"
+                    "employment_types, employment_statuses, shifts CASCADE"
                 )
             )
         await engine.dispose()
@@ -326,6 +329,28 @@ async def other_employment_status(
 
 
 @pytest.fixture
+async def shift(session_factory: Callable[[], AsyncSession]) -> Shift:
+    async with session_factory() as session:
+        shift = await ShiftRepository(session).create(
+            code="DAY", name="Day Shift", start_time=time(9, 0), end_time=time(17, 0)
+        )
+        await session.commit()
+        session.expunge(shift)
+        return shift
+
+
+@pytest.fixture
+async def other_shift(session_factory: Callable[[], AsyncSession]) -> Shift:
+    async with session_factory() as session:
+        shift = await ShiftRepository(session).create(
+            code="NIGHT", name="Night Shift", start_time=time(22, 0), end_time=time(6, 0)
+        )
+        await session.commit()
+        session.expunge(shift)
+        return shift
+
+
+@pytest.fixture
 def create_data(
     organization: Organization,
     department: Department,
@@ -335,6 +360,7 @@ def create_data(
     job_grade: JobGrade,
     employment_type: EmploymentType,
     employment_status: EmploymentStatus,
+    shift: Shift,
 ) -> Callable[..., EmployeeCreate]:
     def _make(**overrides) -> EmployeeCreate:
         defaults = dict(
@@ -351,6 +377,7 @@ def create_data(
             job_grade_id=job_grade.id,
             employment_type_id=employment_type.id,
             employment_status_id=employment_status.id,
+            shift_id=shift.id,
             hire_date=date(2024, 1, 15),
             employment_status="active",
         )
@@ -374,6 +401,7 @@ async def test_create_and_get(
     assert fetched.job_grade_id == employee.job_grade_id
     assert fetched.employment_type_id == employee.employment_type_id
     assert fetched.employment_status_id == employee.employment_status_id
+    assert fetched.shift_id == employee.shift_id
 
 
 async def test_create_with_manager(
@@ -492,6 +520,13 @@ async def test_create_rejects_missing_employment_status(
 ):
     with pytest.raises(EmploymentStatusNotFoundError):
         await service.create(create_data(employment_status_id=uuid.uuid4()))
+
+
+async def test_create_rejects_missing_shift(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate]
+):
+    with pytest.raises(ShiftNotFoundError):
+        await service.create(create_data(shift_id=uuid.uuid4()))
 
 
 async def test_create_rejects_duplicate_employee_number(
@@ -714,6 +749,28 @@ async def test_update_rejects_missing_employment_status(
 
     with pytest.raises(EmploymentStatusNotFoundError):
         await service.update(employee.id, EmployeeUpdate(employment_status_id=uuid.uuid4()))
+
+
+async def test_update_changes_shift(
+    service: HrEmployeeService,
+    create_data: Callable[..., EmployeeCreate],
+    other_shift: Shift,
+):
+    employee = await service.create(create_data())
+
+    updated = await service.update(employee.id, EmployeeUpdate(shift_id=other_shift.id))
+
+    assert updated is not None
+    assert updated.shift_id == other_shift.id
+
+
+async def test_update_rejects_missing_shift(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate]
+):
+    employee = await service.create(create_data())
+
+    with pytest.raises(ShiftNotFoundError):
+        await service.update(employee.id, EmployeeUpdate(shift_id=uuid.uuid4()))
 
 
 async def test_update_accepts_existing_manager(

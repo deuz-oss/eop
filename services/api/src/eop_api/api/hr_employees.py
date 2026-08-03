@@ -24,6 +24,7 @@ from eop_api.services.hr_employee import (
     PositionNotFoundError,
     PositionOrganizationMismatchError,
     SelfManagerError,
+    ShiftNotFoundError,
     TeamDepartmentMismatchError,
     TeamNotFoundError,
     TeamOrganizationMismatchError,
@@ -123,6 +124,10 @@ async def create_hr_employee(
     except EmploymentStatusNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Employment status not found"
+        ) from exc
+    except ShiftNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found"
         ) from exc
     except ManagerNotFoundError as exc:
         raise HTTPException(
@@ -234,6 +239,10 @@ async def update_hr_employee(
     except EmploymentStatusNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Employment status not found"
+        ) from exc
+    except ShiftNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found"
         ) from exc
     except SelfManagerError as exc:
         raise HTTPException(
