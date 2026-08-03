@@ -13,6 +13,7 @@ from eop_api.models.leave_request import LeaveRequest
 from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
 from eop_api.models.organization import Organization
+from eop_api.models.overtime_request import OvertimeRequest
 from eop_api.models.position import Position
 from eop_api.models.project import Project
 from eop_api.models.role import Role
@@ -38,6 +39,7 @@ __all__ = [
     "Location",
     "LocationType",
     "Organization",
+    "OvertimeRequest",
     "Position",
     "Project",
     "Role",
