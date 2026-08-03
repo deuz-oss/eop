@@ -15,6 +15,7 @@ from eop_api import models  # noqa: F401 -- registers all models on Base.metadat
 from eop_api.core.config import settings
 from eop_api.db.base import Base
 from eop_api.models.department import Department
+from eop_api.models.job_grade import JobGrade
 from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
 from eop_api.models.organization import Organization
@@ -22,6 +23,7 @@ from eop_api.models.position import Position
 from eop_api.models.team import Team
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.hr_employee import HrEmployeeRepository
+from eop_api.repositories.job_grade import JobGradeRepository
 from eop_api.repositories.location import LocationRepository
 from eop_api.repositories.location_type import LocationTypeRepository
 from eop_api.repositories.organization import OrganizationRepository
@@ -115,12 +117,18 @@ async def location(session: AsyncSession, location_type: LocationType) -> Locati
 
 
 @pytest.fixture
+async def job_grade(session: AsyncSession) -> JobGrade:
+    return await JobGradeRepository(session).create(code="L1", name="Engineer I", level=1)
+
+
+@pytest.fixture
 def employee_kwargs(
     organization: Organization,
     department: Department,
     position: Position,
     team: Team,
     location: Location,
+    job_grade: JobGrade,
 ) -> dict:
     return {
         "organization_id": organization.id,
@@ -128,6 +136,7 @@ def employee_kwargs(
         "position_id": position.id,
         "team_id": team.id,
         "location_id": location.id,
+        "job_grade_id": job_grade.id,
         "hire_date": date(2024, 1, 15),
         "employment_status": "active",
     }
@@ -176,6 +185,35 @@ async def test_create_with_manager(repo: HrEmployeeRepository, employee_kwargs: 
 
     assert fetched is not None
     assert fetched.manager_id == manager.id
+
+
+async def test_create_persists_job_grade_id(repo: HrEmployeeRepository, employee_kwargs: dict):
+    employee = await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        **employee_kwargs,
+    )
+
+    assert employee.job_grade_id == employee_kwargs["job_grade_id"]
+
+
+async def test_get_retrieves_job_grade_id(repo: HrEmployeeRepository, employee_kwargs: dict):
+    employee = await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        **employee_kwargs,
+    )
+
+    fetched = await repo.get(employee.id)
+
+    assert fetched is not None
+    assert fetched.job_grade_id == employee_kwargs["job_grade_id"]
 
 
 async def test_get_missing_returns_none(repo: HrEmployeeRepository):
@@ -268,6 +306,22 @@ async def test_delete_manager_with_reports_is_restricted(
 
     with pytest.raises(IntegrityError):
         await repo.delete(manager.id)
+
+
+async def test_delete_job_grade_referenced_by_employee_is_restricted(
+    session: AsyncSession, repo: HrEmployeeRepository, employee_kwargs: dict, job_grade: JobGrade
+):
+    await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        **employee_kwargs,
+    )
+
+    with pytest.raises(IntegrityError):
+        await JobGradeRepository(session).delete(job_grade.id)
 
 
 async def test_get_by_employee_number(repo: HrEmployeeRepository, employee_kwargs: dict):
@@ -448,6 +502,7 @@ async def test_paginate_filters_by_organization_id(
     repo: HrEmployeeRepository,
     employee_kwargs: dict,
     other_organization: Organization,
+    job_grade: JobGrade,
 ):
     other_department = await DepartmentRepository(session).create(
         organization_id=other_organization.id, code="ENG", name="Engineering (Globex)"
@@ -488,6 +543,7 @@ async def test_paginate_filters_by_organization_id(
         position_id=other_position.id,
         team_id=other_team.id,
         location_id=other_location.id,
+        job_grade_id=job_grade.id,
         hire_date=employee_kwargs["hire_date"],
         employment_status="active",
     )

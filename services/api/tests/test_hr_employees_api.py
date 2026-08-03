@@ -24,9 +24,9 @@ def _tables() -> Generator[None]:
     so state is reset via TRUNCATE rather than dropping the migration-managed
     tables. Truncating `organizations` with CASCADE also clears `departments`,
     `positions`, `teams`, and `hr_employees`, since they all reference
-    `organizations` by foreign key (directly or transitively). `locations`
-    and `location_types` don't depend on `organizations`, so they're
-    truncated explicitly.
+    `organizations` by foreign key (directly or transitively). `locations`,
+    `location_types`, and `job_grades` don't depend on `organizations`, so
+    they're truncated explicitly.
     """
 
     async def _create() -> None:
@@ -39,7 +39,10 @@ def _tables() -> Generator[None]:
         engine = create_async_engine(settings.database_url)
         async with engine.begin() as conn:
             await conn.execute(
-                text("TRUNCATE TABLE organizations, locations, location_types, users CASCADE")
+                text(
+                    "TRUNCATE TABLE organizations, locations, location_types, "
+                    "job_grades, users CASCADE"
+                )
             )
         await engine.dispose()
 
@@ -180,15 +183,37 @@ def _create_location(
     return response.json()
 
 
+def _create_job_grade(
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    name: str = "Engineer I",
+    code: str = "L1",
+    level: int = 1,
+) -> dict:
+    response = client.post(
+        "/hr/job-grades", json={"name": name, "code": code, "level": level}, headers=headers
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 class _Refs:
     def __init__(
-        self, organization: dict, department: dict, position: dict, team: dict, location: dict
+        self,
+        organization: dict,
+        department: dict,
+        position: dict,
+        team: dict,
+        location: dict,
+        job_grade: dict,
     ):
         self.organization = organization
         self.department = department
         self.position = position
         self.team = team
         self.location = location
+        self.job_grade = job_grade
 
 
 def _create_refs(client: TestClient, headers: dict[str, str], *, suffix: str = "") -> _Refs:
@@ -214,7 +239,10 @@ def _create_refs(client: TestClient, headers: dict[str, str], *, suffix: str = "
     location = _create_location(
         client, headers, code=f"HQ{suffix}", location_type_id=location_type["id"]
     )
-    return _Refs(organization, department, position, team, location)
+    job_grade = _create_job_grade(
+        client, headers, code=f"L1{suffix}", level=1 if suffix == "" else 2
+    )
+    return _Refs(organization, department, position, team, location, job_grade)
 
 
 def _employee_payload(refs: _Refs, **overrides) -> dict:
@@ -229,6 +257,7 @@ def _employee_payload(refs: _Refs, **overrides) -> dict:
         "position_id": refs.position["id"],
         "team_id": refs.team["id"],
         "location_id": refs.location["id"],
+        "job_grade_id": refs.job_grade["id"],
         "hire_date": "2024-01-15",
         "employment_status": "active",
     }
@@ -258,6 +287,7 @@ def test_create_employee_requires_authentication(client: TestClient):
             "position_id": str(uuid.uuid4()),
             "team_id": str(uuid.uuid4()),
             "location_id": str(uuid.uuid4()),
+            "job_grade_id": str(uuid.uuid4()),
             "hire_date": "2024-01-15",
             "employment_status": "active",
         },
@@ -303,6 +333,7 @@ def test_create_employee(client: TestClient, user_headers: dict[str, str]):
     assert body["position_id"] == refs.position["id"]
     assert body["team_id"] == refs.team["id"]
     assert body["location_id"] == refs.location["id"]
+    assert body["job_grade_id"] == refs.job_grade["id"]
     assert body["manager_id"] is None
     uuid.UUID(body["id"])
 
@@ -469,6 +500,20 @@ def test_create_employee_rejects_missing_location(client: TestClient, user_heade
     response = client.post(
         "/hr/employees",
         json=_employee_payload(refs, location_id=str(uuid.uuid4())),
+        headers=user_headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_create_employee_rejects_missing_job_grade(
+    client: TestClient, user_headers: dict[str, str]
+):
+    refs = _create_refs(client, user_headers)
+
+    response = client.post(
+        "/hr/employees",
+        json=_employee_payload(refs, job_grade_id=str(uuid.uuid4())),
         headers=user_headers,
     )
 
@@ -788,6 +833,36 @@ def test_update_employee_rejects_department_in_different_organization(
     )
 
     assert response.status_code == 422
+
+
+def test_update_employee_changes_job_grade(client: TestClient, user_headers: dict[str, str]):
+    refs = _create_refs(client, user_headers)
+    other_job_grade = _create_job_grade(client, user_headers, code="L2", level=2)
+    created = _create_employee(client, user_headers, refs)
+
+    response = client.put(
+        f"/hr/employees/{created['id']}",
+        json={"job_grade_id": other_job_grade["id"]},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["job_grade_id"] == other_job_grade["id"]
+
+
+def test_update_employee_rejects_missing_job_grade(
+    client: TestClient, user_headers: dict[str, str]
+):
+    refs = _create_refs(client, user_headers)
+    created = _create_employee(client, user_headers, refs)
+
+    response = client.put(
+        f"/hr/employees/{created['id']}",
+        json={"job_grade_id": str(uuid.uuid4())},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 404
 
 
 def test_update_employee_accepts_existing_manager(client: TestClient, user_headers: dict[str, str]):
