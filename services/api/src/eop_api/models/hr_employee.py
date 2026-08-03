@@ -45,6 +45,7 @@ class HrEmployee(BaseEntity):
         Index("ix_hr_employees_employment_status", "employment_status"),
         Index("ix_hr_employees_full_name", "full_name"),
         Index("ix_hr_employees_job_grade_id", "job_grade_id"),
+        Index("ix_hr_employees_employment_type_id", "employment_type_id"),
     )
 
     employee_number: Mapped[str] = mapped_column(String(50))
@@ -74,6 +75,9 @@ class HrEmployee(BaseEntity):
     )
     job_grade_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("job_grades.id", ondelete="RESTRICT"),
+    )
+    employment_type_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("employment_types.id", ondelete="RESTRICT"),
     )
 
     hire_date: Mapped[date] = mapped_column(Date)

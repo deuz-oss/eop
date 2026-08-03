@@ -12,6 +12,7 @@ from eop_api.core.config import settings
 from eop_api.db.base import Base
 from eop_api.exceptions.department import DepartmentOrganizationMismatchError
 from eop_api.models.department import Department
+from eop_api.models.employment_type import EmploymentType
 from eop_api.models.job_grade import JobGrade
 from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
@@ -19,6 +20,7 @@ from eop_api.models.organization import Organization
 from eop_api.models.position import Position
 from eop_api.models.team import Team
 from eop_api.repositories.department import DepartmentRepository
+from eop_api.repositories.employment_type import EmploymentTypeRepository
 from eop_api.repositories.job_grade import JobGradeRepository
 from eop_api.repositories.location import LocationRepository
 from eop_api.repositories.location_type import LocationTypeRepository
@@ -32,6 +34,7 @@ from eop_api.services.hr_employee import (
     DepartmentNotFoundError,
     DuplicateEmployeeEmailError,
     DuplicateEmployeeNumberError,
+    EmploymentTypeNotFoundError,
     HrEmployeeService,
     JobGradeNotFoundError,
     LocationNotFoundError,
@@ -75,7 +78,8 @@ async def session_factory() -> AsyncGenerator[Callable[[], AsyncSession]]:
             await conn.execute(
                 text(
                     "TRUNCATE TABLE hr_employees, teams, positions, locations, "
-                    "location_types, departments, organizations, job_grades CASCADE"
+                    "location_types, departments, organizations, job_grades, "
+                    "employment_types CASCADE"
                 )
             )
         await engine.dispose()
@@ -273,6 +277,28 @@ async def other_job_grade(session_factory: Callable[[], AsyncSession]) -> JobGra
 
 
 @pytest.fixture
+async def employment_type(session_factory: Callable[[], AsyncSession]) -> EmploymentType:
+    async with session_factory() as session:
+        employment_type = await EmploymentTypeRepository(session).create(
+            code="FT", name="Full-Time"
+        )
+        await session.commit()
+        session.expunge(employment_type)
+        return employment_type
+
+
+@pytest.fixture
+async def other_employment_type(session_factory: Callable[[], AsyncSession]) -> EmploymentType:
+    async with session_factory() as session:
+        employment_type = await EmploymentTypeRepository(session).create(
+            code="PT", name="Part-Time"
+        )
+        await session.commit()
+        session.expunge(employment_type)
+        return employment_type
+
+
+@pytest.fixture
 def create_data(
     organization: Organization,
     department: Department,
@@ -280,6 +306,7 @@ def create_data(
     team: Team,
     location: Location,
     job_grade: JobGrade,
+    employment_type: EmploymentType,
 ) -> Callable[..., EmployeeCreate]:
     def _make(**overrides) -> EmployeeCreate:
         defaults = dict(
@@ -294,6 +321,7 @@ def create_data(
             team_id=team.id,
             location_id=location.id,
             job_grade_id=job_grade.id,
+            employment_type_id=employment_type.id,
             hire_date=date(2024, 1, 15),
             employment_status="active",
         )
@@ -315,6 +343,7 @@ async def test_create_and_get(
     assert fetched.full_name == "Ada Lovelace"
     assert fetched.manager_id is None
     assert fetched.job_grade_id == employee.job_grade_id
+    assert fetched.employment_type_id == employee.employment_type_id
 
 
 async def test_create_with_manager(
@@ -419,6 +448,13 @@ async def test_create_rejects_missing_job_grade(
 ):
     with pytest.raises(JobGradeNotFoundError):
         await service.create(create_data(job_grade_id=uuid.uuid4()))
+
+
+async def test_create_rejects_missing_employment_type(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate]
+):
+    with pytest.raises(EmploymentTypeNotFoundError):
+        await service.create(create_data(employment_type_id=uuid.uuid4()))
 
 
 async def test_create_rejects_duplicate_employee_number(
@@ -593,6 +629,30 @@ async def test_update_rejects_missing_job_grade(
 
     with pytest.raises(JobGradeNotFoundError):
         await service.update(employee.id, EmployeeUpdate(job_grade_id=uuid.uuid4()))
+
+
+async def test_update_changes_employment_type(
+    service: HrEmployeeService,
+    create_data: Callable[..., EmployeeCreate],
+    other_employment_type: EmploymentType,
+):
+    employee = await service.create(create_data())
+
+    updated = await service.update(
+        employee.id, EmployeeUpdate(employment_type_id=other_employment_type.id)
+    )
+
+    assert updated is not None
+    assert updated.employment_type_id == other_employment_type.id
+
+
+async def test_update_rejects_missing_employment_type(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate]
+):
+    employee = await service.create(create_data())
+
+    with pytest.raises(EmploymentTypeNotFoundError):
+        await service.update(employee.id, EmployeeUpdate(employment_type_id=uuid.uuid4()))
 
 
 async def test_update_accepts_existing_manager(
