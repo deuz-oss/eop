@@ -14,6 +14,7 @@ from eop_api.schemas.leave_request import (
 )
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.search import FilterParams
+from eop_api.services.approval import ApprovalService, InvalidApprovalStateError
 from eop_api.services.leave_request import (
     EmployeeNotFoundError,
     InvalidLeaveDateRangeError,
@@ -28,6 +29,13 @@ def get_leave_request_service() -> LeaveRequestService:
 
 
 LeaveRequestServiceDep = Annotated[LeaveRequestService, Depends(get_leave_request_service)]
+
+
+def get_approval_service() -> ApprovalService:
+    return ApprovalService()
+
+
+ApprovalServiceDep = Annotated[ApprovalService, Depends(get_approval_service)]
 
 
 def get_leave_request_filters(
@@ -137,29 +145,38 @@ async def delete_leave_request(
         )
 
 
-@router.post("/{leave_request_id}/approve")
-async def approve_leave_request(leave_request_id: uuid.UUID, _: CurrentUser) -> None:
-    """Approval orchestration is intentionally deferred.
+@router.post("/{leave_request_id}/approve", response_model=LeaveRequestResponse)
+async def approve_leave_request(
+    leave_request_id: uuid.UUID,
+    service: ApprovalServiceDep,
+    current_user: CurrentUser,
+) -> LeaveRequestResponse:
+    try:
+        leave_request = await service.approve_leave_request(leave_request_id, current_user.id)
+    except InvalidApprovalStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if leave_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
+        )
+    return LeaveRequestResponse.model_validate(leave_request)
 
-    Which component decides/executes an approve/reject transition is an open
-    architectural question -- see `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md`
-    §10. This route exists to reserve the endpoint shape; it does not read or
-    write any `LeaveRequest` row.
-    """
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Approval orchestration is not yet implemented",
-    )
 
-
-@router.post("/{leave_request_id}/reject")
+@router.post("/{leave_request_id}/reject", response_model=LeaveRequestResponse)
 async def reject_leave_request(
     leave_request_id: uuid.UUID,
     data: LeaveRequestRejectRequest,
-    _: CurrentUser,
-) -> None:
-    """Approval orchestration is intentionally deferred -- see `approve_leave_request`."""
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Approval orchestration is not yet implemented",
-    )
+    service: ApprovalServiceDep,
+    current_user: CurrentUser,
+) -> LeaveRequestResponse:
+    try:
+        leave_request = await service.reject_leave_request(
+            leave_request_id, current_user.id, data.reason
+        )
+    except InvalidApprovalStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if leave_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
+        )
+    return LeaveRequestResponse.model_validate(leave_request)

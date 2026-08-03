@@ -601,18 +601,75 @@ def test_reject_timesheet_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_approve_timesheet_not_implemented(client: TestClient, user_headers: dict[str, str]):
-    """Approval orchestration is intentionally deferred (no shared architectural
-    decision yet, per docs/architecture/APPROVAL_WORKFLOW_DESIGN.md §10) -- the
-    endpoint exists but always responds 501, regardless of whether the id exists."""
+def test_approve_timesheet_not_found(client: TestClient, user_headers: dict[str, str]):
     response = client.post(f"/hr/timesheets/{uuid.uuid4()}/approve", headers=user_headers)
 
-    assert response.status_code == 501
+    assert response.status_code == 404
 
 
-def test_reject_timesheet_not_implemented(client: TestClient, user_headers: dict[str, str]):
+def test_reject_timesheet_not_found(client: TestClient, user_headers: dict[str, str]):
     response = client.post(
         f"/hr/timesheets/{uuid.uuid4()}/reject", json={"reason": "No"}, headers=user_headers
     )
 
-    assert response.status_code == 501
+    assert response.status_code == 404
+
+
+def test_approve_timesheet(client: TestClient, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers)
+    created = _create_timesheet(client, user_headers, employee["id"])
+
+    response = client.post(f"/hr/timesheets/{created['id']}/approve", headers=user_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "approved"
+    assert body["approved_by"] is not None
+    assert body["approved_at"] is not None
+    assert body["rejection_reason"] is None
+
+
+def test_reject_timesheet(client: TestClient, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers)
+    created = _create_timesheet(client, user_headers, employee["id"])
+
+    response = client.post(
+        f"/hr/timesheets/{created['id']}/reject",
+        json={"reason": "Insufficient coverage"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "rejected"
+    assert body["approved_by"] is not None
+    assert body["approved_at"] is not None
+    assert body["rejection_reason"] == "Insufficient coverage"
+
+
+def test_approve_timesheet_rejects_non_pending(client: TestClient, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers)
+    created = _create_timesheet(client, user_headers, employee["id"])
+    client.post(f"/hr/timesheets/{created['id']}/approve", headers=user_headers)
+
+    response = client.post(f"/hr/timesheets/{created['id']}/approve", headers=user_headers)
+
+    assert response.status_code == 409
+
+
+def test_reject_timesheet_rejects_non_pending(client: TestClient, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers)
+    created = _create_timesheet(client, user_headers, employee["id"])
+    client.post(
+        f"/hr/timesheets/{created['id']}/reject",
+        json={"reason": "No"},
+        headers=user_headers,
+    )
+
+    response = client.post(
+        f"/hr/timesheets/{created['id']}/reject",
+        json={"reason": "No"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
