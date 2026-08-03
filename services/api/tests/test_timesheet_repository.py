@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
+from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.employment_status import EmploymentStatusRepository
@@ -26,6 +27,7 @@ from eop_api.repositories.position import PositionRepository
 from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
 from eop_api.repositories.timesheet import TimesheetRepository
+from eop_api.repositories.user import UserRepository
 from eop_api.schemas.search import FilterParams
 
 pytestmark = pytest.mark.anyio
@@ -341,3 +343,61 @@ async def test_get_by_employee_returns_matching_rows(
 
     assert len(items) == 1
     assert items[0].employee_id == employee_id
+
+
+async def test_approve_fields_persist(
+    repo: TimesheetRepository, session: AsyncSession, employee_id: uuid.UUID
+):
+    approver = await UserRepository(session).create(
+        email="approver@example.com",
+        password_hash=hash_password("approver-pass"),
+        full_name="Approver",
+        is_active=True,
+    )
+    timesheet = await repo.create(
+        employee_id=employee_id, start_date=date(2026, 2, 10), end_date=date(2026, 2, 16)
+    )
+    approved_at = datetime(2026, 2, 17, 9, 0, tzinfo=UTC)
+
+    updated = await repo.update(
+        timesheet.id,
+        status="approved",
+        approved_by=approver.id,
+        approved_at=approved_at,
+        rejection_reason=None,
+    )
+
+    assert updated is not None
+    assert updated.status == "approved"
+    assert updated.approved_by == approver.id
+    assert updated.approved_at == approved_at
+    assert updated.rejection_reason is None
+
+
+async def test_reject_fields_persist(
+    repo: TimesheetRepository, session: AsyncSession, employee_id: uuid.UUID
+):
+    approver = await UserRepository(session).create(
+        email="approver@example.com",
+        password_hash=hash_password("approver-pass"),
+        full_name="Approver",
+        is_active=True,
+    )
+    timesheet = await repo.create(
+        employee_id=employee_id, start_date=date(2026, 2, 10), end_date=date(2026, 2, 16)
+    )
+    approved_at = datetime(2026, 2, 17, 9, 0, tzinfo=UTC)
+
+    updated = await repo.update(
+        timesheet.id,
+        status="rejected",
+        approved_by=approver.id,
+        approved_at=approved_at,
+        rejection_reason="Not enough coverage",
+    )
+
+    assert updated is not None
+    assert updated.status == "rejected"
+    assert updated.approved_by == approver.id
+    assert updated.approved_at == approved_at
+    assert updated.rejection_reason == "Not enough coverage"

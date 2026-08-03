@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Date, ForeignKey, Index, String
+from sqlalchemy import Date, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from eop_api.db.base import BaseEntity
@@ -15,8 +15,8 @@ class Timesheet(BaseEntity):
     Deliberately submission-shaped, not calculation/projection shaped: each
     row is one ask, covering one contiguous date span, for one HrEmployee.
     Attendance/overtime/leave/holiday reconciliation, computed hour totals,
-    approval workflow, and payroll integration are all future concerns --
-    out of scope here (per `docs/architecture/TIMESHEET_DESIGN.md`).
+    and payroll integration are all future concerns -- out of scope here
+    (per `docs/architecture/TIMESHEET_DESIGN.md`).
 
     `employee_id` is `ON DELETE RESTRICT`, matching every other FK into
     `HrEmployee` from HR data: timesheet history must be preserved, not
@@ -24,8 +24,15 @@ class Timesheet(BaseEntity):
 
     `status` is intentionally a plain string column, storage only -- the
     same style already used by `LeaveRequest.status`/`OvertimeRequest.status`.
-    No enum, no CHECK constraint, no transition validation: approval workflow
-    is a future PR's concern, not this one's.
+    No enum, no CHECK constraint: transition validation (`pending` ->
+    `approved`/`rejected`) is enforced by `TimesheetService.approve`/
+    `.reject`, not by the database.
+
+    `approved_by`/`approved_at`/`rejection_reason` are populated only by
+    `TimesheetService.approve`/`.reject`, per
+    `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md`. `approved_by` is
+    `ON DELETE RESTRICT` against `users.id`, matching the retention posture of
+    every other FK on this entity.
     """
 
     __tablename__ = "timesheets"
@@ -40,6 +47,11 @@ class Timesheet(BaseEntity):
     )
     start_date: Mapped[date] = mapped_column(Date)
     end_date: Mapped[date] = mapped_column(Date)
-    # Storage only -- no transition validation. Approval workflow is intentionally
-    # deferred to a future PR.
+    # Transition validation lives in TimesheetService.approve/.reject, not here.
     status: Mapped[str] = mapped_column(String(50), default="pending")
+
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), default=None
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    rejection_reason: Mapped[str | None] = mapped_column(String(1000), default=None)

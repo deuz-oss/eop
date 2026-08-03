@@ -8,6 +8,7 @@ from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.search import Search
 from eop_api.schemas.leave_request import (
     LeaveRequestCreate,
+    LeaveRequestRejectRequest,
     LeaveRequestResponse,
     LeaveRequestUpdate,
 )
@@ -134,3 +135,31 @@ async def delete_leave_request(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
         )
+
+
+@router.post("/{leave_request_id}/approve")
+async def approve_leave_request(leave_request_id: uuid.UUID, _: CurrentUser) -> None:
+    """Approval orchestration is intentionally deferred.
+
+    Which component decides/executes an approve/reject transition is an open
+    architectural question -- see `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md`
+    §10. This route exists to reserve the endpoint shape; it does not read or
+    write any `LeaveRequest` row.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Approval orchestration is not yet implemented",
+    )
+
+
+@router.post("/{leave_request_id}/reject")
+async def reject_leave_request(
+    leave_request_id: uuid.UUID,
+    data: LeaveRequestRejectRequest,
+    _: CurrentUser,
+) -> None:
+    """Approval orchestration is intentionally deferred -- see `approve_leave_request`."""
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Approval orchestration is not yet implemented",
+    )

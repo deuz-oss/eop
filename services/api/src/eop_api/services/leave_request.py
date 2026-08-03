@@ -22,13 +22,15 @@ class LeaveRequestService:
     """Business logic for `LeaveRequest`. Owns the transaction boundary via a UoW.
 
     `LeaveRequest` is a single employee's request for a dated span -- not a
-    balance, entitlement, or approval-workflow record. Only the existence of
-    `employee_id` and `start_date <= end_date` are validated here. Overlap
-    detection, duplicate detection, leave balance/entitlement, weekends,
-    holidays, half-days, payroll rules, attendance reconciliation, employment
-    status validation, and approval validation are all explicitly out of
-    scope for this module and belong to future PRs. `status` is stored only;
-    no transition validation is performed.
+    balance or entitlement record. Only the existence of `employee_id` and
+    `start_date <= end_date` are validated on `create`/`update`. `status`,
+    `approved_by`, `approved_at`, and `rejection_reason` are storage-only
+    columns here -- no transition validation, authorization, audit logging,
+    or event/notification dispatch is performed by this service. Which
+    component orchestrates an approval decision is an intentionally
+    unresolved architectural question (per
+    `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md` §10) and is deferred to a
+    future PR, not decided here.
 
     Returned entities are expunged from the unit-of-work's session before it
     closes: the UoW always rolls back (and thus expires all attributes) on

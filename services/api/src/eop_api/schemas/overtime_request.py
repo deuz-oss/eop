@@ -22,6 +22,10 @@ class OvertimeRequestUpdate(BaseModel):
     reason: str | None = Field(default=None, max_length=2000)
 
 
+class OvertimeRequestRejectRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000)
+
+
 class OvertimeRequestResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -32,5 +36,8 @@ class OvertimeRequestResponse(BaseModel):
     end_time: time
     status: str
     reason: str | None
+    approved_by: uuid.UUID | None
+    approved_at: datetime | None
+    rejection_reason: str | None
     created_at: datetime
     updated_at: datetime
