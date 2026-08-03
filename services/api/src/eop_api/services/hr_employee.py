@@ -11,6 +11,7 @@ from eop_api.repositories.job_grade import JobGradeRepository
 from eop_api.repositories.location import LocationRepository
 from eop_api.repositories.organization import OrganizationRepository
 from eop_api.repositories.position import PositionRepository
+from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
 from eop_api.schemas.hr_employee import EmployeeCreate, EmployeeUpdate
 from eop_api.schemas.pagination import Page, PaginationParams
@@ -64,6 +65,10 @@ class EmploymentTypeNotFoundError(Exception):
 
 class EmploymentStatusNotFoundError(Exception):
     """Raised when the employment status referenced by an HrEmployee does not exist."""
+
+
+class ShiftNotFoundError(Exception):
+    """Raised when the shift referenced by an HrEmployee does not exist."""
 
 
 class ManagerNotFoundError(Exception):
@@ -155,6 +160,9 @@ class HrEmployeeService:
             ):
                 raise EmploymentStatusNotFoundError(str(data.employment_status_id))
 
+            if not await ShiftRepository(uow.session).exists(data.shift_id):
+                raise ShiftNotFoundError(str(data.shift_id))
+
             if data.manager_id is not None:
                 if await repo.get(data.manager_id) is None:
                     raise ManagerNotFoundError(str(data.manager_id))
@@ -233,6 +241,7 @@ class HrEmployeeService:
             employment_status_id = values.get(
                 "employment_status_id", employee.employment_status_id
             )
+            shift_id = values.get("shift_id", employee.shift_id)
             employee_number = values.get("employee_number", employee.employee_number)
             email = values.get("email", employee.email)
 
@@ -271,6 +280,9 @@ class HrEmployeeService:
 
             if not await EmploymentStatusRepository(uow.session).exists(employment_status_id):
                 raise EmploymentStatusNotFoundError(str(employment_status_id))
+
+            if not await ShiftRepository(uow.session).exists(shift_id):
+                raise ShiftNotFoundError(str(shift_id))
 
             if manager_id == employee_id:
                 raise SelfManagerError(str(employee_id))

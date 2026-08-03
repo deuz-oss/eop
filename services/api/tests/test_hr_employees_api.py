@@ -42,7 +42,7 @@ def _tables() -> Generator[None]:
             await conn.execute(
                 text(
                     "TRUNCATE TABLE organizations, locations, location_types, "
-                    "job_grades, employment_types, employment_statuses, users CASCADE"
+                    "job_grades, employment_types, employment_statuses, shifts, users CASCADE"
                 )
             )
         await engine.dispose()
@@ -227,6 +227,22 @@ def _create_employment_status(
     return response.json()
 
 
+def _create_shift(
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    name: str = "Day Shift",
+    code: str = "DAY",
+) -> dict:
+    response = client.post(
+        "/hr/shifts",
+        json={"code": code, "name": name, "start_time": "09:00:00", "end_time": "17:00:00"},
+        headers=headers,
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 class _Refs:
     def __init__(
         self,
@@ -238,6 +254,7 @@ class _Refs:
         job_grade: dict,
         employment_type: dict,
         employment_status: dict,
+        shift: dict,
     ):
         self.organization = organization
         self.department = department
@@ -247,6 +264,7 @@ class _Refs:
         self.job_grade = job_grade
         self.employment_type = employment_type
         self.employment_status = employment_status
+        self.shift = shift
 
 
 def _create_refs(client: TestClient, headers: dict[str, str], *, suffix: str = "") -> _Refs:
@@ -277,6 +295,7 @@ def _create_refs(client: TestClient, headers: dict[str, str], *, suffix: str = "
     )
     employment_type = _create_employment_type(client, headers, code=f"FT{suffix}")
     employment_status = _create_employment_status(client, headers, code=f"ACTIVE{suffix}")
+    shift = _create_shift(client, headers, code=f"DAY{suffix}")
     return _Refs(
         organization,
         department,
@@ -286,6 +305,7 @@ def _create_refs(client: TestClient, headers: dict[str, str], *, suffix: str = "
         job_grade,
         employment_type,
         employment_status,
+        shift,
     )
 
 
@@ -304,6 +324,7 @@ def _employee_payload(refs: _Refs, **overrides) -> dict:
         "job_grade_id": refs.job_grade["id"],
         "employment_type_id": refs.employment_type["id"],
         "employment_status_id": refs.employment_status["id"],
+        "shift_id": refs.shift["id"],
         "hire_date": "2024-01-15",
         "employment_status": "active",
     }
@@ -336,6 +357,7 @@ def test_create_employee_requires_authentication(client: TestClient):
             "job_grade_id": str(uuid.uuid4()),
             "employment_type_id": str(uuid.uuid4()),
             "employment_status_id": str(uuid.uuid4()),
+            "shift_id": str(uuid.uuid4()),
             "hire_date": "2024-01-15",
             "employment_status": "active",
         },
@@ -384,6 +406,7 @@ def test_create_employee(client: TestClient, user_headers: dict[str, str]):
     assert body["job_grade_id"] == refs.job_grade["id"]
     assert body["employment_type_id"] == refs.employment_type["id"]
     assert body["employment_status_id"] == refs.employment_status["id"]
+    assert body["shift_id"] == refs.shift["id"]
     assert body["manager_id"] is None
     uuid.UUID(body["id"])
 
@@ -592,6 +615,20 @@ def test_create_employee_rejects_missing_employment_status(
     response = client.post(
         "/hr/employees",
         json=_employee_payload(refs, employment_status_id=str(uuid.uuid4())),
+        headers=user_headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_create_employee_rejects_missing_shift(
+    client: TestClient, user_headers: dict[str, str]
+):
+    refs = _create_refs(client, user_headers)
+
+    response = client.post(
+        "/hr/employees",
+        json=_employee_payload(refs, shift_id=str(uuid.uuid4())),
         headers=user_headers,
     )
 
@@ -1001,6 +1038,34 @@ def test_update_employee_rejects_missing_employment_status(
     response = client.put(
         f"/hr/employees/{created['id']}",
         json={"employment_status_id": str(uuid.uuid4())},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_update_employee_changes_shift(client: TestClient, user_headers: dict[str, str]):
+    refs = _create_refs(client, user_headers)
+    other_shift = _create_shift(client, user_headers, code="NIGHT")
+    created = _create_employee(client, user_headers, refs)
+
+    response = client.put(
+        f"/hr/employees/{created['id']}",
+        json={"shift_id": other_shift["id"]},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["shift_id"] == other_shift["id"]
+
+
+def test_update_employee_rejects_missing_shift(client: TestClient, user_headers: dict[str, str]):
+    refs = _create_refs(client, user_headers)
+    created = _create_employee(client, user_headers, refs)
+
+    response = client.put(
+        f"/hr/employees/{created['id']}",
+        json={"shift_id": str(uuid.uuid4())},
         headers=user_headers,
     )
 
