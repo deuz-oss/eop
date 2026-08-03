@@ -12,6 +12,7 @@ from eop_api.core.config import settings
 from eop_api.db.base import Base
 from eop_api.exceptions.department import DepartmentOrganizationMismatchError
 from eop_api.models.department import Department
+from eop_api.models.employment_status import EmploymentStatus
 from eop_api.models.employment_type import EmploymentType
 from eop_api.models.job_grade import JobGrade
 from eop_api.models.location import Location
@@ -20,6 +21,7 @@ from eop_api.models.organization import Organization
 from eop_api.models.position import Position
 from eop_api.models.team import Team
 from eop_api.repositories.department import DepartmentRepository
+from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
 from eop_api.repositories.job_grade import JobGradeRepository
 from eop_api.repositories.location import LocationRepository
@@ -34,6 +36,7 @@ from eop_api.services.hr_employee import (
     DepartmentNotFoundError,
     DuplicateEmployeeEmailError,
     DuplicateEmployeeNumberError,
+    EmploymentStatusNotFoundError,
     EmploymentTypeNotFoundError,
     HrEmployeeService,
     JobGradeNotFoundError,
@@ -79,7 +82,7 @@ async def session_factory() -> AsyncGenerator[Callable[[], AsyncSession]]:
                 text(
                     "TRUNCATE TABLE hr_employees, teams, positions, locations, "
                     "location_types, departments, organizations, job_grades, "
-                    "employment_types CASCADE"
+                    "employment_types, employment_statuses CASCADE"
                 )
             )
         await engine.dispose()
@@ -299,6 +302,30 @@ async def other_employment_type(session_factory: Callable[[], AsyncSession]) -> 
 
 
 @pytest.fixture
+async def employment_status(session_factory: Callable[[], AsyncSession]) -> EmploymentStatus:
+    async with session_factory() as session:
+        employment_status = await EmploymentStatusRepository(session).create(
+            code="ACTIVE", name="Active"
+        )
+        await session.commit()
+        session.expunge(employment_status)
+        return employment_status
+
+
+@pytest.fixture
+async def other_employment_status(
+    session_factory: Callable[[], AsyncSession],
+) -> EmploymentStatus:
+    async with session_factory() as session:
+        employment_status = await EmploymentStatusRepository(session).create(
+            code="LEAVE", name="On Leave"
+        )
+        await session.commit()
+        session.expunge(employment_status)
+        return employment_status
+
+
+@pytest.fixture
 def create_data(
     organization: Organization,
     department: Department,
@@ -307,6 +334,7 @@ def create_data(
     location: Location,
     job_grade: JobGrade,
     employment_type: EmploymentType,
+    employment_status: EmploymentStatus,
 ) -> Callable[..., EmployeeCreate]:
     def _make(**overrides) -> EmployeeCreate:
         defaults = dict(
@@ -322,6 +350,7 @@ def create_data(
             location_id=location.id,
             job_grade_id=job_grade.id,
             employment_type_id=employment_type.id,
+            employment_status_id=employment_status.id,
             hire_date=date(2024, 1, 15),
             employment_status="active",
         )
@@ -344,6 +373,7 @@ async def test_create_and_get(
     assert fetched.manager_id is None
     assert fetched.job_grade_id == employee.job_grade_id
     assert fetched.employment_type_id == employee.employment_type_id
+    assert fetched.employment_status_id == employee.employment_status_id
 
 
 async def test_create_with_manager(
@@ -455,6 +485,13 @@ async def test_create_rejects_missing_employment_type(
 ):
     with pytest.raises(EmploymentTypeNotFoundError):
         await service.create(create_data(employment_type_id=uuid.uuid4()))
+
+
+async def test_create_rejects_missing_employment_status(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate]
+):
+    with pytest.raises(EmploymentStatusNotFoundError):
+        await service.create(create_data(employment_status_id=uuid.uuid4()))
 
 
 async def test_create_rejects_duplicate_employee_number(
@@ -653,6 +690,30 @@ async def test_update_rejects_missing_employment_type(
 
     with pytest.raises(EmploymentTypeNotFoundError):
         await service.update(employee.id, EmployeeUpdate(employment_type_id=uuid.uuid4()))
+
+
+async def test_update_changes_employment_status(
+    service: HrEmployeeService,
+    create_data: Callable[..., EmployeeCreate],
+    other_employment_status: EmploymentStatus,
+):
+    employee = await service.create(create_data())
+
+    updated = await service.update(
+        employee.id, EmployeeUpdate(employment_status_id=other_employment_status.id)
+    )
+
+    assert updated is not None
+    assert updated.employment_status_id == other_employment_status.id
+
+
+async def test_update_rejects_missing_employment_status(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate]
+):
+    employee = await service.create(create_data())
+
+    with pytest.raises(EmploymentStatusNotFoundError):
+        await service.update(employee.id, EmployeeUpdate(employment_status_id=uuid.uuid4()))
 
 
 async def test_update_accepts_existing_manager(

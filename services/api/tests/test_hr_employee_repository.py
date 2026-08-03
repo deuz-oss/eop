@@ -15,6 +15,7 @@ from eop_api import models  # noqa: F401 -- registers all models on Base.metadat
 from eop_api.core.config import settings
 from eop_api.db.base import Base
 from eop_api.models.department import Department
+from eop_api.models.employment_status import EmploymentStatus
 from eop_api.models.employment_type import EmploymentType
 from eop_api.models.job_grade import JobGrade
 from eop_api.models.location import Location
@@ -23,6 +24,7 @@ from eop_api.models.organization import Organization
 from eop_api.models.position import Position
 from eop_api.models.team import Team
 from eop_api.repositories.department import DepartmentRepository
+from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
 from eop_api.repositories.hr_employee import HrEmployeeRepository
 from eop_api.repositories.job_grade import JobGradeRepository
@@ -129,6 +131,11 @@ async def employment_type(session: AsyncSession) -> EmploymentType:
 
 
 @pytest.fixture
+async def employment_status(session: AsyncSession) -> EmploymentStatus:
+    return await EmploymentStatusRepository(session).create(code="ACTIVE", name="Active")
+
+
+@pytest.fixture
 def employee_kwargs(
     organization: Organization,
     department: Department,
@@ -137,6 +144,7 @@ def employee_kwargs(
     location: Location,
     job_grade: JobGrade,
     employment_type: EmploymentType,
+    employment_status: EmploymentStatus,
 ) -> dict:
     return {
         "organization_id": organization.id,
@@ -146,6 +154,7 @@ def employee_kwargs(
         "location_id": location.id,
         "job_grade_id": job_grade.id,
         "employment_type_id": employment_type.id,
+        "employment_status_id": employment_status.id,
         "hire_date": date(2024, 1, 15),
         "employment_status": "active",
     }
@@ -256,6 +265,39 @@ async def test_get_retrieves_employment_type_id(
 
     assert fetched is not None
     assert fetched.employment_type_id == employee_kwargs["employment_type_id"]
+
+
+async def test_create_persists_employment_status_id(
+    repo: HrEmployeeRepository, employee_kwargs: dict
+):
+    employee = await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        **employee_kwargs,
+    )
+
+    assert employee.employment_status_id == employee_kwargs["employment_status_id"]
+
+
+async def test_get_retrieves_employment_status_id(
+    repo: HrEmployeeRepository, employee_kwargs: dict
+):
+    employee = await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        **employee_kwargs,
+    )
+
+    fetched = await repo.get(employee.id)
+
+    assert fetched is not None
+    assert fetched.employment_status_id == employee_kwargs["employment_status_id"]
 
 
 async def test_get_missing_returns_none(repo: HrEmployeeRepository):
@@ -383,6 +425,25 @@ async def test_delete_employment_type_referenced_by_employee_is_restricted(
 
     with pytest.raises(IntegrityError):
         await EmploymentTypeRepository(session).delete(employment_type.id)
+
+
+async def test_delete_employment_status_referenced_by_employee_is_restricted(
+    session: AsyncSession,
+    repo: HrEmployeeRepository,
+    employee_kwargs: dict,
+    employment_status: EmploymentStatus,
+):
+    await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        **employee_kwargs,
+    )
+
+    with pytest.raises(IntegrityError):
+        await EmploymentStatusRepository(session).delete(employment_status.id)
 
 
 async def test_get_by_employee_number(repo: HrEmployeeRepository, employee_kwargs: dict):
@@ -565,6 +626,7 @@ async def test_paginate_filters_by_organization_id(
     other_organization: Organization,
     job_grade: JobGrade,
     employment_type: EmploymentType,
+    employment_status: EmploymentStatus,
 ):
     other_department = await DepartmentRepository(session).create(
         organization_id=other_organization.id, code="ENG", name="Engineering (Globex)"
@@ -607,6 +669,7 @@ async def test_paginate_filters_by_organization_id(
         location_id=other_location.id,
         job_grade_id=job_grade.id,
         employment_type_id=employment_type.id,
+        employment_status_id=employment_status.id,
         hire_date=employee_kwargs["hire_date"],
         employment_status="active",
     )
