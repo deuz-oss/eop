@@ -1,4 +1,5 @@
 from eop_api.models.assignment import Assignment
+from eop_api.models.attendance_event import AttendanceEvent
 from eop_api.models.audit_log import AuditLog
 from eop_api.models.department import Department
 from eop_api.models.employee import Employee
@@ -21,6 +22,7 @@ from eop_api.models.user_role import user_roles
 
 __all__ = [
     "Assignment",
+    "AttendanceEvent",
     "AuditLog",
     "Department",
     "Employee",

@@ -7,6 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from eop_api.api.assignments import router as assignments_router
+from eop_api.api.attendance_events import router as attendance_events_router
 from eop_api.api.audit_logs import router as audit_logs_router
 from eop_api.api.auth import router as auth_router
 from eop_api.api.dashboard import router as dashboard_router
@@ -90,6 +91,7 @@ app.include_router(job_grades_router, responses=PROBLEM_RESPONSES)
 app.include_router(employment_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(employment_statuses_router, responses=PROBLEM_RESPONSES)
 app.include_router(shifts_router, responses=PROBLEM_RESPONSES)
+app.include_router(attendance_events_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
 app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
 app.include_router(roles_router, responses=PROBLEM_RESPONSES)
