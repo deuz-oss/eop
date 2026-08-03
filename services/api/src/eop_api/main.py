@@ -32,6 +32,7 @@ from eop_api.api.roles import router as roles_router
 from eop_api.api.shifts import router as shifts_router
 from eop_api.api.tasks import router as tasks_router
 from eop_api.api.teams import router as teams_router
+from eop_api.api.timesheets import router as timesheets_router
 from eop_api.core.config import settings
 from eop_api.core.logging import configure_logging
 from eop_api.db.engine import engine
@@ -100,6 +101,7 @@ app.include_router(attendance_events_router, responses=PROBLEM_RESPONSES)
 app.include_router(leave_requests_router, responses=PROBLEM_RESPONSES)
 app.include_router(leave_balances_router, responses=PROBLEM_RESPONSES)
 app.include_router(overtime_requests_router, responses=PROBLEM_RESPONSES)
+app.include_router(timesheets_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
 app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
 app.include_router(roles_router, responses=PROBLEM_RESPONSES)

@@ -1,0 +1,30 @@
+import uuid
+from datetime import date, datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class TimesheetCreate(BaseModel):
+    employee_id: uuid.UUID
+    start_date: date
+    end_date: date
+    status: str = Field(default="pending", min_length=1, max_length=50)
+
+
+class TimesheetUpdate(BaseModel):
+    employee_id: uuid.UUID | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    status: str | None = Field(default=None, min_length=1, max_length=50)
+
+
+class TimesheetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    employee_id: uuid.UUID
+    start_date: date
+    end_date: date
+    status: str
+    created_at: datetime
+    updated_at: datetime

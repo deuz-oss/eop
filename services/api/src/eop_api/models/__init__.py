@@ -21,6 +21,7 @@ from eop_api.models.role import Role
 from eop_api.models.shift import Shift
 from eop_api.models.task import Task
 from eop_api.models.team import Team
+from eop_api.models.timesheet import Timesheet
 from eop_api.models.user import User
 from eop_api.models.user_role import user_roles
 
@@ -48,6 +49,7 @@ __all__ = [
     "Shift",
     "Task",
     "Team",
+    "Timesheet",
     "User",
     "user_roles",
 ]
