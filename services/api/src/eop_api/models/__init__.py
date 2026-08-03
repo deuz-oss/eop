@@ -9,6 +9,7 @@ from eop_api.models.file_object import FileObject
 from eop_api.models.holiday import Holiday
 from eop_api.models.hr_employee import HrEmployee
 from eop_api.models.job_grade import JobGrade
+from eop_api.models.leave_balance import LeaveBalance
 from eop_api.models.leave_request import LeaveRequest
 from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
@@ -35,6 +36,7 @@ __all__ = [
     "Holiday",
     "HrEmployee",
     "JobGrade",
+    "LeaveBalance",
     "LeaveRequest",
     "Location",
     "LocationType",
