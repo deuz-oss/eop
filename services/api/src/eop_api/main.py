@@ -24,6 +24,7 @@ from eop_api.api.organizations import router as organizations_router
 from eop_api.api.positions import router as positions_router
 from eop_api.api.projects import router as projects_router
 from eop_api.api.roles import router as roles_router
+from eop_api.api.shifts import router as shifts_router
 from eop_api.api.tasks import router as tasks_router
 from eop_api.api.teams import router as teams_router
 from eop_api.core.config import settings
@@ -88,6 +89,7 @@ app.include_router(hr_employees_router, responses=PROBLEM_RESPONSES)
 app.include_router(job_grades_router, responses=PROBLEM_RESPONSES)
 app.include_router(employment_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(employment_statuses_router, responses=PROBLEM_RESPONSES)
+app.include_router(shifts_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
 app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
 app.include_router(roles_router, responses=PROBLEM_RESPONSES)
