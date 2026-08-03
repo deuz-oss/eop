@@ -4,6 +4,7 @@ from collections.abc import Callable, Sequence
 from eop_api.exceptions.department import DepartmentOrganizationMismatchError
 from eop_api.models.hr_employee import HrEmployee
 from eop_api.repositories.department import DepartmentRepository
+from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
 from eop_api.repositories.hr_employee import HrEmployeeRepository
 from eop_api.repositories.job_grade import JobGradeRepository
@@ -59,6 +60,10 @@ class JobGradeNotFoundError(Exception):
 
 class EmploymentTypeNotFoundError(Exception):
     """Raised when the employment type referenced by an HrEmployee does not exist."""
+
+
+class EmploymentStatusNotFoundError(Exception):
+    """Raised when the employment status referenced by an HrEmployee does not exist."""
 
 
 class ManagerNotFoundError(Exception):
@@ -145,6 +150,11 @@ class HrEmployeeService:
             if not await EmploymentTypeRepository(uow.session).exists(data.employment_type_id):
                 raise EmploymentTypeNotFoundError(str(data.employment_type_id))
 
+            if not await EmploymentStatusRepository(uow.session).exists(
+                data.employment_status_id
+            ):
+                raise EmploymentStatusNotFoundError(str(data.employment_status_id))
+
             if data.manager_id is not None:
                 if await repo.get(data.manager_id) is None:
                     raise ManagerNotFoundError(str(data.manager_id))
@@ -220,6 +230,9 @@ class HrEmployeeService:
             manager_id = values.get("manager_id", employee.manager_id)
             job_grade_id = values.get("job_grade_id", employee.job_grade_id)
             employment_type_id = values.get("employment_type_id", employee.employment_type_id)
+            employment_status_id = values.get(
+                "employment_status_id", employee.employment_status_id
+            )
             employee_number = values.get("employee_number", employee.employee_number)
             email = values.get("email", employee.email)
 
@@ -255,6 +268,9 @@ class HrEmployeeService:
 
             if not await EmploymentTypeRepository(uow.session).exists(employment_type_id):
                 raise EmploymentTypeNotFoundError(str(employment_type_id))
+
+            if not await EmploymentStatusRepository(uow.session).exists(employment_status_id):
+                raise EmploymentStatusNotFoundError(str(employment_status_id))
 
             if manager_id == employee_id:
                 raise SelfManagerError(str(employee_id))
