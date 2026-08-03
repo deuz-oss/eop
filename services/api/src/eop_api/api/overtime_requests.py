@@ -8,6 +8,7 @@ from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.search import Search
 from eop_api.schemas.overtime_request import (
     OvertimeRequestCreate,
+    OvertimeRequestRejectRequest,
     OvertimeRequestResponse,
     OvertimeRequestUpdate,
 )
@@ -136,3 +137,31 @@ async def delete_overtime_request(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Overtime request not found"
         )
+
+
+@router.post("/{overtime_request_id}/approve")
+async def approve_overtime_request(overtime_request_id: uuid.UUID, _: CurrentUser) -> None:
+    """Approval orchestration is intentionally deferred.
+
+    Which component decides/executes an approve/reject transition is an open
+    architectural question -- see `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md`
+    §10. This route exists to reserve the endpoint shape; it does not read or
+    write any `OvertimeRequest` row.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Approval orchestration is not yet implemented",
+    )
+
+
+@router.post("/{overtime_request_id}/reject")
+async def reject_overtime_request(
+    overtime_request_id: uuid.UUID,
+    data: OvertimeRequestRejectRequest,
+    _: CurrentUser,
+) -> None:
+    """Approval orchestration is intentionally deferred -- see `approve_overtime_request`."""
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Approval orchestration is not yet implemented",
+    )

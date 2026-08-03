@@ -9,7 +9,12 @@ from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.search import Search
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.search import FilterParams
-from eop_api.schemas.timesheet import TimesheetCreate, TimesheetResponse, TimesheetUpdate
+from eop_api.schemas.timesheet import (
+    TimesheetCreate,
+    TimesheetRejectRequest,
+    TimesheetResponse,
+    TimesheetUpdate,
+)
 from eop_api.services.timesheet import (
     EmployeeNotFoundError,
     InvalidTimesheetDateRangeError,
@@ -132,3 +137,31 @@ async def delete_timesheet(
     deleted = await service.delete(timesheet_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet not found")
+
+
+@router.post("/{timesheet_id}/approve")
+async def approve_timesheet(timesheet_id: uuid.UUID, _: CurrentUser) -> None:
+    """Approval orchestration is intentionally deferred.
+
+    Which component decides/executes an approve/reject transition is an open
+    architectural question -- see `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md`
+    §10. This route exists to reserve the endpoint shape; it does not read or
+    write any `Timesheet` row.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Approval orchestration is not yet implemented",
+    )
+
+
+@router.post("/{timesheet_id}/reject")
+async def reject_timesheet(
+    timesheet_id: uuid.UUID,
+    data: TimesheetRejectRequest,
+    _: CurrentUser,
+) -> None:
+    """Approval orchestration is intentionally deferred -- see `approve_timesheet`."""
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Approval orchestration is not yet implemented",
+    )

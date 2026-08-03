@@ -18,6 +18,10 @@ class TimesheetUpdate(BaseModel):
     status: str | None = Field(default=None, min_length=1, max_length=50)
 
 
+class TimesheetRejectRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000)
+
+
 class TimesheetResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -26,5 +30,8 @@ class TimesheetResponse(BaseModel):
     start_date: date
     end_date: date
     status: str
+    approved_by: uuid.UUID | None
+    approved_at: datetime | None
+    rejection_reason: str | None
     created_at: datetime
     updated_at: datetime

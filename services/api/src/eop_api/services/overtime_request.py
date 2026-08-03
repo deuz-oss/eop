@@ -22,12 +22,15 @@ class OvertimeRequestService:
     """Business logic for `OvertimeRequest`. Owns the transaction boundary via a UoW.
 
     `OvertimeRequest` is a single employee's request for overtime on one
-    date -- not a calculation, approval-workflow, or payroll record. Only the
-    existence of `employee_id` and `end_time > start_time` are validated
-    here. Overlap detection, duplicate detection, attendance/shift/holiday
-    validation, maximum-hours limits, and approval validation are all
-    explicitly out of scope for this module and belong to future PRs.
-    `status` is stored only; no transition validation is performed.
+    date -- not a calculation or payroll record. Only the existence of
+    `employee_id` and `end_time > start_time` are validated on `create`/
+    `update`. `status`, `approved_by`, `approved_at`, and `rejection_reason`
+    are storage-only columns here -- no transition validation, authorization,
+    audit logging, or event/notification dispatch is performed by this
+    service. Which component orchestrates an approval decision is an
+    intentionally unresolved architectural question (per
+    `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md` §10) and is deferred to a
+    future PR, not decided here.
 
     Returned entities are expunged from the unit-of-work's session before it
     closes: the UoW always rolls back (and thus expires all attributes) on

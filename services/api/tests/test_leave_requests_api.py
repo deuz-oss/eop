@@ -574,3 +574,34 @@ def test_delete_leave_request_not_found(client: TestClient, user_headers: dict[s
     response = client.delete(f"/hr/leave-requests/{uuid.uuid4()}", headers=user_headers)
 
     assert response.status_code == 404
+
+
+def test_approve_leave_request_requires_authentication(client: TestClient):
+    response = client.post(f"/hr/leave-requests/{uuid.uuid4()}/approve")
+
+    assert response.status_code == 401
+
+
+def test_reject_leave_request_requires_authentication(client: TestClient):
+    response = client.post(f"/hr/leave-requests/{uuid.uuid4()}/reject", json={"reason": "No"})
+
+    assert response.status_code == 401
+
+
+def test_approve_leave_request_not_implemented(client: TestClient, user_headers: dict[str, str]):
+    """Approval orchestration is intentionally deferred (no shared architectural
+    decision yet, per docs/architecture/APPROVAL_WORKFLOW_DESIGN.md §10) -- the
+    endpoint exists but always responds 501, regardless of whether the id exists."""
+    response = client.post(f"/hr/leave-requests/{uuid.uuid4()}/approve", headers=user_headers)
+
+    assert response.status_code == 501
+
+
+def test_reject_leave_request_not_implemented(client: TestClient, user_headers: dict[str, str]):
+    response = client.post(
+        f"/hr/leave-requests/{uuid.uuid4()}/reject",
+        json={"reason": "No"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 501

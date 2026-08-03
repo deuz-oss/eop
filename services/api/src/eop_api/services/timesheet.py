@@ -22,13 +22,18 @@ class TimesheetService:
     """Business logic for `Timesheet`. Owns the transaction boundary via a UoW.
 
     `Timesheet` is a single employee's submission for a dated span -- not a
-    calculation, reconciliation, or approval-workflow record. Only the
-    existence of `employee_id` and `start_date <= end_date` are validated
-    here. Attendance/overtime/leave/holiday reconciliation, computed hour
-    totals, overlap detection, duplicate detection, payroll integration, and
-    approval validation are all explicitly out of scope for this module and
-    belong to future PRs (per `docs/architecture/TIMESHEET_DESIGN.md`).
-    `status` is stored only; no transition validation is performed.
+    calculation or reconciliation record. Only the existence of `employee_id`
+    and `start_date <= end_date` are validated on `create`/`update`. `status`,
+    `approved_by`, `approved_at`, and `rejection_reason` are storage-only
+    columns here -- no transition validation, authorization, audit logging,
+    or event/notification dispatch is performed by this service. Which
+    component orchestrates an approval decision is an intentionally
+    unresolved architectural question (per
+    `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md` §10) and is deferred to a
+    future PR, not decided here. Attendance/overtime/leave/holiday
+    reconciliation, computed hour totals, overlap detection, duplicate
+    detection, and payroll integration remain out of scope per
+    `docs/architecture/TIMESHEET_DESIGN.md`.
 
     Returned entities are expunged from the unit-of-work's session before it
     closes: the UoW always rolls back (and thus expires all attributes) on
