@@ -1,7 +1,6 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -20,9 +19,7 @@ class ShiftRepository(BaseRepository[Shift]):
         super().__init__(session, Shift)
 
     async def get_by_code(self, code: str) -> Shift | None:
-        stmt = select(Shift).where(Shift.code == code)
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return await self.get_by(Shift.code, code)
 
     async def paginate(
         self,
