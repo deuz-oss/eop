@@ -63,6 +63,19 @@ async def test_get_missing_returns_none(repo: BaseRepository[_Widget]):
     assert await repo.get(uuid.uuid4()) is None
 
 
+async def test_get_by_returns_matching_row(repo: BaseRepository[_Widget]):
+    widget = await repo.create(name="alpha")
+
+    found = await repo.get_by(_Widget.name, "alpha")
+
+    assert found is not None
+    assert found.id == widget.id
+
+
+async def test_get_by_missing_returns_none(repo: BaseRepository[_Widget]):
+    assert await repo.get_by(_Widget.name, "missing") is None
+
+
 async def test_list_returns_all(repo: BaseRepository[_Widget]):
     await repo.create(name="a")
     await repo.create(name="b")

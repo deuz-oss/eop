@@ -25,6 +25,16 @@ class BaseRepository[ModelT: BaseEntity]:
     async def get(self, id: uuid.UUID) -> ModelT | None:
         return await self.session.get(self.model, id)
 
+    async def get_by(self, column: InstrumentedAttribute[Any], value: Any) -> ModelT | None:
+        """Fetch a single row by equality on an arbitrary column.
+
+        `column` must belong to `self.model` -- passing a column from another
+        model builds a cross-model `WHERE` clause that will never match.
+        """
+        stmt = select(self.model).where(column == value)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list(self) -> Sequence[ModelT]:
         result = await self.session.execute(select(self.model))
         return result.scalars().all()

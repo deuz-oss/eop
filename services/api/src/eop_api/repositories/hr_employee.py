@@ -1,7 +1,6 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -34,14 +33,10 @@ class HrEmployeeRepository(BaseRepository[HrEmployee]):
         super().__init__(session, HrEmployee)
 
     async def get_by_employee_number(self, employee_number: str) -> HrEmployee | None:
-        stmt = select(HrEmployee).where(HrEmployee.employee_number == employee_number)
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return await self.get_by(HrEmployee.employee_number, employee_number)
 
     async def get_by_email(self, email: str) -> HrEmployee | None:
-        stmt = select(HrEmployee).where(HrEmployee.email == email)
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return await self.get_by(HrEmployee.email, email)
 
     async def paginate(
         self,

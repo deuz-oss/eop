@@ -2,7 +2,6 @@ from collections.abc import Mapping, Sequence
 from datetime import date
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -22,14 +21,10 @@ class HolidayRepository(BaseRepository[Holiday]):
         super().__init__(session, Holiday)
 
     async def get_by_code(self, code: str) -> Holiday | None:
-        stmt = select(Holiday).where(Holiday.code == code)
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return await self.get_by(Holiday.code, code)
 
     async def get_by_holiday_date(self, holiday_date: date) -> Holiday | None:
-        stmt = select(Holiday).where(Holiday.holiday_date == holiday_date)
-        result = await self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return await self.get_by(Holiday.holiday_date, holiday_date)
 
     async def paginate(
         self,
