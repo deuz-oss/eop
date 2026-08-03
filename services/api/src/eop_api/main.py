@@ -17,6 +17,7 @@ from eop_api.api.employment_statuses import router as employment_statuses_router
 from eop_api.api.employment_types import router as employment_types_router
 from eop_api.api.files import router as files_router
 from eop_api.api.health import router as health_router
+from eop_api.api.holidays import router as holidays_router
 from eop_api.api.hr_employees import router as hr_employees_router
 from eop_api.api.job_grades import router as job_grades_router
 from eop_api.api.leave_requests import router as leave_requests_router
@@ -92,6 +93,7 @@ app.include_router(job_grades_router, responses=PROBLEM_RESPONSES)
 app.include_router(employment_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(employment_statuses_router, responses=PROBLEM_RESPONSES)
 app.include_router(shifts_router, responses=PROBLEM_RESPONSES)
+app.include_router(holidays_router, responses=PROBLEM_RESPONSES)
 app.include_router(attendance_events_router, responses=PROBLEM_RESPONSES)
 app.include_router(leave_requests_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
