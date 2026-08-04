@@ -21,6 +21,7 @@ from eop_api.models.organization import Organization
 from eop_api.models.position import Position
 from eop_api.models.shift import Shift
 from eop_api.models.team import Team
+from eop_api.models.user import User
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
@@ -31,6 +32,7 @@ from eop_api.repositories.organization import OrganizationRepository
 from eop_api.repositories.position import PositionRepository
 from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
+from eop_api.repositories.user import UserRepository
 from eop_api.schemas.hr_employee import EmployeeCreate, EmployeeUpdate
 from eop_api.schemas.pagination import PaginationParams
 from eop_api.schemas.search import FilterParams, SearchParams
@@ -52,6 +54,7 @@ from eop_api.services.hr_employee import (
     TeamDepartmentMismatchError,
     TeamNotFoundError,
     TeamOrganizationMismatchError,
+    UserNotFoundError,
 )
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
 
@@ -85,7 +88,7 @@ async def session_factory() -> AsyncGenerator[Callable[[], AsyncSession]]:
                 text(
                     "TRUNCATE TABLE hr_employees, teams, positions, locations, "
                     "location_types, departments, organizations, job_grades, "
-                    "employment_types, employment_statuses, shifts CASCADE"
+                    "employment_types, employment_statuses, shifts, users CASCADE"
                 )
             )
         await engine.dispose()
@@ -351,6 +354,20 @@ async def other_shift(session_factory: Callable[[], AsyncSession]) -> Shift:
 
 
 @pytest.fixture
+async def user(session_factory: Callable[[], AsyncSession]) -> User:
+    async with session_factory() as session:
+        user = await UserRepository(session).create(
+            email="linked@example.com",
+            password_hash="hashed",
+            full_name="Linked User",
+            is_active=True,
+        )
+        await session.commit()
+        session.expunge(user)
+        return user
+
+
+@pytest.fixture
 def create_data(
     organization: Organization,
     department: Department,
@@ -499,6 +516,29 @@ async def test_create_rejects_missing_manager(
 ):
     with pytest.raises(ManagerNotFoundError):
         await service.create(create_data(manager_id=uuid.uuid4()))
+
+
+async def test_create_with_valid_user_id(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate], user: User
+):
+    employee = await service.create(create_data(user_id=user.id))
+
+    assert employee.user_id == user.id
+
+
+async def test_create_rejects_invalid_user_id(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate]
+):
+    with pytest.raises(UserNotFoundError):
+        await service.create(create_data(user_id=uuid.uuid4()))
+
+
+async def test_create_with_null_user_id(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate]
+):
+    employee = await service.create(create_data())
+
+    assert employee.user_id is None
 
 
 async def test_create_rejects_missing_job_grade(
@@ -787,6 +827,26 @@ async def test_update_accepts_existing_manager(
 
     assert updated is not None
     assert updated.manager_id == manager.id
+
+
+async def test_update_accepts_valid_user_id(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate], user: User
+):
+    employee = await service.create(create_data())
+
+    updated = await service.update(employee.id, EmployeeUpdate(user_id=user.id))
+
+    assert updated is not None
+    assert updated.user_id == user.id
+
+
+async def test_update_rejects_invalid_user_id(
+    service: HrEmployeeService, create_data: Callable[..., EmployeeCreate]
+):
+    employee = await service.create(create_data())
+
+    with pytest.raises(UserNotFoundError):
+        await service.update(employee.id, EmployeeUpdate(user_id=uuid.uuid4()))
 
 
 async def test_update_rejects_self_manager(

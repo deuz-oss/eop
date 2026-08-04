@@ -21,6 +21,7 @@ class EmployeeCreate(BaseModel):
     employment_type_id: uuid.UUID
     employment_status_id: uuid.UUID
     shift_id: uuid.UUID
+    user_id: uuid.UUID | None = None
     hire_date: date
     employment_status: str = Field(min_length=1, max_length=50)
     notes: str | None = Field(default=None, max_length=2000)
@@ -43,6 +44,7 @@ class EmployeeUpdate(BaseModel):
     employment_type_id: uuid.UUID | None = None
     employment_status_id: uuid.UUID | None = None
     shift_id: uuid.UUID | None = None
+    user_id: uuid.UUID | None = None
     hire_date: date | None = None
     employment_status: str | None = Field(default=None, min_length=1, max_length=50)
     notes: str | None = Field(default=None, max_length=2000)
@@ -68,6 +70,7 @@ class EmployeeResponse(BaseModel):
     employment_type_id: uuid.UUID
     employment_status_id: uuid.UUID
     shift_id: uuid.UUID
+    user_id: uuid.UUID | None
     hire_date: date
     employment_status: str
     notes: str | None

@@ -24,6 +24,7 @@ from eop_api.models.organization import Organization
 from eop_api.models.position import Position
 from eop_api.models.shift import Shift
 from eop_api.models.team import Team
+from eop_api.models.user import User
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
@@ -35,6 +36,7 @@ from eop_api.repositories.organization import OrganizationRepository
 from eop_api.repositories.position import PositionRepository
 from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
+from eop_api.repositories.user import UserRepository
 from eop_api.schemas.search import FilterParams, SearchParams
 
 pytestmark = pytest.mark.anyio
@@ -144,6 +146,16 @@ async def shift(session: AsyncSession) -> Shift:
         name="Day Shift",
         start_time=time(9, 0),
         end_time=time(17, 0),
+    )
+
+
+@pytest.fixture
+async def user(session: AsyncSession) -> User:
+    return await UserRepository(session).create(
+        email="linked@example.com",
+        password_hash="hashed",
+        full_name="Linked User",
+        is_active=True,
     )
 
 
@@ -540,6 +552,63 @@ async def test_get_by_email(repo: HrEmployeeRepository, employee_kwargs: dict):
     assert found is not None
     assert found.id == employee.id
     assert await repo.get_by_email("missing@example.com") is None
+
+
+async def test_get_by_user_id_returns_linked_employee(
+    repo: HrEmployeeRepository, employee_kwargs: dict, user: User
+):
+    employee = await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        user_id=user.id,
+        **employee_kwargs,
+    )
+
+    found = await repo.get_by_user_id(user.id)
+
+    assert [item.id for item in found] == [employee.id]
+
+
+async def test_get_by_user_id_missing_returns_empty_sequence(repo: HrEmployeeRepository):
+    found = await repo.get_by_user_id(uuid.uuid4())
+
+    assert list(found) == []
+
+
+async def test_get_by_user_id_returns_sequence_for_multiple_employees_sharing_user_id(
+    repo: HrEmployeeRepository, employee_kwargs: dict, user: User
+):
+    """`user_id` has no uniqueness constraint (cardinality is an unresolved
+    business decision, per `docs/architecture/PR-050_DISCOVERY.md` Step 2) --
+    this verifies `get_by_user_id` returns every matching row as a `Sequence`
+    instead of raising `MultipleResultsFound`, which `BaseRepository.get_by()`
+    would do here.
+    """
+    first = await repo.create(
+        employee_number="EMP-1",
+        first_name="Ada",
+        last_name="Lovelace",
+        full_name="Ada Lovelace",
+        email="ada@example.com",
+        user_id=user.id,
+        **employee_kwargs,
+    )
+    second = await repo.create(
+        employee_number="EMP-2",
+        first_name="Alan",
+        last_name="Turing",
+        full_name="Alan Turing",
+        email="alan@example.com",
+        user_id=user.id,
+        **employee_kwargs,
+    )
+
+    found = await repo.get_by_user_id(user.id)
+
+    assert {item.id for item in found} == {first.id, second.id}
 
 
 async def test_paginate_returns_total_and_page_slice(
