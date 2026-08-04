@@ -28,6 +28,7 @@ from eop_api.services.hr_employee import (
     TeamDepartmentMismatchError,
     TeamNotFoundError,
     TeamOrganizationMismatchError,
+    UserNotFoundError,
 )
 
 router = APIRouter(prefix="/hr/employees", tags=["HR Employees"])
@@ -129,6 +130,8 @@ async def create_hr_employee(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found"
         ) from exc
+    except UserNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found") from exc
     except ManagerNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Manager not found"
@@ -244,6 +247,8 @@ async def update_hr_employee(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found"
         ) from exc
+    except UserNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found") from exc
     except SelfManagerError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

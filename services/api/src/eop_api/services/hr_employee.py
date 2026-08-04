@@ -13,6 +13,7 @@ from eop_api.repositories.organization import OrganizationRepository
 from eop_api.repositories.position import PositionRepository
 from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
+from eop_api.repositories.user import UserRepository
 from eop_api.schemas.hr_employee import EmployeeCreate, EmployeeUpdate
 from eop_api.schemas.pagination import Page, PaginationParams
 from eop_api.schemas.search import FilterParams, SearchParams
@@ -69,6 +70,10 @@ class EmploymentStatusNotFoundError(Exception):
 
 class ShiftNotFoundError(Exception):
     """Raised when the shift referenced by an HrEmployee does not exist."""
+
+
+class UserNotFoundError(Exception):
+    """Raised when the user referenced by an HrEmployee's `user_id` does not exist."""
 
 
 class ManagerNotFoundError(Exception):
@@ -162,6 +167,10 @@ class HrEmployeeService:
 
             if not await ShiftRepository(uow.session).exists(data.shift_id):
                 raise ShiftNotFoundError(str(data.shift_id))
+
+            if data.user_id is not None:
+                if not await UserRepository(uow.session).exists(data.user_id):
+                    raise UserNotFoundError(str(data.user_id))
 
             if data.manager_id is not None:
                 if await repo.get(data.manager_id) is None:
@@ -283,6 +292,10 @@ class HrEmployeeService:
 
             if not await ShiftRepository(uow.session).exists(shift_id):
                 raise ShiftNotFoundError(str(shift_id))
+
+            if "user_id" in values and values["user_id"] is not None:
+                if not await UserRepository(uow.session).exists(values["user_id"]):
+                    raise UserNotFoundError(str(values["user_id"]))
 
             if manager_id == employee_id:
                 raise SelfManagerError(str(employee_id))

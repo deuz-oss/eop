@@ -635,6 +635,37 @@ def test_create_employee_rejects_missing_shift(
     assert response.status_code == 404
 
 
+def test_create_employee_with_valid_user_id(client: TestClient, user_headers: dict[str, str]):
+    refs = _create_refs(client, user_headers)
+    linked_user = asyncio.run(_create_user(email="linked@example.com", password="linked-pass"))
+
+    body = _create_employee(client, user_headers, refs, user_id=str(linked_user.id))
+
+    assert body["user_id"] == str(linked_user.id)
+
+
+def test_create_employee_without_user_id_has_null_user_id_in_response(
+    client: TestClient, user_headers: dict[str, str]
+):
+    refs = _create_refs(client, user_headers)
+
+    body = _create_employee(client, user_headers, refs)
+
+    assert body["user_id"] is None
+
+
+def test_create_employee_rejects_missing_user(client: TestClient, user_headers: dict[str, str]):
+    refs = _create_refs(client, user_headers)
+
+    response = client.post(
+        "/hr/employees",
+        json=_employee_payload(refs, user_id=str(uuid.uuid4())),
+        headers=user_headers,
+    )
+
+    assert response.status_code == 404
+
+
 def test_create_employee_rejects_missing_manager(client: TestClient, user_headers: dict[str, str]):
     refs = _create_refs(client, user_headers)
 
@@ -1066,6 +1097,34 @@ def test_update_employee_rejects_missing_shift(client: TestClient, user_headers:
     response = client.put(
         f"/hr/employees/{created['id']}",
         json={"shift_id": str(uuid.uuid4())},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_update_employee_with_valid_user_id(client: TestClient, user_headers: dict[str, str]):
+    refs = _create_refs(client, user_headers)
+    created = _create_employee(client, user_headers, refs)
+    linked_user = asyncio.run(_create_user(email="linked@example.com", password="linked-pass"))
+
+    response = client.put(
+        f"/hr/employees/{created['id']}",
+        json={"user_id": str(linked_user.id)},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == str(linked_user.id)
+
+
+def test_update_employee_rejects_missing_user(client: TestClient, user_headers: dict[str, str]):
+    refs = _create_refs(client, user_headers)
+    created = _create_employee(client, user_headers, refs)
+
+    response = client.put(
+        f"/hr/employees/{created['id']}",
+        json={"user_id": str(uuid.uuid4())},
         headers=user_headers,
     )
 

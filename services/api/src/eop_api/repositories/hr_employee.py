@@ -1,6 +1,8 @@
+import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -37,6 +39,20 @@ class HrEmployeeRepository(BaseRepository[HrEmployee]):
 
     async def get_by_email(self, email: str) -> HrEmployee | None:
         return await self.get_by(HrEmployee.email, email)
+
+    async def get_by_user_id(self, user_id: uuid.UUID) -> Sequence[HrEmployee]:
+        """Fetch every `HrEmployee` row linked to `user_id`.
+
+        Returns a sequence, not a single row: `user_id` has no uniqueness
+        constraint (cardinality is an open business decision, per
+        `docs/architecture/PR-050_DISCOVERY.md` Step 2), so this cannot use
+        `BaseRepository.get_by()` -- that helper's `scalar_one_or_none()`
+        raises `MultipleResultsFound` if more than one row matches, which
+        would be reachable here today.
+        """
+        stmt = select(HrEmployee).where(HrEmployee.user_id == user_id)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
 
     async def paginate(
         self,
