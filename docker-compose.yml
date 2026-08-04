@@ -11,6 +11,25 @@ services:
       POSTGRES_USER: eop
       POSTGRES_PASSWORD: eop
 
+    # Defensive timeouts for this local development/test instance only.
+    # Passed as server command-line flags (not an /docker-entrypoint-initdb.d/
+    # init script) because init scripts only run once, against a brand-new,
+    # empty data directory -- this service already has an existing
+    # `postgres_data` volume, so an init script would silently never apply.
+    # `-c` flags are re-applied by postgres on every container start
+    # regardless of data-directory state, which is what's needed here.
+    # Values are conservative for local dev: long enough not to interrupt
+    # normal test runs or a brief interactive debugging pause, short enough
+    # that a connection left idle-in-transaction by a hung process (see
+    # docs/architecture -- ProactorEventLoop test-hang forensic investigation)
+    # is reclaimed automatically instead of persisting indefinitely.
+    command:
+      - postgres
+      - -c
+      - idle_in_transaction_session_timeout=60000
+      - -c
+      - statement_timeout=120000
+
     ports:
       - "5432:5432"
 

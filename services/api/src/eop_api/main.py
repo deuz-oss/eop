@@ -28,6 +28,7 @@ from eop_api.api.organizations import router as organizations_router
 from eop_api.api.overtime_requests import router as overtime_requests_router
 from eop_api.api.positions import router as positions_router
 from eop_api.api.projects import router as projects_router
+from eop_api.api.reconciliation import router as reconciliation_router
 from eop_api.api.roles import router as roles_router
 from eop_api.api.shifts import router as shifts_router
 from eop_api.api.tasks import router as tasks_router
@@ -102,6 +103,7 @@ app.include_router(leave_requests_router, responses=PROBLEM_RESPONSES)
 app.include_router(leave_balances_router, responses=PROBLEM_RESPONSES)
 app.include_router(overtime_requests_router, responses=PROBLEM_RESPONSES)
 app.include_router(timesheets_router, responses=PROBLEM_RESPONSES)
+app.include_router(reconciliation_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
 app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
 app.include_router(roles_router, responses=PROBLEM_RESPONSES)
