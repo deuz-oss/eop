@@ -1,172 +1,294 @@
 # EOP Master Architecture Roadmap
 
-Version: 1.0
+Status: Active
+
+Version: 1.1
+
+Date: 2026-08-04
+
+Owner:
+
+EOP Architecture Governance
 
 ---
 
-# Phase 0 — Foundation
+# 1. Purpose
+
+This roadmap defines the capability evolution sequence of EOP.
+
+The roadmap is capability-driven.
+
+It is not tied to GitHub Pull Request numbering.
+
+---
+
+# 2. Roadmap Principles
+
+Implementation follows:
+
+Foundation
+↓
+Platform Capability
+↓
+Domain Capability
+↓
+Automation
+
+No domain feature should bypass required platform foundations.
+
+---
+
+# 3. Phase Overview
+
+Phase 1
+Identity & Authorization Foundation
+Phase 2
+Workflow Governance
+Phase 3
+Workforce Authorization
+Phase 4
+Business Automation
+Phase 5
+Enterprise Intelligence
+
+---
+
+# Phase 1 — Identity & Authorization Foundation
+
+Status:
+
+Discovery Complete
+
+Architecture Decision Complete
+
+Implementation Pending
+
+Objective:
+
+Create the foundation required for secure business operations.
+
+---
+
+## Completed
+
+### Identity Link
 
 Status:
 
 Completed
 
-PR:
+Artifact:
 
-PR-001 → PR-050
+ADR-004
 
-Capability:
+Implemented:
 
-- Authentication
-- Organization
-- HR Foundation
-- Leave Foundation
-- Attendance Foundation
-- Project Tracking
-- Basic Approval
+HrEmployee.user_id
 
 ---
 
-# Phase 1 — Identity & Authorization
+### Authorization Discovery
 
-## PR-051
+Status:
 
-Identity Context & Authorization Architecture
+Completed
 
-Type:
+Artifact:
 
-Discovery + Design
-
-Deliver:
-
-- authorization model
-- employee context design
-- permission boundary
-- policy placement
+capabilities/
+identity-authorization/
+discovery.md
 
 ---
 
-## PR-052
+### Authorization Decision
 
-Authorization Foundation Implementation
+Status:
 
-Deliver:
+Completed
 
-- authorization abstraction
-- current employee resolver
-- policy framework
+Artifacts:
+
+decision.md
+ADR-005
+
+---
+
+## Implementation Scope
+
+Build:
+
+Employee Context Resolver
+Authorization Context
+Permission Abstraction
+
+---
+
+## Not Included
+
+Do not implement:
+
+- approval policy
+- manager hierarchy
+- ownership rules
+- organization authorization
+- delegated authority
 
 ---
 
 # Phase 2 — Workflow Governance
 
-## PR-053
+Dependency:
+
+Phase 1
+
+Objective:
+
+Make workflow decisions secure and auditable.
+
+Capabilities:
+
+## Approval Authorization
+
+Implement:
+
+- approve permission
+- reject permission
+- authorization policy
+
+Consumers:
+
+- Leave Approval
+- Overtime Approval
+- Timesheet Approval
+
+---
+
+## Workflow History
+
+Future:
+
+- decision history
+- actor tracking
+- timestamps
+- audit trail
+
+---
+
+# Phase 3 — Workforce Authorization
+
+Dependency:
+
+Phase 1
+
+Phase 2
+
+Objective:
+
+Protect employee-scoped operations.
+
+Consumers:
+
+## Leave
+
+Authorization:
+
+- employee ownership
+- approver scope
+
+---
+
+## Overtime
+
+Authorization:
+
+- employee ownership
+- approval boundary
+
+---
+
+## Timesheet
+
+Authorization:
+
+- employee ownership
+- project scope
+
+---
+
+## Reconciliation
+
+Authorization:
+
+- employee access scope
+
+---
+
+# Phase 4 — Business Automation
+
+Objective:
+
+Introduce business intelligence.
+
+Capabilities:
+
+- leave balance engine
+- attendance rules
+- payroll integration
+- policy automation
+
+---
+
+# Phase 5 — Enterprise Intelligence
+
+Future capability:
+
+- analytics
+- reporting
+- compliance
+- workforce insights
+
+---
+
+# 4. Current Priority Queue
+
+Order:
+
+Identity Authorization Foundation
 
 Approval Authorization
 
-Deliver:
+Ownership Authorization
 
-- approver validation
-- approval policy enforcement
+Workflow History
 
----
-
-## PR-054
-
-Workflow History Foundation
-
-Deliver:
-
-- approval history
-- decision audit
+Business Automation
 
 ---
 
-# Phase 3 — HR Automation
+# 5. Architecture Governance Rule
 
-## PR-055
+Every future capability must provide:
 
-Leave Balance Rule Discovery
+1. Discovery
 
-Resolve:
+2. Architecture Decision
 
-- period definition
-- calculation method
-- accrual model
+3. ADR (when needed)
 
----
+4. Implementation Plan
 
-## PR-056
+5. Code
 
-Leave Balance Engine
-
-Deliver:
-
-- deduction
-- accrual
-- adjustment
+6. Validation
 
 ---
 
-# Phase 4 — Platform Capability
+# 6. Source Documents
 
-## PR-057
+Related:
 
-Notification Platform
-
----
-
-## PR-058
-
-Background Processing
-
----
-
-# Phase 5 — Enterprise Capability
-
-## PR-059
-
-Reporting Model
-
----
-
-## PR-060
-
-Business Audit Platform
-
----
-
-## PR-061+
-
-External Integration
-
-Examples:
-
-- Payroll
-- ERP
-- Attendance Device
-
----
-
-# Roadmap Rule
-
-Architecture decision precedes implementation.
-
-Sequence:
-
-Discovery
-
-↓
-
-Architecture Decision
-
-↓
-
-Implementation
-
-↓
-
-Validation
-
-↓
-
-Merge
+MASTER_ARCHITECTURE_BLUEPRINT.md
+ARCHITECTURE_INVENTORY.md
+CAPABILITY_DEPENDENCY_GRAPH.md
+ARCHITECTURE_DECISION_RECORDS/
