@@ -1,6 +1,9 @@
+import uuid
 from collections.abc import Mapping, Sequence
+from datetime import date
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -21,6 +24,26 @@ class LeaveRequestRepository(BaseRepository[LeaveRequest]):
 
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, LeaveRequest)
+
+    async def find_for_employee_on_date(
+        self, employee_id: uuid.UUID, target_date: date
+    ) -> Sequence[LeaveRequest]:
+        """LeaveRequests covering `target_date` for `employee_id`, regardless of `status`.
+
+        Single-table, same-model query only -- no join against any other
+        aggregate, and no approval-status filtering: `status` is a business/
+        workflow concept, not a persistence one, so interpreting it (e.g.
+        "only `approved` counts") belongs entirely to the caller
+        (`ReconciliationService`), per
+        `docs/architecture/ATTENDANCE_RECONCILIATION_DESIGN.md` §5.
+        """
+        stmt = select(LeaveRequest).where(
+            LeaveRequest.employee_id == employee_id,
+            LeaveRequest.start_date <= target_date,
+            LeaveRequest.end_date >= target_date,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
 
     async def paginate(
         self,
