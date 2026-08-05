@@ -5,6 +5,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from eop_api.dependencies.auth import CurrentUser
+from eop_api.dependencies.employee_context import CurrentRequestContext
 from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.search import Search
 from eop_api.schemas.pagination import Page
@@ -15,7 +16,11 @@ from eop_api.schemas.timesheet import (
     TimesheetResponse,
     TimesheetUpdate,
 )
-from eop_api.services.approval import ApprovalService, InvalidApprovalStateError
+from eop_api.services.approval import (
+    ApprovalAuthorizationDeniedError,
+    ApprovalService,
+    InvalidApprovalStateError,
+)
 from eop_api.services.timesheet import (
     EmployeeNotFoundError,
     InvalidTimesheetDateRangeError,
@@ -151,10 +156,12 @@ async def delete_timesheet(
 async def approve_timesheet(
     timesheet_id: uuid.UUID,
     service: ApprovalServiceDep,
-    current_user: CurrentUser,
+    request_context: CurrentRequestContext,
 ) -> TimesheetResponse:
     try:
-        timesheet = await service.approve_timesheet(timesheet_id, current_user.id)
+        timesheet = await service.approve_timesheet(timesheet_id, request_context)
+    except ApprovalAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except InvalidApprovalStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if timesheet is None:
@@ -167,10 +174,12 @@ async def reject_timesheet(
     timesheet_id: uuid.UUID,
     data: TimesheetRejectRequest,
     service: ApprovalServiceDep,
-    current_user: CurrentUser,
+    request_context: CurrentRequestContext,
 ) -> TimesheetResponse:
     try:
-        timesheet = await service.reject_timesheet(timesheet_id, current_user.id, data.reason)
+        timesheet = await service.reject_timesheet(timesheet_id, request_context, data.reason)
+    except ApprovalAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except InvalidApprovalStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if timesheet is None:

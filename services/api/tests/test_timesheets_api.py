@@ -89,6 +89,37 @@ def user_headers(client: TestClient, user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def manager() -> User:
+    """The requester's direct manager -- the only actor the Approval
+    Authorization Policy (`ADR-008`) allows to approve/reject."""
+    return asyncio.run(_create_user(email="manager@example.com", password="manager-pass"))
+
+
+@pytest.fixture
+def manager_headers(client: TestClient, manager: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "manager@example.com", "password": "manager-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def other() -> User:
+    """An authenticated user who is not the requester's manager."""
+    return asyncio.run(_create_user(email="other@example.com", password="other-pass"))
+
+
+@pytest.fixture
+def other_headers(client: TestClient, other: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "other@example.com", "password": "other-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _create_organization(
     client: TestClient, headers: dict[str, str], *, name: str = "Acme Corp"
 ) -> dict:
@@ -232,46 +263,98 @@ def _create_shift(
     return response.json()
 
 
-def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
-    organization = _create_organization(client, headers)
-    department = _create_department(client, headers, organization_id=organization["id"])
+def _create_employee(
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    employee_number: str = "EMP-1",
+    email: str = "ada@example.com",
+    first_name: str = "Ada",
+    last_name: str = "Lovelace",
+    full_name: str = "Ada Lovelace",
+    user_id: str | None = None,
+    manager_id: str | None = None,
+) -> dict:
+    """Each call creates its own HR master-data scaffolding, suffixed by a
+    fresh id so multiple employees (e.g. manager + requester) can be created
+    within the same test without violating the `code`/`name` uniqueness
+    constraints on organizations/departments/.../shifts."""
+    suffix = uuid.uuid4().hex[:8]
+    organization = _create_organization(client, headers, name=f"Acme Corp {suffix}")
+    department = _create_department(
+        client, headers, organization_id=organization["id"], code=f"ENG-{suffix}"
+    )
     position = _create_position(
-        client, headers, organization_id=organization["id"], department_id=department["id"]
+        client,
+        headers,
+        organization_id=organization["id"],
+        department_id=department["id"],
+        code=f"POS-{suffix}",
     )
     team = _create_team(
-        client, headers, organization_id=organization["id"], department_id=department["id"]
+        client,
+        headers,
+        organization_id=organization["id"],
+        department_id=department["id"],
+        code=f"TEAM-{suffix}",
     )
-    location_type = _create_location_type(client, headers)
-    location = _create_location(client, headers, location_type_id=location_type["id"])
-    job_grade = _create_job_grade(client, headers)
-    employment_type = _create_employment_type(client, headers)
-    employment_status = _create_employment_status(client, headers)
-    shift = _create_shift(client, headers)
+    location_type = _create_location_type(client, headers, code=f"OFFICE-{suffix}")
+    location = _create_location(
+        client, headers, location_type_id=location_type["id"], code=f"HQ-{suffix}"
+    )
+    job_grade = _create_job_grade(
+        client, headers, code=f"L1-{suffix}", level=int(suffix[:4], 16) + 1
+    )
+    employment_type = _create_employment_type(client, headers, code=f"FT-{suffix}")
+    employment_status = _create_employment_status(client, headers, code=f"ACTIVE-{suffix}")
+    shift = _create_shift(client, headers, code=f"DAY-{suffix}")
 
-    response = client.post(
-        "/hr/employees",
-        json={
-            "employee_number": "EMP-1",
-            "first_name": "Ada",
-            "last_name": "Lovelace",
-            "full_name": "Ada Lovelace",
-            "email": "ada@example.com",
-            "organization_id": organization["id"],
-            "department_id": department["id"],
-            "position_id": position["id"],
-            "team_id": team["id"],
-            "location_id": location["id"],
-            "job_grade_id": job_grade["id"],
-            "employment_type_id": employment_type["id"],
-            "employment_status_id": employment_status["id"],
-            "shift_id": shift["id"],
-            "hire_date": "2024-01-15",
-            "employment_status": "active",
-        },
-        headers=headers,
-    )
+    payload: dict = {
+        "employee_number": employee_number,
+        "first_name": first_name,
+        "last_name": last_name,
+        "full_name": full_name,
+        "email": email,
+        "organization_id": organization["id"],
+        "department_id": department["id"],
+        "position_id": position["id"],
+        "team_id": team["id"],
+        "location_id": location["id"],
+        "job_grade_id": job_grade["id"],
+        "employment_type_id": employment_type["id"],
+        "employment_status_id": employment_status["id"],
+        "shift_id": shift["id"],
+        "hire_date": "2024-01-15",
+        "employment_status": "active",
+    }
+    if user_id is not None:
+        payload["user_id"] = user_id
+    if manager_id is not None:
+        payload["manager_id"] = manager_id
+
+    response = client.post("/hr/employees", json=payload, headers=headers)
     assert response.status_code == 201
     return response.json()
+
+
+def _create_manager_and_requester(
+    client: TestClient, headers: dict[str, str], manager_user_id: str
+) -> tuple[dict, dict]:
+    """A manager `HrEmployee` linked to `manager_user_id`, and a requester
+    `HrEmployee` whose `manager_id` points at it -- the only relationship
+    the Approval Authorization Policy (`ADR-008`) recognizes."""
+    manager_employee = _create_employee(
+        client,
+        headers,
+        employee_number="MGR-1",
+        email="manager.employee@example.com",
+        first_name="Grace",
+        last_name="Hopper",
+        full_name="Grace Hopper",
+        user_id=manager_user_id,
+    )
+    requester_employee = _create_employee(client, headers, manager_id=manager_employee["id"])
+    return manager_employee, requester_employee
 
 
 def _timesheet_payload(employee_id: str, **overrides) -> dict:
@@ -601,13 +684,17 @@ def test_reject_timesheet_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_approve_timesheet_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_approve_timesheet_not_found(client: TestClient, user: User, user_headers: dict[str, str]):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.post(f"/hr/timesheets/{uuid.uuid4()}/approve", headers=user_headers)
 
     assert response.status_code == 404
 
 
-def test_reject_timesheet_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_reject_timesheet_not_found(client: TestClient, user: User, user_headers: dict[str, str]):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.post(
         f"/hr/timesheets/{uuid.uuid4()}/reject", json={"reason": "No"}, headers=user_headers
     )
@@ -615,61 +702,143 @@ def test_reject_timesheet_not_found(client: TestClient, user_headers: dict[str, 
     assert response.status_code == 404
 
 
-def test_approve_timesheet(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
-    created = _create_timesheet(client, user_headers, employee["id"])
+def test_approve_timesheet(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+):
+    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    created = _create_timesheet(client, user_headers, requester["id"])
 
-    response = client.post(f"/hr/timesheets/{created['id']}/approve", headers=user_headers)
+    response = client.post(f"/hr/timesheets/{created['id']}/approve", headers=manager_headers)
 
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "approved"
-    assert body["approved_by"] is not None
+    assert body["approved_by"] == str(manager.id)
     assert body["approved_at"] is not None
     assert body["rejection_reason"] is None
 
 
-def test_reject_timesheet(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
-    created = _create_timesheet(client, user_headers, employee["id"])
+def test_reject_timesheet(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+):
+    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    created = _create_timesheet(client, user_headers, requester["id"])
 
     response = client.post(
         f"/hr/timesheets/{created['id']}/reject",
         json={"reason": "Insufficient coverage"},
-        headers=user_headers,
+        headers=manager_headers,
     )
 
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "rejected"
-    assert body["approved_by"] is not None
+    assert body["approved_by"] == str(manager.id)
     assert body["approved_at"] is not None
     assert body["rejection_reason"] == "Insufficient coverage"
 
 
-def test_approve_timesheet_rejects_non_pending(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
-    created = _create_timesheet(client, user_headers, employee["id"])
-    client.post(f"/hr/timesheets/{created['id']}/approve", headers=user_headers)
+def test_approve_timesheet_rejects_non_pending(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+):
+    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    created = _create_timesheet(client, user_headers, requester["id"])
+    client.post(f"/hr/timesheets/{created['id']}/approve", headers=manager_headers)
 
-    response = client.post(f"/hr/timesheets/{created['id']}/approve", headers=user_headers)
+    response = client.post(f"/hr/timesheets/{created['id']}/approve", headers=manager_headers)
 
     assert response.status_code == 409
 
 
-def test_reject_timesheet_rejects_non_pending(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
-    created = _create_timesheet(client, user_headers, employee["id"])
+def test_reject_timesheet_rejects_non_pending(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+):
+    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    created = _create_timesheet(client, user_headers, requester["id"])
     client.post(
         f"/hr/timesheets/{created['id']}/reject",
         json={"reason": "No"},
-        headers=user_headers,
+        headers=manager_headers,
     )
 
     response = client.post(
         f"/hr/timesheets/{created['id']}/reject",
         json={"reason": "No"},
-        headers=user_headers,
+        headers=manager_headers,
     )
 
     assert response.status_code == 409
+
+
+def test_approve_timesheet_forbidden_for_non_manager(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    other: User,
+    other_headers: dict[str, str],
+):
+    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+    created = _create_timesheet(client, user_headers, requester["id"])
+
+    response = client.post(f"/hr/timesheets/{created['id']}/approve", headers=other_headers)
+
+    assert response.status_code == 403
+    assert (
+        client.get(f"/hr/timesheets/{created['id']}", headers=user_headers).json()["status"]
+        == "pending"
+    )
+
+
+def test_reject_timesheet_forbidden_for_non_manager(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    other: User,
+    other_headers: dict[str, str],
+):
+    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+    created = _create_timesheet(client, user_headers, requester["id"])
+
+    response = client.post(
+        f"/hr/timesheets/{created['id']}/reject",
+        json={"reason": "No"},
+        headers=other_headers,
+    )
+
+    assert response.status_code == 403
+    assert (
+        client.get(f"/hr/timesheets/{created['id']}", headers=user_headers).json()["status"]
+        == "pending"
+    )

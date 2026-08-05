@@ -1,289 +1,525 @@
-# EOP Technical Debt Register
+# Technical Debt Register
 
+**Document:** Technical Debt Register
 **Status:** Active
-
+**Owner:** Architecture Governance
 **Version:** 1.0
-
-**Owner:** EOP Architecture Governance
+**Last Updated:** 2026-08-05
 
 ---
 
 # Purpose
 
-This document records known architectural and technical debt within the EOP platform.
+This document records known technical debt within the EOP platform architecture.
 
-Only confirmed debt should appear here.
+Technical debt represents:
 
-Feature requests, future enhancements, and architectural ideas are not technical debt.
+- known architectural limitations
+- accepted trade-offs
+- missing capabilities
+- deferred improvements
 
----
+This document exists to provide visibility and governance.
 
-# Technical Debt Definition
+Technical debt:
 
-Technical debt is an intentional or inherited implementation compromise that should be removed in the future.
-
-Technical debt must satisfy at least one of the following:
-
-- temporary implementation
-- architectural compromise
-- missing platform capability
-- known limitation
-- legacy compatibility
+- does not override ADR decisions
+- does not introduce new architecture
+- does not authorize implementation shortcuts
+- requires architecture review before resolution
 
 ---
 
-# Severity Levels
+# Technical Debt Lifecycle
 
-| Level    | Meaning                                    |
-| -------- | ------------------------------------------ |
-| Critical | Blocks architecture evolution              |
-| High     | Significantly impacts maintainability      |
-| Medium   | Should be addressed in future capabilities |
-| Low      | Minor improvement opportunity              |
-
----
-
-# Current Technical Debt
-
-## TD-001
-
-### Title
-
-RequireRole is legacy authorization.
-
-### Category
-
-Architecture
-
-### Severity
-
-High
-
-### Current State
-
-Role enforcement exists only through `RequireRole`.
-
-Authorization Foundation is the strategic replacement.
-
-### Planned Resolution
-
-Authorization Foundation.
+| Status | Meaning |
+|---|---|
+| Open | Identified and not yet resolved |
+| Planned | Resolution approach approved |
+| In Progress | Currently being addressed |
+| Resolved | Completed |
 
 ---
 
-## TD-002
+# Severity Definition
 
-### Title
+| Severity | Meaning |
+|---|---|
+| Low | Improvement opportunity with limited impact |
+| Medium | Affects future capability development or reliability |
+| High | Blocks capability implementation or creates significant risk |
+| Critical | Requires immediate architectural attention |
 
-Business capabilities authenticate but do not authorize.
+---
 
-### Category
+# Technical Debt Summary
 
-Architecture
+| ID | Title | Capability | Severity | Status |
+|---|---|---|---|---|
+| TD-001 | EmployeeContext HTTP Exception Mapping | Identity Context | Medium | Open |
+| TD-002 | Approval Authorization Concurrency Protection | Approval Authorization | Low | Open |
+| TD-003 | Employee Manager Hierarchy Limitation | HR Employee | Medium | Open |
+| TD-004 | Permission and Policy Model Not Implemented | Authorization | Medium | Open |
+| TD-005 | Authorization Foundation Consumer Coverage | Authorization | Low | Open |
 
-### Severity
+---
 
-High
+# TD-001 — EmployeeContext HTTP Exception Mapping
 
-### Current State
+**Status:** Open
+**Severity:** Medium
 
-Leave
+**Capability:**
 
-Timesheet
+Identity Context
 
-Overtime
+**Introduced:**
 
-Reconciliation
+PR-053 — Approval Authorization
 
-Approval
+---
 
-only require authentication.
+## Description
 
-No ownership evaluation exists.
+EmployeeContext resolution is now consumed by business capabilities requiring authorization decisions.
 
-### Planned Resolution
+The resolution flow:
 
-Authorization Foundation
+CurrentUser
+↓
+EmployeeContext Resolver
+↓
+HrEmployee
+↓
+EmployeeContext
+
+requires exactly one valid employee context.
+
+The resolver may raise:
+
+- EmployeeContextNotFoundError
+- MultipleEmployeeContextError
+
+when resolution fails.
+
+---
+
+## Current Behavior
+
+These exceptions do not currently have dedicated HTTP mappings.
+
+When exposed through API flows:
+
+CurrentRequestContext
+
+the exception reaches the generic error handler.
+
+Current result:
+
+HTTP 500
+
+---
+
+## Impact
+
+Users may receive an internal server error when:
+
+- authenticated user has no linked employee
+- authenticated user has multiple linked employee records
+
+This affects any capability consuming EmployeeContext.
+
+---
+
+## Root Cause
+
+Identity Context currently owns:
+
+- user-to-employee resolution
+- context validation
+
+but does not yet define centralized transport exception handling.
+
+---
+
+## Resolution Direction
+
+Create centralized HTTP exception mapping under Identity Context.
+
+Potential mapping:
+
+EmployeeContextNotFoundError
+        ↓
+HTTP 404 / 403
+
+MultipleEmployeeContextError
+        ↓
+HTTP 409
+
+Final status mapping requires Identity Context decision.
+
+---
+
+## Constraints
+
+Resolution must not be implemented inside:
+
+- Approval Authorization
+- Leave Management
+- Overtime Management
+- Timesheet Management
+
+---
+
+## Related Documents
+
+- ADR-006 — Employee Context Resolution
+- PR-053 — Approval Authorization
+
+---
+
+# TD-002 — Approval Authorization Concurrency Protection
+
+**Status:** Open
+**Severity:** Low
+
+**Capability:**
 
 Approval Authorization
 
-Leave Authorization
+---
+
+## Description
+
+Approval Authorization verifies authorization before approval state transition.
+
+Current flow:
+
+Authorization Evaluation
+↓
+Approval State Transition
+↓
+Transaction Commit
+
+There is no additional concurrency validation between authorization evaluation and final persistence.
 
 ---
 
-## TD-003
+## Example Risk
 
-### Title
-
-Approval workflow lacks authorization.
-
-### Category
-
-Business
-
-### Severity
-
-High
-
-### Current State
-
-ApprovalService validates workflow state only.
-
-Authorization is intentionally out of scope (ADR-003).
-
-### Planned Resolution
-
-Approval Authorization capability.
-
----
-
-## TD-004
-
-### Title
-
-EmployeeContext is implemented but not consumed.
-
-### Category
-
-Platform
-
-### Severity
-
-Medium
-
-### Current State
-
-EmployeeContextResolver exists.
-
-CurrentEmployeeContext exists.
-
-No production endpoint consumes them.
-
-### Planned Resolution
-
-Authorization Foundation integration.
-
----
-
-## TD-005
-
-### Title
-
-Manager hierarchy is not used for authorization.
-
-### Category
-
-Business
-
-### Severity
-
-Medium
-
-### Current State
-
-manager_id exists.
-
-No authorization logic consumes it.
-
-### Planned Resolution
-
-Manager Authorization.
-
----
-
-## TD-006
-
-### Title
-
-User ↔ Employee cardinality remains unresolved at schema level.
-
-### Category
-
-Architecture
-
-### Severity
-
-Medium
-
-### Current State
-
-EmployeeContextResolver treats multiple employees as an error.
-
-Database allows multiple rows.
-
-### Planned Resolution
-
-Future architecture decision.
-
----
-
-# Resolved Technical Debt
-
-Move resolved items here.
+The requester manager relationship changes after authorization evaluation.
 
 Example:
 
-| ID     | Resolution        |
-| ------ | ----------------- |
-| TD-000 | Removed in PR-051 |
+Employee.manager_id
+changes
+after authorization check
+before commit
+
+The approval operation may continue using the previous authorization state.
 
 ---
 
-# Debt Lifecycle
+## Current Limitation
 
-```
-Identified
+This is part of a broader platform concurrency limitation.
 
-↓
-
-Accepted
-
-↓
-
-Scheduled
-
-↓
-
-Resolved
-
-↓
-
-Removed
-```
+Current versioning support exists but is not consistently enforced across all business workflows.
 
 ---
 
-# Governance
+## Resolution Direction
 
-Technical debt may be introduced only when:
+Future improvement may introduce:
 
-- documented
-- understood
-- temporary
-- tracked
+- optimistic locking enforcement
+- approval transition version checks
+- transaction consistency validation
 
-Undocumented debt is prohibited.
-
----
-
-# Relationship to Other Documents
-
-| Document                | Purpose                 |
-| ----------------------- | ----------------------- |
-| ADR                     | Architectural decisions |
-| Architecture Changelog  | Architectural evolution |
-| Roadmap                 | Planned implementation  |
-| Technical Debt Register | Known compromises       |
+Requires broader architecture review.
 
 ---
 
-# Success Criteria
+## Constraints
 
-The Technical Debt Register is considered healthy when:
+Do not introduce capability-specific concurrency behavior without platform decision.
 
-- all known debt is documented
-- debt has an owner
-- debt has a planned resolution
-- resolved debt is archived
+---
 
-The register should always reflect the current known architectural compromises of the platform.
+## Related Documents
+
+- ADR-008 — Approval Authorization Policy Model
+- Approval Authorization Implementation Plan
+
+---
+
+# TD-003 — Employee Manager Hierarchy Limitation
+
+**Status:** Open
+**Severity:** Medium
+
+**Capability:**
+
+HR Employee
+
+---
+
+## Description
+
+Current employee relationship model supports only direct manager reference:
+
+Employee
+↓
+Manager
+
+through:
+
+HrEmployee.manager_id
+
+---
+
+## Current Supported Behavior
+
+Supported:
+
+- direct manager lookup
+- direct manager approval
+
+Not supported:
+
+- manager chain traversal
+- organizational hierarchy
+- escalation path
+
+---
+
+## Impact
+
+Future capabilities requiring:
+
+- indirect approval
+- escalation workflow
+- organizational reporting
+
+cannot be implemented without extending the employee hierarchy model.
+
+---
+
+## Resolution Direction
+
+Future architecture decision required for:
+
+- organizational graph model
+- hierarchy traversal
+- reporting structure
+
+---
+
+## Constraints
+
+Do not introduce:
+
+- recursive manager lookup
+- hierarchy assumptions
+
+inside individual capabilities.
+
+---
+
+## Related Documents
+
+- ADR-008 — Approval Authorization Policy Model
+- HR Employee Capability
+
+---
+
+# TD-004 — Permission and Policy Model Not Implemented
+
+**Status:** Open
+**Severity:** Medium
+
+**Capability:**
+
+Authorization Foundation
+
+---
+
+## Description
+
+Authorization Foundation currently provides:
+
+- AuthorizationRequest
+- AuthorizationDecision
+- AuthorizationEvaluator
+- AuthorizationService
+
+The foundation intentionally does not provide:
+
+- permission model
+- policy engine
+- RBAC expansion
+- centralized policy registry
+
+---
+
+## Current State
+
+Authorization policies are introduced at capability level.
+
+Example:
+
+ApprovalAuthorizationEvaluator
+
+implements:
+
+Manager Approval Policy
+
+---
+
+## Impact
+
+Future capabilities requiring:
+
+- reusable permissions
+- complex policy composition
+- centralized authorization rules
+
+require additional architecture work.
+
+---
+
+## Resolution Direction
+
+Create future ADR before introducing:
+
+- permission abstraction
+- policy engine
+- authorization vocabulary
+- RBAC redesign
+
+---
+
+## Constraints
+
+Do not introduce permission concepts without architecture approval.
+
+---
+
+## Related Documents
+
+- ADR-007 — Authorization Foundation
+- ADR-008 — Approval Authorization Policy Model
+
+---
+
+# TD-005 — Authorization Foundation Consumer Coverage
+
+**Status:** Open
+**Severity:** Low
+
+**Capability:**
+
+Authorization Foundation
+
+---
+
+## Description
+
+Authorization Foundation has been implemented as a platform capability.
+
+Current consumers are introduced incrementally through capability-specific decisions.
+
+---
+
+## Current State
+
+Implemented consumer:
+
+Approval Authorization
+
+Future capabilities still require:
+
+- discovery
+- policy analysis
+- capability decision
+- implementation plan
+
+before authorization integration.
+
+---
+
+## Impact
+
+Some capabilities may continue operating with authentication-only protection until authorization policies are defined.
+
+---
+
+## Resolution Direction
+
+Each capability should follow:
+
+Discovery
+↓
+Policy Discovery
+↓
+Capability Decision
+↓
+Implementation Plan
+↓
+Implementation
+
+before adding authorization behavior.
+
+---
+
+## Constraints
+
+Do not introduce global authorization behavior without capability approval.
+
+---
+
+## Related Documents
+
+- ADR-007 — Authorization Foundation
+- CLAUDE_IMPLEMENTATION_GUIDE.md
+
+---
+
+# Governance Rules
+
+All technical debt entries must:
+
+- have clear ownership
+- have evidence
+- identify impact
+- avoid speculative solutions
+- avoid bypassing ADR governance
+
+Resolution requires:
+
+1. Technical assessment
+2. Architecture review
+3. ADR or Capability Decision update if architecture changes
+
+---
+
+# Review Process
+
+Technical debt should be reviewed during:
+
+- architecture review
+- capability planning
+- roadmap planning
+- periodic architecture health review
+
+---
+
+# References
+
+- MASTER_ARCHITECTURE_ROADMAP.md
+- ARCHITECTURE_STATUS.md
+- ARCHITECTURE_CHANGELOG.md
+- ARCHITECTURE_PRINCIPLES.md
+- ARCHITECTURE_DECISION_INDEX.md
+- ADR documents
+- Capability Decision documents

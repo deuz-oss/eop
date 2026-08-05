@@ -1,356 +1,464 @@
-# EOP Architecture Changelog
+# Architecture Changelog
 
+**Document:** Architecture Changelog
 **Status:** Active
-
-**Owner:** EOP Architecture Governance
+**Owner:** Architecture Governance
+**Version:** 1.0
+**Last Updated:** 2026-08-05
 
 ---
 
 # Purpose
 
-This document records significant architectural changes within the EOP platform.
+This document records significant architecture changes introduced into the EOP platform.
 
-Unlike Git history, this changelog records only architecture-level decisions that affect the long-term structure of the system.
+Architecture changes include:
 
-Implementation details, bug fixes, refactoring, and feature additions that do not change architecture are intentionally excluded.
+- new architectural capabilities
+- new ADR decisions
+- capability completion
+- structural changes
+- architectural constraints introduced
 
----
+This document does not replace ADRs.
 
-# Scope
-
-This changelog records changes to:
-
-- Architecture Decisions (ADR)
-- Capability architecture
-- Platform boundaries
-- Layering
-- Architectural governance
-- Master Architecture Blueprint
-- Master Architecture Roadmap
-- Cross-capability dependencies
-- Platform foundations
-
-This document does not record:
-
-- Bug fixes
-- Refactoring
-- Code cleanup
-- Formatting
-- Test changes
-- Dependency updates
-- Documentation corrections
+For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
-# Change Categories
-
-Architecture changes are classified into one of the following categories.
-
-| Type       | Description                              |
-| ---------- | ---------------------------------------- |
-| Added      | New architectural capability or document |
-| Changed    | Existing architecture modified           |
-| Deprecated | Architecture scheduled for removal       |
-| Removed    | Architecture removed                     |
-| Superseded | Replaced by newer architecture           |
+# Change History
 
 ---
 
-# Change Log
+# 2026-08-05 — Approval Authorization Completed
+
+**Reference:**
+
+- PR-053
+- ADR-008
+- Approval Authorization Decision
+- Approval Authorization Implementation Plan
+
+**Capability:**
+
+Approval Authorization
+
+**Status:**
+
+Implemented
 
 ---
 
-## YYYY-MM-DD
+## Summary
 
-### Added
+Approval Authorization capability has been implemented using the existing Authorization Foundation.
 
-#### Architecture Governance
+The capability introduces authorization enforcement for approval workflows.
 
-Established Architecture Governance for the EOP platform.
+The implemented policy is:
 
-Introduced:
+Manager Approval
 
-- Repository Census
-- Architecture Inventory
-- Capability Dependency Graph
-- Master Architecture Blueprint
-- Master Architecture Roadmap
+Approval is allowed only when:
 
----
+request.employee.manager_id
+approver.employee.id
 
-### Added
-
-#### Governance Documents
-
-Introduced governance standards:
-
-- AI_DISCOVERY_GUIDE.md
-- CLAUDE_IMPLEMENTATION_GUIDE.md
-- ARCHITECTURE_GOVERNANCE.md
-- ADR_TEMPLATE.md
-- CAPABILITY_TEMPLATE.md
-- ARCHITECTURE_REVIEW_CHECKLIST.md
-- ARCHITECTURE_STATUS.md
-- ARCHITECTURE_CHANGELOG.md
+Only direct manager approval is supported.
 
 ---
 
-### Added
+## Architecture Impact
 
-#### ADR-004
+Added:
 
-Established User ↔ HrEmployee identity linkage.
+- ApprovalAuthorizationEvaluator
+- Approval authorization decision flow
+- Authorization denial handling
 
----
+Integrated:
 
-### Added
-
-#### ADR-005
-
-Established Request Context Architecture.
-
----
-
-### Added
-
-#### ADR-006
-
-Established Employee Context Resolution Model.
-
----
-
-### Added
-
-#### ADR-007
-
-Established Authorization Foundation.
-
-Authorization becomes an independent platform capability positioned between Identity Context and Business Services.
-
----
-
-### Added
-
-#### Platform Capability
-
-Identity Context Foundation.
-
-Introduced:
-
-- EmployeeContext
-- RequestContext
-- EmployeeContextResolver
-
-Identity resolution is separated from authentication.
-
----
-
-### Added
-
-#### Platform Capability
-
-Authorization Foundation.
-
-Architecture approved.
-
-Introduced architectural concepts:
-
-- AuthorizationService
-- AuthorizationEvaluator
-- AuthorizationDecision
-- OwnershipResolver
-- RoleResolver
-
-Implementation pending.
-
----
-
-### Changed
-
-#### Platform Architecture
-
-Platform execution flow changed from:
-
-```
-Authentication
-
+CurrentRequestContext
 ↓
-
-Business Services
-```
-
-to:
-
-```
-Authentication
-
+AuthorizationService
 ↓
-
-Identity Context
-
+AuthorizationDecision
 ↓
+ApprovalService
+
+---
+
+## Architectural Constraints Preserved
+
+The implementation does not modify:
+
+- Authorization Foundation
+- Identity Context model
+- Approval workflow model
+- database schema
+- repository architecture
+
+---
+
+## Deferred Capabilities
+
+Not introduced:
+
+- delegated approval
+- indirect manager approval
+- recursive hierarchy traversal
+- approval roles
+- workflow assignment
+- permission model
+- policy engine
+
+---
+
+## Related Debt
+
+Introduced awareness of:
+
+- EmployeeContext HTTP exception mapping
+- Approval authorization concurrency protection
+
+Tracked in:
+
+TECHNICAL_DEBT_REGISTER.md
+
+---
+
+# 2026-08-03 — Authorization Foundation Completed
+
+**Reference:**
+
+- PR-052
+- ADR-007
+- Authorization Foundation Decision
+
+**Capability:**
 
 Authorization Foundation
 
-↓
+**Status:**
 
-Business Services
-```
+Implemented
 
 ---
 
-### Changed
+## Summary
 
-#### Capability Governance
+Implemented the platform authorization foundation.
 
-Every capability now follows the mandatory architecture lifecycle:
+The foundation provides generic authorization primitives without embedding business authorization rules.
 
-```
+Introduced:
+
+- AuthorizationRequest
+- AuthorizationDecision
+- AuthorizationEvaluator
+- AuthorizationService
+
+---
+
+## Design Principle
+
+Authorization Foundation follows:
+
+Generic Authorization Mechanism
+
+Capability Specific Authorization Policy
+
+The foundation does not own:
+
+- permission vocabulary
+- business policy
+- ownership rules
+- role hierarchy
+
+---
+
+## Architecture Impact
+
+Future capabilities may consume Authorization Foundation.
+
+Consumers must define their own:
+
+- discovery
+- policy discovery
+- capability decision
+- implementation plan
+
+---
+
+## Constraints Introduced
+
+Do not introduce:
+
+- global authorization rules
+- permission models
+- RBAC redesign
+- policy engines
+
+without architecture decision.
+
+---
+
+# 2026-08-01 — Architecture Governance Framework Established
+
+**Reference:**
+
+- MASTER_ARCHITECTURE_ROADMAP
+- ARCHITECTURE_PRINCIPLES
+- CLAUDE_IMPLEMENTATION_GUIDE
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Established architecture governance process.
+
+Introduced documentation flow:
+
 Discovery
-
 ↓
-
-Decision
-
+Policy Discovery
 ↓
-
-ADR
-
+Capability Decision
 ↓
-
-Blueprint
-
-↓
-
-Roadmap
-
-↓
-
 Implementation Plan
-
 ↓
-
+Implementation
+↓
 Architecture Review
 
+---
+
+## Purpose
+
+The governance model separates:
+
+Business decisions
+
+from
+
+Implementation decisions.
+
+---
+
+## Rules Introduced
+
+Architecture decisions must be documented before implementation.
+
+Implementation agents must not:
+
+- infer business rules
+- redesign architecture
+- resolve ambiguity independently
+
+---
+
+# 2026-07-31 — Authorization Architecture Direction Defined
+
+**Reference:**
+
+- ADR-007
+
+**Capability:**
+
+Authorization
+
+**Status:**
+
+Approved
+
+---
+
+## Summary
+
+Defined the initial authorization architecture direction.
+
+Authorization is implemented as a replaceable foundation.
+
+The foundation separates:
+
+Authorization Mechanism
+from
+Authorization Policy
+
+---
+
+## Architectural Decision
+
+The platform does not initially introduce:
+
+- permission system
+- RBAC redesign
+- policy engine
+
+Authorization rules remain capability-owned.
+
+---
+
+# 2026-07-30 — Identity Context Architecture Established
+
+**Reference:**
+
+- ADR-006
+
+**Capability:**
+
+Identity Context
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Established employee identity resolution model.
+
+The platform resolves:
+
+CurrentUser
 ↓
-
-Implementation
-
+HrEmployee
 ↓
+EmployeeContext
 
-Architecture Audit
+---
 
+## Architectural Impact
+
+Business capabilities may consume EmployeeContext instead of independently resolving employee identity.
+
+---
+
+## Known Limitation
+
+EmployeeContext exception transport mapping remains deferred.
+
+Tracked in:
+
+TECHNICAL_DEBT_REGISTER.md
+
+---
+
+# 2026-07-28 — Approval Workflow Architecture Baseline Established
+
+**Reference:**
+
+- ADR-004
+- ADR-005
+
+**Capability:**
+
+Approval Workflow
+
+**Status:**
+
+Established
+
+---
+
+## Summary
+
+Approval workflow architecture established.
+
+ApprovalService remains responsible for:
+
+- state transition
+- approval workflow execution
+
+Authorization responsibility remains separate.
+
+---
+
+## Constraint Introduced
+
+Approval workflow must not contain:
+
+- authorization policy
+- role evaluation
+- ownership rules
+
+Authorization must be introduced through dedicated authorization capability.
+
+---
+
+# Architecture Change Categories
+
+| Category | Description |
+|---|---|
+| Capability | New platform capability |
+| ADR | Architecture decision |
+| Governance | Process or documentation change |
+| Integration | Existing capability integration |
+| Debt | Known limitation |
+
+---
+
+# Current Architecture Evolution
+
+Current direction:
+
+Authentication
 ↓
-
-Merge
-```
-
----
-
-### Changed
-
-#### Architecture Review Process
-
-Architecture approval is now mandatory before implementation begins.
-
-Implementation may not introduce new architecture.
-
-Architecture changes discovered during implementation require returning to the Decision phase.
+Identity Context
+↓
+Authorization Foundation
+↓
+Capability Authorization Policies
+↓
+Business Capabilities
 
 ---
 
-### Changed
+# Current Completed Capabilities
 
-#### Repository Governance
-
-Repository architecture is now governed through:
-
-- ADRs
-- Capability documents
-- Master Blueprint
-- Master Roadmap
-- Architecture Review Checklist
+| Capability | Status |
+|---|---|
+| Identity Context | Implemented |
+| Authorization Foundation | Implemented |
+| Approval Authorization | Implemented |
 
 ---
 
-# Future Entries
+# Current Deferred Capabilities
 
-Future architectural changes should be appended using the following format.
-
----
-
-## YYYY-MM-DD
-
-### Added
-
-Describe newly introduced architecture.
+| Capability | Status |
+|---|---|
+| Permission Model | Deferred |
+| Policy Engine | Deferred |
+| Delegated Approval | Deferred |
+| Workflow Assignment | Deferred |
+| Organization Hierarchy | Deferred |
 
 ---
 
-### Changed
+# Governance Rules
 
-Describe modified architecture.
+All architecture changes must:
 
----
-
-### Deprecated
-
-Describe architecture scheduled for removal.
-
----
-
-### Removed
-
-Describe removed architecture.
+1. Have documented motivation.
+2. Have clear ownership.
+3. Preserve architectural boundaries.
+4. Avoid introducing undocumented assumptions.
+5. Reference related ADR or Capability Decision.
 
 ---
 
-### Superseded
+# References
 
-Describe replacement architecture.
-
----
-
-# Recording Rules
-
-Record only architectural changes.
-
-Do not record:
-
-- implementation progress
-- bug fixes
-- pull requests
-- commits
-- refactoring
-- formatting
-- test additions
-
-Architecture Changelog complements Git history.
-
-Git records implementation history.
-
-Architecture Changelog records architectural evolution.
-
----
-
-# Governance
-
-Every approved ADR that changes platform architecture must create a corresponding entry in this document.
-
-Master Blueprint and Master Roadmap updates should also be reflected here when they alter architectural direction.
-
----
-
-# Success Criteria
-
-Architecture Changelog should allow a reader to understand the evolution of the EOP architecture without reviewing Git history.
-
-The document should answer:
-
-- What architectural capabilities were introduced?
-- When were they introduced?
-- Why did the architecture change?
-- Which ADR authorized the change?
-- How did the platform evolve over time?
-
-This document is the authoritative historical record of EOP architecture evolution.
+- MASTER_ARCHITECTURE_BLUEPRINT.md
+- MASTER_ARCHITECTURE_ROADMAP.md
+- ARCHITECTURE_STATUS.md
+- ARCHITECTURE_PRINCIPLES.md
+- TECHNICAL_DEBT_REGISTER.md
+- ADR documents
+- Capability Decision documents

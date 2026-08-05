@@ -8,9 +8,14 @@ from eop_api.models.leave_request import LeaveRequest
 from eop_api.models.overtime_request import OvertimeRequest
 from eop_api.models.timesheet import Timesheet
 from eop_api.repositories.base import BaseRepository
+from eop_api.repositories.hr_employee import HrEmployeeRepository
 from eop_api.repositories.leave_request import LeaveRequestRepository
 from eop_api.repositories.overtime_request import OvertimeRequestRepository
 from eop_api.repositories.timesheet import TimesheetRepository
+from eop_api.services.approval_authorization import ApprovalAuthorizationEvaluator
+from eop_api.services.authorization import AuthorizationService
+from eop_api.services.authorization_request import AuthorizationRequest
+from eop_api.services.employee_context import RequestContext
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
 
 
@@ -23,6 +28,15 @@ class ApprovalStatus(StrEnum):
 
 class InvalidApprovalStateError(Exception):
     """Raised when approve/reject is attempted on an entity that is not `pending`."""
+
+
+class ApprovalAuthorizationDeniedError(Exception):
+    """Raised when the Approval Authorization Policy (`ADR-008`) denies an
+    approve/reject call -- i.e. `AuthorizationDecision.allowed` is `False`.
+
+    Thrown only by `ApprovalService`, never by `ApprovalAuthorizationEvaluator`
+    or `AuthorizationService` themselves (`decision.md`).
+    """
 
 
 class ApprovalService:
@@ -41,9 +55,14 @@ class ApprovalService:
     `TimesheetService` gain no `approve`/`reject` methods of their own.
 
     Only a `pending -> approved` / `pending -> rejected` transition is legal;
-    anything else raises `InvalidApprovalStateError`. Authorization beyond
-    authentication, decision history, audit logging, and event/notification
-    dispatch are explicitly out of scope for this service.
+    anything else raises `InvalidApprovalStateError`. Since `ADR-008`/
+    `decision.md` (Approval Authorization), every decision is additionally
+    gated by the Approval Authorization Policy: authorization is delegated to
+    `AuthorizationService`/`ApprovalAuthorizationEvaluator` and a denied
+    decision raises `ApprovalAuthorizationDeniedError` before any state
+    transition is staged. This service never evaluates the policy itself --
+    see `_authorize`. Decision history, audit logging, and event/notification
+    dispatch remain explicitly out of scope.
 
     Each public method stages its decision via `_apply_decision` and completes
     the transaction via `_complete_decision` -- two separate steps, each with
@@ -68,7 +87,7 @@ class ApprovalService:
         self._uow_factory = uow_factory
 
     async def approve_leave_request(
-        self, leave_request_id: uuid.UUID, approver_id: uuid.UUID
+        self, leave_request_id: uuid.UUID, request_context: RequestContext
     ) -> LeaveRequest | None:
         """Approve a pending `LeaveRequest`.
 
@@ -95,7 +114,7 @@ class ApprovalService:
                 repo,
                 leave_request_id,
                 new_status=ApprovalStatus.APPROVED,
-                approver_id=approver_id,
+                request_context=request_context,
                 rejection_reason=None,
             )
             if leave_request is None:
@@ -103,7 +122,7 @@ class ApprovalService:
             return await self._complete_decision(uow, leave_request)
 
     async def reject_leave_request(
-        self, leave_request_id: uuid.UUID, approver_id: uuid.UUID, reason: str
+        self, leave_request_id: uuid.UUID, request_context: RequestContext, reason: str
     ) -> LeaveRequest | None:
         async with self._uow_factory() as uow:
             repo = LeaveRequestRepository(uow.session)
@@ -112,7 +131,7 @@ class ApprovalService:
                 repo,
                 leave_request_id,
                 new_status=ApprovalStatus.REJECTED,
-                approver_id=approver_id,
+                request_context=request_context,
                 rejection_reason=reason,
             )
             if leave_request is None:
@@ -120,7 +139,7 @@ class ApprovalService:
             return await self._complete_decision(uow, leave_request)
 
     async def approve_overtime_request(
-        self, overtime_request_id: uuid.UUID, approver_id: uuid.UUID
+        self, overtime_request_id: uuid.UUID, request_context: RequestContext
     ) -> OvertimeRequest | None:
         async with self._uow_factory() as uow:
             repo = OvertimeRequestRepository(uow.session)
@@ -129,7 +148,7 @@ class ApprovalService:
                 repo,
                 overtime_request_id,
                 new_status=ApprovalStatus.APPROVED,
-                approver_id=approver_id,
+                request_context=request_context,
                 rejection_reason=None,
             )
             if overtime_request is None:
@@ -137,7 +156,7 @@ class ApprovalService:
             return await self._complete_decision(uow, overtime_request)
 
     async def reject_overtime_request(
-        self, overtime_request_id: uuid.UUID, approver_id: uuid.UUID, reason: str
+        self, overtime_request_id: uuid.UUID, request_context: RequestContext, reason: str
     ) -> OvertimeRequest | None:
         async with self._uow_factory() as uow:
             repo = OvertimeRequestRepository(uow.session)
@@ -146,7 +165,7 @@ class ApprovalService:
                 repo,
                 overtime_request_id,
                 new_status=ApprovalStatus.REJECTED,
-                approver_id=approver_id,
+                request_context=request_context,
                 rejection_reason=reason,
             )
             if overtime_request is None:
@@ -154,7 +173,7 @@ class ApprovalService:
             return await self._complete_decision(uow, overtime_request)
 
     async def approve_timesheet(
-        self, timesheet_id: uuid.UUID, approver_id: uuid.UUID
+        self, timesheet_id: uuid.UUID, request_context: RequestContext
     ) -> Timesheet | None:
         async with self._uow_factory() as uow:
             repo = TimesheetRepository(uow.session)
@@ -163,7 +182,7 @@ class ApprovalService:
                 repo,
                 timesheet_id,
                 new_status=ApprovalStatus.APPROVED,
-                approver_id=approver_id,
+                request_context=request_context,
                 rejection_reason=None,
             )
             if timesheet is None:
@@ -171,7 +190,7 @@ class ApprovalService:
             return await self._complete_decision(uow, timesheet)
 
     async def reject_timesheet(
-        self, timesheet_id: uuid.UUID, approver_id: uuid.UUID, reason: str
+        self, timesheet_id: uuid.UUID, request_context: RequestContext, reason: str
     ) -> Timesheet | None:
         async with self._uow_factory() as uow:
             repo = TimesheetRepository(uow.session)
@@ -180,12 +199,37 @@ class ApprovalService:
                 repo,
                 timesheet_id,
                 new_status=ApprovalStatus.REJECTED,
-                approver_id=approver_id,
+                request_context=request_context,
                 rejection_reason=reason,
             )
             if timesheet is None:
                 return None
             return await self._complete_decision(uow, timesheet)
+
+    async def _authorize(
+        self, uow: SQLAlchemyUnitOfWork, entity: Any, request_context: RequestContext
+    ) -> None:
+        """Evaluate the Approval Authorization Policy (`ADR-008`) for `entity`.
+
+        Resolves `entity.employee_id` (the requester) to its `HrEmployee` row
+        for `manager_id` -- the one piece of data the Manager Approval Policy
+        needs that `AuthorizationRequest` cannot carry without modifying
+        Authorization Foundation (`decision.md`: "Authorization Foundation
+        remains unchanged"). That resolved `manager_id` is bound into a
+        fresh `ApprovalAuthorizationEvaluator` instance -- the evaluator
+        itself performs no repository access. This method only delegates to
+        `AuthorizationService`/`ApprovalAuthorizationEvaluator`; it contains
+        no comparison of its own, so `ApprovalService` never evaluates
+        authorization itself, per `decision.md`.
+        """
+        requester = await HrEmployeeRepository(uow.session).get(entity.employee_id)
+        evaluator = ApprovalAuthorizationEvaluator(requester.manager_id if requester else None)
+        authorization_request = AuthorizationRequest(context=request_context)
+        decision = AuthorizationService(evaluator).authorize(authorization_request)
+        if not decision.allowed:
+            raise ApprovalAuthorizationDeniedError(
+                decision.reason or "Approval authorization denied"
+            )
 
     async def _apply_decision(
         self,
@@ -194,22 +238,27 @@ class ApprovalService:
         entity_id: uuid.UUID,
         *,
         new_status: ApprovalStatus,
-        approver_id: uuid.UUID,
+        request_context: RequestContext,
         rejection_reason: str | None,
     ) -> Any:
-        """Stage a `pending -> approved`/`pending -> rejected` transition. Never commits.
+        """Fetch, authorize, validate, and stage a `pending -> approved`/
+        `pending -> rejected` transition. Never commits.
 
         `repo` is untyped (`BaseRepository[Any]`) deliberately: this method is
         private, called only by the six public methods above, each of which
         restores the precise per-entity return type at its own boundary.
-        This method has exactly one job -- fetch, validate, stage the update
-        -- and no code path in it calls `uow.commit()`. Completing the
-        transaction is always the caller's responsibility, via
-        `_complete_decision`.
+        Authorization (`_authorize`) runs after the entity is found but
+        before the `pending` transition check, so a denied decision is
+        reported as `ApprovalAuthorizationDeniedError` rather than being
+        masked by an unrelated `InvalidApprovalStateError`. No code path in
+        this method calls `uow.commit()`. Completing the transaction is
+        always the caller's responsibility, via `_complete_decision`.
         """
         entity = await repo.get(entity_id)
         if entity is None:
             return None
+
+        await self._authorize(uow, entity, request_context)
 
         if entity.status != "pending":
             raise InvalidApprovalStateError(
@@ -219,7 +268,7 @@ class ApprovalService:
         updated = await repo.update(
             entity_id,
             status=new_status.value,
-            approved_by=approver_id,
+            approved_by=request_context.user.id,
             approved_at=datetime.now(UTC),
             rejection_reason=rejection_reason,
         )

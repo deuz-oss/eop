@@ -1,448 +1,135 @@
 # Claude Implementation Guide
 
-**Status:** Active
+## Purpose
 
-**Version:** 1.0
+This guide defines how implementation must be performed.
 
-**Owner:** EOP Architecture Governance
+Architecture is defined elsewhere.
 
----
+Claude implements approved architecture.
 
-# Purpose
-
-This document defines the implementation governance for AI-assisted development within EOP.
-
-Its purpose is to ensure that every implementation:
-
-- follows approved architecture
-- preserves architectural consistency
-- avoids undocumented design decisions
-- produces predictable implementation quality
-
-This document governs implementation only.
-
-It does **not** replace:
-
-- Architecture Decision Records (ADR)
-- Capability Decision documents
-- Implementation Plans
+Claude does not create architecture.
 
 ---
 
-# AI Role
+# Required Inputs
 
-The implementation agent acts as an **Implementation Engineer**.
+Before implementation, read:
 
-The implementation agent is **not** the architecture owner.
+1. ADR(s)
+2. Capability Discovery
+3. Policy Discovery (if present)
+4. Capability Decision
+5. Implementation Plan
 
-Responsibilities include:
+If any required document is missing:
 
-- implementing approved architecture
-- following existing project conventions
-- preserving architectural boundaries
-- reporting implementation conflicts
+STOP.
 
-The implementation agent must never redefine architecture.
-
----
-
-# Architecture Authority
-
-Architecture decisions are already approved before implementation begins.
-
-The implementation agent must:
-
-- implement the approved architecture
-- preserve architectural intent
-- avoid reinterpretation
-
-If implementation conflicts with repository constraints:
-
-**STOP**
-
-Report the conflict.
-
-Do not invent a new architecture.
+Do not implement.
 
 ---
 
-# Source of Truth
+# Authority Order
 
-Documents are authoritative in the following order.
+Implementation shall follow this order.
 
-## Level 1
+1. ADR
+2. Capability Decision
+3. Implementation Plan
+4. Repository
 
-Architecture Decision Records (ADR)
-
-Example:
-
-```
-docs/architecture/ARCHITECTURE_DECISION_RECORDS/
-```
+Higher-level documents always take precedence.
 
 ---
 
-## Level 2
+# Implementation Rules
 
-Capability Decision
+Implement exactly what has been approved.
 
-Example:
+Do not:
 
-```
-docs/architecture/capabilities/<capability>/decision.md
-```
-
----
-
-## Level 3
-
-Capability Implementation Plan
-
-Example:
-
-```
-implementation-plan.md
-```
-
----
-
-## Level 4
-
-Master Architecture Blueprint
-
-```
-MASTER_ARCHITECTURE_BLUEPRINT.md
-```
-
----
-
-## Level 5
-
-Master Architecture Roadmap
-
-```
-MASTER_ARCHITECTURE_ROADMAP.md
-```
-
----
-
-## Level 6
-
-Existing Repository
-
-Current implementation patterns.
-
-Repository conventions should be reused whenever possible.
-
----
-
-# Conflict Resolution
-
-When documentation conflicts:
-
-Follow the highest-priority document.
-
-Report the inconsistency.
-
-Do not resolve architectural conflicts independently.
+- redesign architecture
+- extend scope
+- simplify business rules
+- introduce new abstractions
+- infer missing behavior
 
 ---
 
 # Repository Rules
 
-The existing repository is the canonical implementation.
+Repository evidence supports implementation.
 
-Reuse:
+Repository evidence does not override approved architecture.
 
-- project conventions
-- dependency injection patterns
-- testing style
-- naming conventions
-- layering
-
-Do not introduce alternative patterns without explicit architectural approval.
-
----
-
-# Layer Responsibilities
-
-The implementation agent must preserve layer boundaries.
-
-## API
-
-Responsible for:
-
-- HTTP transport
-- request validation
-- dependency injection
-- exception mapping
-
-Not responsible for:
-
-- business logic
-- authorization
-- persistence
-
----
-
-## Service
-
-Responsible for:
-
-- business orchestration
-- validation
-- workflow coordination
-- transaction management
-
----
-
-## Repository
-
-Responsible only for:
-
-- persistence
-- query construction
-- database interaction
-
-Repositories must never contain:
-
-- business logic
-- authorization
-- workflow logic
-
----
-
-## Model
-
-Responsible only for:
-
-- persistence model
-- relationships
-- database mapping
-
-Models must not contain business behavior.
-
----
-
-# Architecture Decision Boundary
-
-The implementation agent may decide only:
-
-- helper methods
-- private code organization
-- local naming
-- test implementation details
-- code formatting
-- internal refactoring that does not alter architecture
-
-The implementation agent must **not** decide:
-
-- architecture
-- capability boundaries
-- workflows
-- ownership models
-- authorization models
-- persistence strategy
-- dependency direction
-- domain responsibilities
-- business rules
-
----
-
-# Discovery Rule
-
-If repository evidence contradicts approved architecture:
+If repository contradicts approved architecture:
 
 STOP.
 
-Produce a discovery report.
-
-Do not:
-
-- modify implementation
-- invent a workaround
-- redesign architecture
-
-Wait for an architecture decision.
+Escalate.
 
 ---
 
-# Scope Discipline
+# Escalation Rules
 
-Implement only the requested capability.
+Stop implementation immediately if:
 
-Do not expand scope.
+- business rules are missing
+- architecture is ambiguous
+- implementation requires a new capability
+- implementation contradicts an ADR
+- implementation contradicts the Capability Decision
+- implementation requires assumptions
 
-Do not implement adjacent capabilities.
-
-Example:
-
-If implementing:
-
-```
-Identity Context
-```
-
-Do not implement:
-
-- Approval
-- Workflow
-- Payroll
-- Attendance
-
-unless explicitly requested.
+Never resolve ambiguity by assumption.
 
 ---
 
-# Repository Modification Rules
+# Deliverables
 
-Modify only files required by the approved implementation.
+When implementation is complete, provide only:
 
-Avoid unrelated refactoring.
-
-Avoid formatting-only changes outside the implementation scope.
-
-Preserve git history clarity.
-
----
-
-# Database Rules
-
-Only create migrations when explicitly required.
-
-Never create incidental schema changes.
-
-Migration scope must remain minimal.
+1. Summary
+2. Files Added
+3. Files Modified
+4. Validation
+5. Remaining Risks
 
 ---
 
-# Testing Rules
+# Validation
 
-Every implementation should include appropriate tests.
+Run all validation required by the Implementation Plan.
 
-Follow existing repository conventions.
-
-Reuse existing testing patterns.
-
-Do not introduce a new testing style.
-
----
-
-# Validation Rules
-
-Unless instructed otherwise:
-
-Run:
-
-```bash
-ruff check .
-
-mypy src
-
-pytest
-```
-
-Run Alembic only when database schema changes are expected.
-
----
-
-# Documentation Rules
-
-Do not modify architecture documentation unless explicitly requested.
-
-Specifically:
-
-Do not modify:
-
-- ADR
-- Master Architecture Blueprint
-- Master Architecture Roadmap
-- Capability Decision
-
-unless the implementation task explicitly includes documentation updates.
-
----
-
-# Standard Deliverables
-
-Every implementation must return exactly:
-
-## 1. Summary
-
-Describe what was implemented.
-
----
-
-## 2. Files Added
-
-List all newly created files.
-
----
-
-## 3. Files Modified
-
-List all modified files.
-
----
-
-## 4. Validation
-
-Report:
+Typical validation includes:
 
 - Ruff
 - Mypy
-- Alembic (if applicable)
+- Alembic
 - Pytest
 
-Include actual results.
+---
+
+# Architecture Review Checklist
+
+Before completion, verify:
+
+- approved architecture unchanged
+- layering preserved
+- repository contains persistence only
+- services contain business logic only
+- APIs contain transport logic only
+- no inferred business rules
+- no scope expansion
 
 ---
 
-## 5. Remaining Risks
+# Completion Criteria
 
-List only real implementation risks.
+Implementation is complete only when:
 
-Do not invent hypothetical risks.
-
----
-
-# Capability Instructions
-
-Capability-specific prompts extend this guide.
-
-They do not replace it.
-
-Capability prompts define:
-
-- objective
-- scope
-- out-of-scope
-- validation requirements
-- deliverables specific to that capability
-
----
-
-# Escalation Rule
-
-Immediately stop implementation and request clarification if:
-
-- architecture is ambiguous
-- repository evidence contradicts approved architecture
-- multiple valid architectural interpretations exist
-- implementation requires an undocumented architectural decision
-
-Do not continue implementation until architecture has been clarified.
-
----
-
-# Guiding Principle
-
-Architecture is decided once.
-
-Implementation follows architecture.
-
-Repository consistency is more important than implementation speed.
-
-When uncertain:
-
-**Stop. Ask. Do not guess.**
+- Implementation Plan is fully satisfied.
+- Validation succeeds.
+- No unresolved ambiguity remains.
+- No architectural decisions were made during implementation.
