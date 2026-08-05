@@ -106,6 +106,25 @@ def manager_headers(client: TestClient, manager: User) -> dict[str, str]:
 
 
 @pytest.fixture
+def requester() -> User:
+    """The employee whose leave request is created/approved/rejected in
+    approval tests. Under the Leave Authorization Policy (Owner Only), a
+    leave request can only be created by the employee it belongs to, so
+    approval-test setup must create it as this actor, not as `user_headers`
+    (`docs/architecture/capabilities/leave-authorization/decision.md`)."""
+    return asyncio.run(_create_user(email="requester@example.com", password="requester-pass"))
+
+
+@pytest.fixture
+def requester_headers(client: TestClient, requester: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "requester@example.com", "password": "requester-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 def other() -> User:
     """An authenticated user who is not the requester's manager."""
     return asyncio.run(_create_user(email="other@example.com", password="other-pass"))
@@ -338,11 +357,19 @@ def _create_employee(
 
 
 def _create_manager_and_requester(
-    client: TestClient, headers: dict[str, str], manager_user_id: str
+    client: TestClient, headers: dict[str, str], manager_user_id: str, requester_user_id: str
 ) -> tuple[dict, dict]:
     """A manager `HrEmployee` linked to `manager_user_id`, and a requester
-    `HrEmployee` whose `manager_id` points at it -- the only relationship
-    the Approval Authorization Policy (`ADR-008`) recognizes."""
+    `HrEmployee` linked to `requester_user_id` whose `manager_id` points at
+    the manager -- the only relationship the Approval Authorization Policy
+    (`ADR-008`) recognizes.
+
+    `requester_user_id` links the requester `HrEmployee` to a real, distinct
+    actor so the requester can create its own leave request under the Leave
+    Authorization Policy (Owner Only,
+    `docs/architecture/capabilities/leave-authorization/decision.md`) --
+    approval-test setup, not approval behavior itself.
+    """
     manager_employee = _create_employee(
         client,
         headers,
@@ -353,7 +380,9 @@ def _create_manager_and_requester(
         full_name="Grace Hopper",
         user_id=manager_user_id,
     )
-    requester_employee = _create_employee(client, headers, manager_id=manager_employee["id"])
+    requester_employee = _create_employee(
+        client, headers, manager_id=manager_employee["id"], user_id=requester_user_id
+    )
     return manager_employee, requester_employee
 
 
@@ -405,8 +434,8 @@ def test_delete_leave_request_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_create_leave_request(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_create_leave_request(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     body = _create_leave_request(client, user_headers, employee["id"])
 
@@ -419,8 +448,10 @@ def test_create_leave_request(client: TestClient, user_headers: dict[str, str]):
 
 
 def test_create_leave_request_rejects_missing_employee(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.post(
         "/hr/leave-requests",
         json=_leave_request_payload(str(uuid.uuid4())),
@@ -431,9 +462,9 @@ def test_create_leave_request_rejects_missing_employee(
 
 
 def test_create_leave_request_rejects_end_date_before_start_date(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     response = client.post(
         "/hr/leave-requests",
@@ -444,8 +475,32 @@ def test_create_leave_request_rejects_end_date_before_start_date(
     assert response.status_code == 422
 
 
-def test_get_leave_request(client: TestClient, user_headers: dict[str, str]):
+def test_create_leave_request_forbidden_for_non_owner(
+    client: TestClient, user_headers: dict[str, str], other: User, other_headers: dict[str, str]
+):
     employee = _create_employee(client, user_headers)
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.post(
+        "/hr/leave-requests",
+        json=_leave_request_payload(employee["id"]),
+        headers=other_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_get_leave_request(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_leave_request(client, user_headers, employee["id"])
 
     response = client.get(f"/hr/leave-requests/{created['id']}", headers=user_headers)
@@ -454,14 +509,41 @@ def test_get_leave_request(client: TestClient, user_headers: dict[str, str]):
     assert response.json()["id"] == created["id"]
 
 
-def test_get_leave_request_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_get_leave_request_not_found(client: TestClient, user: User, user_headers: dict[str, str]):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.get(f"/hr/leave-requests/{uuid.uuid4()}", headers=user_headers)
 
     assert response.status_code == 404
 
 
-def test_list_leave_requests(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_get_leave_request_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_leave_request(client, user_headers, employee["id"])
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.get(f"/hr/leave-requests/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403
+
+
+def test_list_leave_requests(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_leave_request(client, user_headers, employee["id"])
     _create_leave_request(
         client, user_headers, employee["id"], start_date="2026-03-01", end_date="2026-03-03"
@@ -474,10 +556,38 @@ def test_list_leave_requests(client: TestClient, user_headers: dict[str, str]):
     assert {"2026-02-10", "2026-03-01"}.issubset(start_dates)
 
 
-def test_list_leave_requests_paginated_default_pagination(
-    client: TestClient, user_headers: dict[str, str]
+def test_list_leave_requests_returns_only_owned(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+    _create_leave_request(client, user_headers, employee["id"])
+    _create_leave_request(client, other_headers, other_employee["id"])
+
+    response = client.get("/hr/leave-requests", headers=user_headers)
+
+    assert response.status_code == 200
+    employee_ids = {item["employee_id"] for item in response.json()}
+    assert employee_ids == {employee["id"]}
+
+
+def test_list_leave_requests_paginated_default_pagination(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     for i in range(3):
         _create_leave_request(
             client,
@@ -498,9 +608,9 @@ def test_list_leave_requests_paginated_default_pagination(
 
 
 def test_list_leave_requests_paginated_custom_offset(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     for i in range(5):
         _create_leave_request(
             client,
@@ -522,9 +632,9 @@ def test_list_leave_requests_paginated_custom_offset(
 
 
 def test_list_leave_requests_paginated_search_by_reason(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_leave_request(client, user_headers, employee["id"], reason="Family vacation")
     _create_leave_request(
         client,
@@ -546,9 +656,9 @@ def test_list_leave_requests_paginated_search_by_reason(
 
 
 def test_list_leave_requests_paginated_filter_by_status(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_leave_request(client, user_headers, employee["id"], status="approved")
     _create_leave_request(
         client,
@@ -570,9 +680,9 @@ def test_list_leave_requests_paginated_filter_by_status(
 
 
 def test_list_leave_requests_paginated_filter_by_employee_id(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_leave_request(client, user_headers, employee["id"])
 
     response = client.get(
@@ -587,8 +697,37 @@ def test_list_leave_requests_paginated_filter_by_employee_id(
     assert body["items"][0]["id"] == created["id"]
 
 
-def test_update_leave_request(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_list_leave_requests_paginated_returns_only_owned(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+    _create_leave_request(client, user_headers, employee["id"])
+    _create_leave_request(client, other_headers, other_employee["id"])
+
+    response = client.get("/hr/leave-requests/paginated", headers=user_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["employee_id"] == employee["id"]
+
+
+def test_update_leave_request(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_leave_request(client, user_headers, employee["id"])
 
     response = client.put(
@@ -601,7 +740,11 @@ def test_update_leave_request(client: TestClient, user_headers: dict[str, str]):
     assert response.json()["status"] == "approved"
 
 
-def test_update_leave_request_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_update_leave_request_not_found(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.put(
         f"/hr/leave-requests/{uuid.uuid4()}",
         json={"status": "approved"},
@@ -612,9 +755,9 @@ def test_update_leave_request_not_found(client: TestClient, user_headers: dict[s
 
 
 def test_update_leave_request_rejects_missing_employee(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_leave_request(client, user_headers, employee["id"])
 
     response = client.put(
@@ -627,9 +770,9 @@ def test_update_leave_request_rejects_missing_employee(
 
 
 def test_update_leave_request_rejects_end_date_before_start_date(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_leave_request(client, user_headers, employee["id"])
 
     response = client.put(
@@ -641,8 +784,41 @@ def test_update_leave_request_rejects_end_date_before_start_date(
     assert response.status_code == 422
 
 
-def test_delete_leave_request(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_update_leave_request_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_leave_request(client, user_headers, employee["id"])
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.put(
+        f"/hr/leave-requests/{created['id']}",
+        json={"status": "approved"},
+        headers=other_headers,
+    )
+
+    assert response.status_code == 403
+    assert (
+        client.get(f"/hr/leave-requests/{created['id']}", headers=user_headers).json()["status"]
+        == "pending"
+    )
+
+
+def test_delete_leave_request(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_leave_request(client, user_headers, employee["id"])
 
     response = client.delete(f"/hr/leave-requests/{created['id']}", headers=user_headers)
@@ -653,10 +829,42 @@ def test_delete_leave_request(client: TestClient, user_headers: dict[str, str]):
     )
 
 
-def test_delete_leave_request_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_delete_leave_request_not_found(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.delete(f"/hr/leave-requests/{uuid.uuid4()}", headers=user_headers)
 
     assert response.status_code == 404
+
+
+def test_delete_leave_request_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_leave_request(client, user_headers, employee["id"])
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.delete(f"/hr/leave-requests/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403
+    assert (
+        client.get(f"/hr/leave-requests/{created['id']}", headers=user_headers).status_code == 200
+    )
 
 
 def test_approve_leave_request_requires_authentication(client: TestClient):
@@ -700,9 +908,13 @@ def test_approve_leave_request(
     user_headers: dict[str, str],
     manager: User,
     manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
 ):
-    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
-    created = _create_leave_request(client, user_headers, requester["id"])
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
 
     response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
 
@@ -719,9 +931,13 @@ def test_reject_leave_request(
     user_headers: dict[str, str],
     manager: User,
     manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
 ):
-    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
-    created = _create_leave_request(client, user_headers, requester["id"])
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
 
     response = client.post(
         f"/hr/leave-requests/{created['id']}/reject",
@@ -742,9 +958,13 @@ def test_approve_leave_request_rejects_non_pending(
     user_headers: dict[str, str],
     manager: User,
     manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
 ):
-    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
-    created = _create_leave_request(client, user_headers, requester["id"])
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
     client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
 
     response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
@@ -757,9 +977,13 @@ def test_reject_leave_request_rejects_non_pending(
     user_headers: dict[str, str],
     manager: User,
     manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
 ):
-    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
-    created = _create_leave_request(client, user_headers, requester["id"])
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
     client.post(
         f"/hr/leave-requests/{created['id']}/reject",
         json={"reason": "No"},
@@ -781,8 +1005,12 @@ def test_approve_leave_request_forbidden_for_non_manager(
     manager: User,
     other: User,
     other_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
 ):
-    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
     _create_employee(
         client,
         user_headers,
@@ -793,13 +1021,15 @@ def test_approve_leave_request_forbidden_for_non_manager(
         full_name="Bob Smith",
         user_id=str(other.id),
     )
-    created = _create_leave_request(client, user_headers, requester["id"])
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
 
     response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=other_headers)
 
     assert response.status_code == 403
     assert (
-        client.get(f"/hr/leave-requests/{created['id']}", headers=user_headers).json()["status"]
+        client.get(f"/hr/leave-requests/{created['id']}", headers=requester_headers).json()[
+            "status"
+        ]
         == "pending"
     )
 
@@ -810,8 +1040,12 @@ def test_reject_leave_request_forbidden_for_non_manager(
     manager: User,
     other: User,
     other_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
 ):
-    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
     _create_employee(
         client,
         user_headers,
@@ -822,7 +1056,7 @@ def test_reject_leave_request_forbidden_for_non_manager(
         full_name="Bob Smith",
         user_id=str(other.id),
     )
-    created = _create_leave_request(client, user_headers, requester["id"])
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
 
     response = client.post(
         f"/hr/leave-requests/{created['id']}/reject",
@@ -832,6 +1066,8 @@ def test_reject_leave_request_forbidden_for_non_manager(
 
     assert response.status_code == 403
     assert (
-        client.get(f"/hr/leave-requests/{created['id']}", headers=user_headers).json()["status"]
+        client.get(f"/hr/leave-requests/{created['id']}", headers=requester_headers).json()[
+            "status"
+        ]
         == "pending"
     )
