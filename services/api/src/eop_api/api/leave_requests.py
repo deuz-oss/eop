@@ -3,7 +3,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.employee_context import CurrentRequestContext
 from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.search import Search
@@ -23,6 +22,7 @@ from eop_api.services.approval import (
 from eop_api.services.leave_request import (
     EmployeeNotFoundError,
     InvalidLeaveDateRangeError,
+    LeaveAuthorizationDeniedError,
     LeaveRequestService,
 )
 
@@ -61,14 +61,18 @@ LeaveRequestFilters = Annotated[FilterParams, Depends(get_leave_request_filters)
 
 @router.post("", response_model=LeaveRequestResponse, status_code=status.HTTP_201_CREATED)
 async def create_leave_request(
-    data: LeaveRequestCreate, service: LeaveRequestServiceDep, _: CurrentUser
+    data: LeaveRequestCreate,
+    service: LeaveRequestServiceDep,
+    request_context: CurrentRequestContext,
 ) -> LeaveRequestResponse:
     try:
-        leave_request = await service.create(data)
+        leave_request = await service.create(data, request_context)
     except EmployeeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
         ) from exc
+    except LeaveAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except InvalidLeaveDateRangeError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -79,9 +83,9 @@ async def create_leave_request(
 
 @router.get("", response_model=list[LeaveRequestResponse])
 async def list_leave_requests(
-    service: LeaveRequestServiceDep, _: CurrentUser
+    service: LeaveRequestServiceDep, request_context: CurrentRequestContext
 ) -> list[LeaveRequestResponse]:
-    leave_requests = await service.list()
+    leave_requests = await service.list(request_context)
     return [LeaveRequestResponse.model_validate(item) for item in leave_requests]
 
 
@@ -91,9 +95,9 @@ async def list_leave_requests_paginated(
     pagination: Pagination,
     search: Search,
     filters: LeaveRequestFilters,
-    _: CurrentUser,
+    request_context: CurrentRequestContext,
 ) -> Page[LeaveRequestResponse]:
-    page = await service.list_paginated(pagination, search, filters)
+    page = await service.list_paginated(request_context, pagination, search, filters)
     return Page(
         items=[LeaveRequestResponse.model_validate(item) for item in page.items],
         total=page.total,
@@ -104,9 +108,14 @@ async def list_leave_requests_paginated(
 
 @router.get("/{leave_request_id}", response_model=LeaveRequestResponse)
 async def get_leave_request(
-    leave_request_id: uuid.UUID, service: LeaveRequestServiceDep, _: CurrentUser
+    leave_request_id: uuid.UUID,
+    service: LeaveRequestServiceDep,
+    request_context: CurrentRequestContext,
 ) -> LeaveRequestResponse:
-    leave_request = await service.get(leave_request_id)
+    try:
+        leave_request = await service.get(leave_request_id, request_context)
+    except LeaveAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if leave_request is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
@@ -119,14 +128,16 @@ async def update_leave_request(
     leave_request_id: uuid.UUID,
     data: LeaveRequestUpdate,
     service: LeaveRequestServiceDep,
-    _: CurrentUser,
+    request_context: CurrentRequestContext,
 ) -> LeaveRequestResponse:
     try:
-        leave_request = await service.update(leave_request_id, data)
+        leave_request = await service.update(leave_request_id, data, request_context)
     except EmployeeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
         ) from exc
+    except LeaveAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except InvalidLeaveDateRangeError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -141,9 +152,14 @@ async def update_leave_request(
 
 @router.delete("/{leave_request_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_leave_request(
-    leave_request_id: uuid.UUID, service: LeaveRequestServiceDep, _: CurrentUser
+    leave_request_id: uuid.UUID,
+    service: LeaveRequestServiceDep,
+    request_context: CurrentRequestContext,
 ) -> None:
-    deleted = await service.delete(leave_request_id)
+    try:
+        deleted = await service.delete(leave_request_id, request_context)
+    except LeaveAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"

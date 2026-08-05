@@ -54,3 +54,17 @@ def test_request_is_immutable():
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         request.context = _request_context()  # type: ignore[misc]
+
+
+def test_request_resource_defaults_to_none():
+    request = AuthorizationRequest(context=_request_context())
+
+    assert request.resource is None
+
+
+def test_request_carries_an_opaque_resource():
+    resource = object()
+
+    request = AuthorizationRequest(context=_request_context(), resource=resource)
+
+    assert request.resource is resource
