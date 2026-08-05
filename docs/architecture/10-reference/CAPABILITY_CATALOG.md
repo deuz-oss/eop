@@ -45,6 +45,7 @@ Detailed implementation remains in the individual capability documents.
 | Identity Context | Implemented | Platform | ADR-006 |
 | Authorization Foundation | Implemented | Platform | ADR-007 |
 | Approval Authorization | Implemented | Approval | ADR-008 |
+| Leave Authorization | Implemented | Leave | ADR-007 |
 | Approval Workflow | Implemented | Approval | ADR-004 |
 | HR Master Data | Implemented | HR | ADR-003 |
 | Permission Model | Deferred | Platform | Future ADR |
@@ -301,6 +302,122 @@ Not implemented:
 
 ---
 
+# Leave Authorization
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Protect `LeaveRequest` create/get/update/delete operations using capability-specific authorization policy, distinct from Approval Authorization's `approve`/`reject` enforcement on the same resource.
+
+---
+
+## Policy
+
+Current policy:
+
+```
+Owner Only
+```
+
+Authorization rule:
+
+```
+LeaveRequest.employee_id
+==
+RequestContext.employee_context.employee.id
+```
+
+Only the owning employee may create, view, update, or delete their own `LeaveRequest`.
+
+---
+
+## Responsibilities
+
+- Evaluate leave authorization
+- Produce AuthorizationDecision
+- Deny unauthorized access
+
+---
+
+## Architecture
+
+```
+CurrentRequestContext
+
+↓
+
+AuthorizationRequest
+
+↓
+
+AuthorizationService
+
+↓
+
+LeaveAuthorizationEvaluator
+
+↓
+
+AuthorizationDecision
+
+↓
+
+LeaveRequestService
+```
+
+---
+
+## Dependencies
+
+Requires:
+
+- Identity Context
+- Authorization Foundation
+
+---
+
+## Consumers
+
+- None (LeaveRequest CRUD lifecycle only)
+
+---
+
+## Governing ADR
+
+ADR-007 (Authorization Foundation dependency; no dedicated Leave Authorization ADR exists)
+
+---
+
+## Implementation
+
+Completed in:
+
+```
+PR-056
+```
+
+---
+
+## Out of Scope
+
+Not implemented:
+
+- manager access
+- role-based access
+- hybrid authorization
+- delegated access
+- permission model
+- policy engine
+
+---
+
 # Approval Workflow
 
 **Status**
@@ -540,6 +657,7 @@ Business Capabilities
 | Identity Context | ✓ | ✓ | ✓ | Implemented |
 | Authorization Foundation | ✓ | ✓ | ✓ | Implemented |
 | Approval Authorization | ✓ | ✓ | ✓ | Implemented |
+| Leave Authorization | ✓ | ✓ | ✓ | Implemented |
 | Approval Workflow | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |

@@ -234,7 +234,9 @@ def _create_shift(
     return response.json()
 
 
-def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
+def _create_employee(
+    client: TestClient, headers: dict[str, str], *, user_id: str | None = None
+) -> dict:
     organization = _create_organization(client, headers)
     department = _create_department(client, headers, organization_id=organization["id"])
     position = _create_position(
@@ -250,28 +252,28 @@ def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
     employment_status = _create_employment_status(client, headers)
     shift = _create_shift(client, headers)
 
-    response = client.post(
-        "/hr/employees",
-        json={
-            "employee_number": "EMP-1",
-            "first_name": "Ada",
-            "last_name": "Lovelace",
-            "full_name": "Ada Lovelace",
-            "email": "ada@example.com",
-            "organization_id": organization["id"],
-            "department_id": department["id"],
-            "position_id": position["id"],
-            "team_id": team["id"],
-            "location_id": location["id"],
-            "job_grade_id": job_grade["id"],
-            "employment_type_id": employment_type["id"],
-            "employment_status_id": employment_status["id"],
-            "shift_id": shift["id"],
-            "hire_date": "2024-01-15",
-            "employment_status": "active",
-        },
-        headers=headers,
-    )
+    payload: dict = {
+        "employee_number": "EMP-1",
+        "first_name": "Ada",
+        "last_name": "Lovelace",
+        "full_name": "Ada Lovelace",
+        "email": "ada@example.com",
+        "organization_id": organization["id"],
+        "department_id": department["id"],
+        "position_id": position["id"],
+        "team_id": team["id"],
+        "location_id": location["id"],
+        "job_grade_id": job_grade["id"],
+        "employment_type_id": employment_type["id"],
+        "employment_status_id": employment_status["id"],
+        "shift_id": shift["id"],
+        "hire_date": "2024-01-15",
+        "employment_status": "active",
+    }
+    if user_id is not None:
+        payload["user_id"] = user_id
+
+    response = client.post("/hr/employees", json=payload, headers=headers)
     assert response.status_code == 201
     employee = response.json()
     employee["shift_id"] = shift["id"]
@@ -380,9 +382,9 @@ def test_get_reconciliation_absent_when_no_facts(
 
 
 def test_get_reconciliation_present_when_attendance_event_exists(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_attendance_event(
         client, user_headers, employee_id=employee["id"], shift_id=employee["shift_id"]
     )
@@ -398,9 +400,9 @@ def test_get_reconciliation_present_when_attendance_event_exists(
 
 
 def test_get_reconciliation_leave_when_approved_leave_request_covers_date(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_approved_leave_request(client, user_headers, employee_id=employee["id"])
 
     response = client.get(
@@ -430,9 +432,9 @@ def test_get_reconciliation_holiday_when_date_is_holiday(
 
 
 def test_get_reconciliation_precedence_holiday_beats_leave_and_attendance(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_holiday(client, user_headers)
     _create_approved_leave_request(client, user_headers, employee_id=employee["id"])
     _create_attendance_event(
@@ -450,9 +452,9 @@ def test_get_reconciliation_precedence_holiday_beats_leave_and_attendance(
 
 
 def test_get_reconciliation_precedence_leave_beats_attendance(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_approved_leave_request(client, user_headers, employee_id=employee["id"])
     _create_attendance_event(
         client, user_headers, employee_id=employee["id"], shift_id=employee["shift_id"]
