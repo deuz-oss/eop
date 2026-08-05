@@ -433,9 +433,10 @@ Current consumers are introduced incrementally through capability-specific decis
 
 ## Current State
 
-Implemented consumer:
+Implemented consumers:
 
-Approval Authorization
+- Approval Authorization
+- Leave Authorization
 
 Future capabilities still require:
 

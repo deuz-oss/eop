@@ -261,6 +261,7 @@ Each business capability defines and owns its authorization policy while consumi
 | Capability             | Status |
 | ---------------------- | ------ |
 | Approval Authorization | ✅     |
+| Leave Authorization    | ✅     |
 
 ---
 
@@ -296,11 +297,42 @@ PR-053
 
 ---
 
+## Leave Authorization Policy
+
+```
+Owner Only
+```
+
+Rule:
+
+```
+LeaveRequest.employee_id
+==
+RequestContext.employee_context.employee.id
+```
+
+Only the owning employee may act on their own LeaveRequest.
+
+---
+
+## Related ADR
+
+- ADR-007 (Authorization Foundation dependency; no dedicated Leave Authorization ADR exists)
+
+---
+
+## Implemented
+
+```
+PR-056
+```
+
+---
+
 ## Remaining Capability Authorizations
 
 | Capability                | Status  |
 | ------------------------- | ------- |
-| Leave Authorization       | Planned |
 | Attendance Authorization  | Planned |
 | Payroll Authorization     | Planned |
 | Recruitment Authorization | Planned |
@@ -397,7 +429,7 @@ Future ADRs required.
 | Identity Context         | ✅ Implemented |
 | Authorization Foundation | ✅ Implemented |
 | Approval Authorization   | ✅ Implemented |
-| Leave Authorization      | Planned        |
+| Leave Authorization      | ✅ Implemented |
 | Attendance Authorization | Planned        |
 | Payroll Authorization    | Planned        |
 | Permission Model         | Deferred       |

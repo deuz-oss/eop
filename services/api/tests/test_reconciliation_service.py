@@ -10,6 +10,8 @@ from eop_api import models  # noqa: F401 -- registers all models on Base.metadat
 from eop_api.core.attendance import EventSource, EventType
 from eop_api.core.config import settings
 from eop_api.db.base import Base
+from eop_api.models.hr_employee import HrEmployee
+from eop_api.models.user import User
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
@@ -25,6 +27,7 @@ from eop_api.schemas.attendance_event import AttendanceEventCreate
 from eop_api.schemas.holiday import HolidayCreate
 from eop_api.schemas.leave_request import LeaveRequestCreate, LeaveRequestUpdate
 from eop_api.services.attendance_event import AttendanceEventService
+from eop_api.services.employee_context import EmployeeContext, RequestContext
 from eop_api.services.holiday import HolidayService
 from eop_api.services.leave_request import LeaveRequestService
 from eop_api.services.reconciliation import EmployeeNotFoundError, ReconciliationService
@@ -170,6 +173,47 @@ def shift_id(employee: tuple[uuid.UUID, uuid.UUID]) -> uuid.UUID:
     return employee[1]
 
 
+def _owner_request_context(employee_id: uuid.UUID) -> RequestContext:
+    """An in-memory `RequestContext` scoped to `employee_id`, sufficient for
+    `LeaveRequestService`'s Owner Only check and `AttendanceEventService`'s
+    Owner Only check (both evaluators only read
+    `context.employee_context.employee.id`) -- mirrors
+    `test_leave_request_service.py`'s own `_request_context` helper. The
+    `employee` fixture's `HrEmployee` has no linked `user_id` of its own, so
+    this in-memory context is what these two services' calls need.
+    """
+    user = User(
+        id=uuid.uuid4(),
+        email="requester@example.com",
+        password_hash="hash",
+        full_name="Requester",
+        is_active=True,
+    )
+    hr_employee = HrEmployee(
+        id=employee_id,
+        employee_number="REQ-1",
+        first_name="Requester",
+        last_name="One",
+        full_name="Requester One",
+        email="requester@example.com",
+        organization_id=uuid.uuid4(),
+        department_id=uuid.uuid4(),
+        position_id=uuid.uuid4(),
+        team_id=uuid.uuid4(),
+        location_id=uuid.uuid4(),
+        job_grade_id=uuid.uuid4(),
+        employment_type_id=uuid.uuid4(),
+        employment_status_id=uuid.uuid4(),
+        shift_id=uuid.uuid4(),
+        hire_date=date(2020, 1, 1),
+        employment_status="active",
+        user_id=user.id,
+    )
+    return RequestContext(
+        user=user, employee_context=EmployeeContext(user=user, employee=hr_employee)
+    )
+
+
 async def _approved_leave_request(
     leave_request_service: LeaveRequestService,
     employee_id: uuid.UUID,
@@ -177,10 +221,14 @@ async def _approved_leave_request(
     start_date: date = date(2026, 3, 1),
     end_date: date = date(2026, 3, 3),
 ) -> uuid.UUID:
+    context = _owner_request_context(employee_id)
     leave_request = await leave_request_service.create(
-        LeaveRequestCreate(employee_id=employee_id, start_date=start_date, end_date=end_date)
+        LeaveRequestCreate(employee_id=employee_id, start_date=start_date, end_date=end_date),
+        context,
     )
-    await leave_request_service.update(leave_request.id, LeaveRequestUpdate(status="approved"))
+    await leave_request_service.update(
+        leave_request.id, LeaveRequestUpdate(status="approved"), context
+    )
     return leave_request.id
 
 
@@ -198,7 +246,8 @@ async def _attendance_event(
             event_type=EventType.CLOCK_IN,
             event_time=event_time,
             source=EventSource.SYSTEM,
-        )
+        ),
+        _owner_request_context(employee_id),
     )
     return event.id
 
@@ -257,7 +306,8 @@ async def test_reconcile_ignores_pending_leave_request(
     await leave_request_service.create(
         LeaveRequestCreate(
             employee_id=employee_id, start_date=date(2026, 3, 1), end_date=date(2026, 3, 3)
-        )
+        ),
+        _owner_request_context(employee_id),
     )
 
     result = await service.reconcile(employee_id, TARGET_DATE)

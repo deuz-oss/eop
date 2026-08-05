@@ -67,6 +67,7 @@ Business Capability
 | Identity Context | Implemented | User to employee context resolution |
 | Authorization Foundation | Implemented | Generic authorization mechanism |
 | Approval Authorization | Implemented | Manager Approval policy |
+| Leave Authorization | Implemented | Owner Only policy |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -272,6 +273,91 @@ The capability does not implement:
 - indirect approval
 - recursive hierarchy
 - approval roles
+- workflow assignment
+- permission model
+
+---
+
+# Leave Authorization
+
+**Status:**
+
+Implemented
+
+**Related:**
+
+- Leave Authorization Discovery
+- Leave Authorization Policy Discovery
+- Leave Authorization Decision
+- Leave Authorization Implementation Plan
+- Leave Authorization Architecture Review
+
+---
+
+## Purpose
+
+Provides authorization enforcement for `LeaveRequest` create/get/update/delete operations, distinct from Approval Authorization's `approve`/`reject` enforcement on the same resource.
+
+---
+
+## Current Policy
+
+Policy:
+
+Owner Only
+
+Rule:
+
+LeaveRequest.employee_id
+==
+RequestContext.employee_context.employee.id
+
+---
+
+## Supported Behavior
+
+Allowed:
+
+Owner
+↓
+Create / Get / Update / Delete
+
+---
+
+Denied:
+
+Non Owner
+↓
+Forbidden
+
+---
+
+## Integration Flow
+
+Current implementation:
+
+CurrentRequestContext
+↓
+AuthorizationRequest
+↓
+AuthorizationService
+↓
+LeaveAuthorizationEvaluator
+↓
+AuthorizationDecision
+↓
+LeaveRequestService
+
+---
+
+## Constraints
+
+The capability does not implement:
+
+- manager access
+- role-based access
+- hybrid authorization
+- delegated access
 - workflow assignment
 - permission model
 
@@ -523,6 +609,7 @@ Foundation
 Phase 2
 Capability Authorization
 ✓ Approval Authorization
+✓ Leave Authorization
 Phase 3
 Enterprise Authorization
 ○ Permission Model

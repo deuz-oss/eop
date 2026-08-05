@@ -89,6 +89,21 @@ def user_headers(client: TestClient, user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def other() -> User:
+    """An authenticated user who does not own the attendance event under test."""
+    return asyncio.run(_create_user(email="other@example.com", password="other-pass"))
+
+
+@pytest.fixture
+def other_headers(client: TestClient, other: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "other@example.com", "password": "other-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _create_organization(
     client: TestClient, headers: dict[str, str], *, name: str = "Acme Corp"
 ) -> dict:
@@ -232,44 +247,73 @@ def _create_shift(
     return response.json()
 
 
-def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
-    organization = _create_organization(client, headers)
-    department = _create_department(client, headers, organization_id=organization["id"])
+def _create_employee(
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    employee_number: str = "EMP-1",
+    email: str = "ada@example.com",
+    first_name: str = "Ada",
+    last_name: str = "Lovelace",
+    full_name: str = "Ada Lovelace",
+    user_id: str | None = None,
+) -> dict:
+    """Each call creates its own HR master-data scaffolding, suffixed by a
+    fresh id so multiple employees (e.g. owner + non-owner) can be created
+    within the same test without violating the `code`/`name` uniqueness
+    constraints on organizations/departments/.../shifts."""
+    suffix = uuid.uuid4().hex[:8]
+    organization = _create_organization(client, headers, name=f"Acme Corp {suffix}")
+    department = _create_department(
+        client, headers, organization_id=organization["id"], code=f"ENG-{suffix}"
+    )
     position = _create_position(
-        client, headers, organization_id=organization["id"], department_id=department["id"]
+        client,
+        headers,
+        organization_id=organization["id"],
+        department_id=department["id"],
+        code=f"POS-{suffix}",
     )
     team = _create_team(
-        client, headers, organization_id=organization["id"], department_id=department["id"]
+        client,
+        headers,
+        organization_id=organization["id"],
+        department_id=department["id"],
+        code=f"TEAM-{suffix}",
     )
-    location_type = _create_location_type(client, headers)
-    location = _create_location(client, headers, location_type_id=location_type["id"])
-    job_grade = _create_job_grade(client, headers)
-    employment_type = _create_employment_type(client, headers)
-    employment_status = _create_employment_status(client, headers)
-    shift = _create_shift(client, headers)
+    location_type = _create_location_type(client, headers, code=f"OFFICE-{suffix}")
+    location = _create_location(
+        client, headers, location_type_id=location_type["id"], code=f"HQ-{suffix}"
+    )
+    job_grade = _create_job_grade(
+        client, headers, code=f"L1-{suffix}", level=int(suffix[:4], 16) + 1
+    )
+    employment_type = _create_employment_type(client, headers, code=f"FT-{suffix}")
+    employment_status = _create_employment_status(client, headers, code=f"ACTIVE-{suffix}")
+    shift = _create_shift(client, headers, code=f"DAY-{suffix}")
 
-    response = client.post(
-        "/hr/employees",
-        json={
-            "employee_number": "EMP-1",
-            "first_name": "Ada",
-            "last_name": "Lovelace",
-            "full_name": "Ada Lovelace",
-            "email": "ada@example.com",
-            "organization_id": organization["id"],
-            "department_id": department["id"],
-            "position_id": position["id"],
-            "team_id": team["id"],
-            "location_id": location["id"],
-            "job_grade_id": job_grade["id"],
-            "employment_type_id": employment_type["id"],
-            "employment_status_id": employment_status["id"],
-            "shift_id": shift["id"],
-            "hire_date": "2024-01-15",
-            "employment_status": "active",
-        },
-        headers=headers,
-    )
+    payload: dict = {
+        "employee_number": employee_number,
+        "first_name": first_name,
+        "last_name": last_name,
+        "full_name": full_name,
+        "email": email,
+        "organization_id": organization["id"],
+        "department_id": department["id"],
+        "position_id": position["id"],
+        "team_id": team["id"],
+        "location_id": location["id"],
+        "job_grade_id": job_grade["id"],
+        "employment_type_id": employment_type["id"],
+        "employment_status_id": employment_status["id"],
+        "shift_id": shift["id"],
+        "hire_date": "2024-01-15",
+        "employment_status": "active",
+    }
+    if user_id is not None:
+        payload["user_id"] = user_id
+
+    response = client.post("/hr/employees", json=payload, headers=headers)
     assert response.status_code == 201
     return response.json()
 
@@ -333,8 +377,8 @@ def test_delete_attendance_event_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_create_attendance_event(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_create_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     body = _create_attendance_event(
         client, user_headers, employee["id"], employee["shift_id"]
@@ -349,9 +393,9 @@ def test_create_attendance_event(client: TestClient, user_headers: dict[str, str
 
 
 def test_create_attendance_event_rejects_missing_employee(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     response = client.post(
         "/hr/attendance-events",
@@ -363,9 +407,9 @@ def test_create_attendance_event_rejects_missing_employee(
 
 
 def test_create_attendance_event_rejects_missing_shift(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     response = client.post(
         "/hr/attendance-events",
@@ -377,9 +421,9 @@ def test_create_attendance_event_rejects_missing_shift(
 
 
 def test_create_attendance_event_rejects_invalid_event_type(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     response = client.post(
         "/hr/attendance-events",
@@ -393,9 +437,9 @@ def test_create_attendance_event_rejects_invalid_event_type(
 
 
 def test_create_attendance_event_rejects_invalid_source(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     response = client.post(
         "/hr/attendance-events",
@@ -406,8 +450,32 @@ def test_create_attendance_event_rejects_invalid_source(
     assert response.status_code == 422
 
 
-def test_get_attendance_event(client: TestClient, user_headers: dict[str, str]):
+def test_create_attendance_event_forbidden_for_non_owner(
+    client: TestClient, user_headers: dict[str, str], other: User, other_headers: dict[str, str]
+):
     employee = _create_employee(client, user_headers)
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.post(
+        "/hr/attendance-events",
+        json=_attendance_event_payload(employee["id"], employee["shift_id"]),
+        headers=other_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_get_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_attendance_event(
         client, user_headers, employee["id"], employee["shift_id"]
     )
@@ -418,14 +486,45 @@ def test_get_attendance_event(client: TestClient, user_headers: dict[str, str]):
     assert response.json()["id"] == created["id"]
 
 
-def test_get_attendance_event_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_get_attendance_event_not_found(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.get(f"/hr/attendance-events/{uuid.uuid4()}", headers=user_headers)
 
     assert response.status_code == 404
 
 
-def test_list_attendance_events(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_get_attendance_event_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_attendance_event(
+        client, user_headers, employee["id"], employee["shift_id"]
+    )
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.get(f"/hr/attendance-events/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403
+
+
+def test_list_attendance_events(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
     _create_attendance_event(
         client,
@@ -443,10 +542,39 @@ def test_list_attendance_events(client: TestClient, user_headers: dict[str, str]
     assert {"CLOCK_IN", "CLOCK_OUT"}.issubset(event_types)
 
 
-def test_list_attendance_events_paginated_default_pagination(
-    client: TestClient, user_headers: dict[str, str]
+def test_list_attendance_events_returns_only_owned(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+    _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
+    _create_attendance_event(
+        client, other_headers, other_employee["id"], other_employee["shift_id"]
+    )
+
+    response = client.get("/hr/attendance-events", headers=user_headers)
+
+    assert response.status_code == 200
+    assert {item["employee_id"] for item in response.json()} == {employee["id"]}
+
+
+def test_list_attendance_events_paginated_default_pagination(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     for i in range(3):
         _create_attendance_event(
             client,
@@ -467,9 +595,9 @@ def test_list_attendance_events_paginated_default_pagination(
 
 
 def test_list_attendance_events_paginated_custom_offset(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     for i in range(5):
         _create_attendance_event(
             client,
@@ -491,9 +619,9 @@ def test_list_attendance_events_paginated_custom_offset(
 
 
 def test_list_attendance_events_paginated_search_by_remarks(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_attendance_event(
         client,
         user_headers,
@@ -522,9 +650,9 @@ def test_list_attendance_events_paginated_search_by_remarks(
 
 
 def test_list_attendance_events_paginated_filter_by_event_type(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
     _create_attendance_event(
         client,
@@ -547,18 +675,37 @@ def test_list_attendance_events_paginated_filter_by_event_type(
     assert body["items"][0]["event_type"] == "CLOCK_OUT"
 
 
-def test_list_attendance_events_paginated_filter_by_employee_id(
-    client: TestClient, user_headers: dict[str, str]
+def test_list_attendance_events_paginated_filter_by_employee_id_is_ignored(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
 ):
-    employee = _create_employee(client, user_headers)
+    """A caller cannot widen scope by passing a different `employee_id` filter --
+    the response is still scoped to the caller's own employee (Owner Only)."""
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
     created = _create_attendance_event(
         client, user_headers, employee["id"], employee["shift_id"]
+    )
+    _create_attendance_event(
+        client, other_headers, other_employee["id"], other_employee["shift_id"]
     )
 
     response = client.get(
         "/hr/attendance-events/paginated",
         headers=user_headers,
-        params={"employee_id": employee["id"]},
+        params={"employee_id": other_employee["id"]},
     )
 
     assert response.status_code == 200
@@ -567,8 +714,8 @@ def test_list_attendance_events_paginated_filter_by_employee_id(
     assert body["items"][0]["id"] == created["id"]
 
 
-def test_update_attendance_event(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_update_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_attendance_event(
         client, user_headers, employee["id"], employee["shift_id"]
     )
@@ -583,7 +730,11 @@ def test_update_attendance_event(client: TestClient, user_headers: dict[str, str
     assert response.json()["remarks"] == "Corrected"
 
 
-def test_update_attendance_event_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_update_attendance_event_not_found(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.put(
         f"/hr/attendance-events/{uuid.uuid4()}",
         json={"remarks": "Corrected"},
@@ -594,9 +745,9 @@ def test_update_attendance_event_not_found(client: TestClient, user_headers: dic
 
 
 def test_update_attendance_event_rejects_missing_employee(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_attendance_event(
         client, user_headers, employee["id"], employee["shift_id"]
     )
@@ -611,9 +762,9 @@ def test_update_attendance_event_rejects_missing_employee(
 
 
 def test_update_attendance_event_rejects_missing_shift(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_attendance_event(
         client, user_headers, employee["id"], employee["shift_id"]
     )
@@ -627,8 +778,39 @@ def test_update_attendance_event_rejects_missing_shift(
     assert response.status_code == 404
 
 
-def test_delete_attendance_event(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_update_attendance_event_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_attendance_event(
+        client, user_headers, employee["id"], employee["shift_id"]
+    )
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.put(
+        f"/hr/attendance-events/{created['id']}",
+        json={"remarks": "Corrected"},
+        headers=other_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_attendance_event(
         client, user_headers, employee["id"], employee["shift_id"]
     )
@@ -642,7 +824,38 @@ def test_delete_attendance_event(client: TestClient, user_headers: dict[str, str
     )
 
 
-def test_delete_attendance_event_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_delete_attendance_event_not_found(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.delete(f"/hr/attendance-events/{uuid.uuid4()}", headers=user_headers)
 
     assert response.status_code == 404
+
+
+def test_delete_attendance_event_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_attendance_event(
+        client, user_headers, employee["id"], employee["shift_id"]
+    )
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.delete(f"/hr/attendance-events/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403

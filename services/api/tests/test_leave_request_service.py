@@ -104,7 +104,7 @@ async def _create_hr_employee(
             code=f"HQ-{suffix}", name="HQ", location_type_id=location_type.id
         )
         job_grade = await JobGradeRepository(session).create(
-            code=f"L1-{suffix}", name="Junior", level=1
+            code=f"L1-{suffix}", name="Junior", level=ord(suffix[0]) - ord("a") + 1
         )
         employment_type = await EmploymentTypeRepository(session).create(
             code=f"FT-{suffix}", name="Full-Time"

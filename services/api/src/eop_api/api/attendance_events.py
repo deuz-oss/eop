@@ -4,7 +4,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from eop_api.core.attendance import EventSource, EventType
-from eop_api.dependencies.auth import CurrentUser
+from eop_api.dependencies.employee_context import CurrentRequestContext
 from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.search import Search
 from eop_api.schemas.attendance_event import (
@@ -15,6 +15,7 @@ from eop_api.schemas.attendance_event import (
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.search import FilterParams
 from eop_api.services.attendance_event import (
+    AttendanceAuthorizationDeniedError,
     AttendanceEventService,
     EmployeeNotFoundError,
     ShiftNotFoundError,
@@ -57,10 +58,12 @@ AttendanceEventFilters = Annotated[FilterParams, Depends(get_attendance_event_fi
 
 @router.post("", response_model=AttendanceEventResponse, status_code=status.HTTP_201_CREATED)
 async def create_attendance_event(
-    data: AttendanceEventCreate, service: AttendanceEventServiceDep, _: CurrentUser
+    data: AttendanceEventCreate,
+    service: AttendanceEventServiceDep,
+    request_context: CurrentRequestContext,
 ) -> AttendanceEventResponse:
     try:
-        event = await service.create(data)
+        event = await service.create(data, request_context)
     except EmployeeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
@@ -69,14 +72,16 @@ async def create_attendance_event(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found"
         ) from exc
+    except AttendanceAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     return AttendanceEventResponse.model_validate(event)
 
 
 @router.get("", response_model=list[AttendanceEventResponse])
 async def list_attendance_events(
-    service: AttendanceEventServiceDep, _: CurrentUser
+    service: AttendanceEventServiceDep, request_context: CurrentRequestContext
 ) -> list[AttendanceEventResponse]:
-    events = await service.list()
+    events = await service.list(request_context)
     return [AttendanceEventResponse.model_validate(item) for item in events]
 
 
@@ -86,9 +91,9 @@ async def list_attendance_events_paginated(
     pagination: Pagination,
     search: Search,
     filters: AttendanceEventFilters,
-    _: CurrentUser,
+    request_context: CurrentRequestContext,
 ) -> Page[AttendanceEventResponse]:
-    page = await service.list_paginated(pagination, search, filters)
+    page = await service.list_paginated(request_context, pagination, search, filters)
     return Page(
         items=[AttendanceEventResponse.model_validate(item) for item in page.items],
         total=page.total,
@@ -99,9 +104,14 @@ async def list_attendance_events_paginated(
 
 @router.get("/{event_id}", response_model=AttendanceEventResponse)
 async def get_attendance_event(
-    event_id: uuid.UUID, service: AttendanceEventServiceDep, _: CurrentUser
+    event_id: uuid.UUID,
+    service: AttendanceEventServiceDep,
+    request_context: CurrentRequestContext,
 ) -> AttendanceEventResponse:
-    event = await service.get(event_id)
+    try:
+        event = await service.get(event_id, request_context)
+    except AttendanceAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if event is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Attendance event not found"
@@ -114,10 +124,10 @@ async def update_attendance_event(
     event_id: uuid.UUID,
     data: AttendanceEventUpdate,
     service: AttendanceEventServiceDep,
-    _: CurrentUser,
+    request_context: CurrentRequestContext,
 ) -> AttendanceEventResponse:
     try:
-        event = await service.update(event_id, data)
+        event = await service.update(event_id, data, request_context)
     except EmployeeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
@@ -126,6 +136,8 @@ async def update_attendance_event(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found"
         ) from exc
+    except AttendanceAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if event is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Attendance event not found"
@@ -135,9 +147,14 @@ async def update_attendance_event(
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_attendance_event(
-    event_id: uuid.UUID, service: AttendanceEventServiceDep, _: CurrentUser
+    event_id: uuid.UUID,
+    service: AttendanceEventServiceDep,
+    request_context: CurrentRequestContext,
 ) -> None:
-    deleted = await service.delete(event_id)
+    try:
+        deleted = await service.delete(event_id, request_context)
+    except AttendanceAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Attendance event not found"

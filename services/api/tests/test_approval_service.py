@@ -10,6 +10,8 @@ from eop_api import models  # noqa: F401 -- registers all models on Base.metadat
 from eop_api.core.config import settings
 from eop_api.core.security import hash_password
 from eop_api.db.base import Base
+from eop_api.models.hr_employee import HrEmployee
+from eop_api.models.user import User
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
@@ -298,13 +300,55 @@ async def other_request_context(
     )
 
 
+def _owner_request_context(employee_id: uuid.UUID) -> RequestContext:
+    """An in-memory `RequestContext` scoped to `employee_id`, sufficient for
+    `LeaveRequestService`'s Owner Only authorization check (`LeaveAuthorizationEvaluator`
+    only reads `context.employee_context.employee.id`) -- mirrors
+    `test_leave_request_service.py`'s own `_request_context` helper. The
+    requester `HrEmployee` created by the `employee_id` fixture above has no
+    linked `user_id` of its own (only the manager/other actors need a real,
+    resolvable identity for Approval Authorization), so this in-memory
+    context -- not `_request_context_for` -- is what `LeaveRequestService`
+    calls need to create/read the requester's own `LeaveRequest`.
+    """
+    user = User(
+        id=uuid.uuid4(),
+        email="requester@example.com",
+        password_hash="hash",
+        full_name="Requester",
+        is_active=True,
+    )
+    employee = HrEmployee(
+        id=employee_id,
+        employee_number="REQ-1",
+        first_name="Requester",
+        last_name="One",
+        full_name="Requester One",
+        email="requester@example.com",
+        organization_id=uuid.uuid4(),
+        department_id=uuid.uuid4(),
+        position_id=uuid.uuid4(),
+        team_id=uuid.uuid4(),
+        location_id=uuid.uuid4(),
+        job_grade_id=uuid.uuid4(),
+        employment_type_id=uuid.uuid4(),
+        employment_status_id=uuid.uuid4(),
+        shift_id=uuid.uuid4(),
+        hire_date=date(2020, 1, 1),
+        employment_status="active",
+        user_id=user.id,
+    )
+    return RequestContext(user=user, employee_context=EmployeeContext(user=user, employee=employee))
+
+
 async def _leave_request_id(
     leave_request_service: LeaveRequestService, employee_id: uuid.UUID
 ) -> uuid.UUID:
     leave_request = await leave_request_service.create(
         LeaveRequestCreate(
             employee_id=employee_id, start_date=date(2026, 2, 10), end_date=date(2026, 2, 12)
-        )
+        ),
+        _owner_request_context(employee_id),
     )
     return leave_request.id
 
@@ -425,7 +469,9 @@ async def test_approve_leave_request_denied_for_non_manager(
     with pytest.raises(ApprovalAuthorizationDeniedError):
         await service.approve_leave_request(leave_request_id, other_request_context)
 
-    unchanged = await leave_request_service.get(leave_request_id)
+    unchanged = await leave_request_service.get(
+        leave_request_id, _owner_request_context(employee_id)
+    )
     assert unchanged is not None
     assert unchanged.status == "pending"
 
@@ -441,7 +487,9 @@ async def test_reject_leave_request_denied_for_non_manager(
     with pytest.raises(ApprovalAuthorizationDeniedError):
         await service.reject_leave_request(leave_request_id, other_request_context, "No")
 
-    unchanged = await leave_request_service.get(leave_request_id)
+    unchanged = await leave_request_service.get(
+        leave_request_id, _owner_request_context(employee_id)
+    )
     assert unchanged is not None
     assert unchanged.status == "pending"
 
