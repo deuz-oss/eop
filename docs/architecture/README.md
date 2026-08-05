@@ -2,67 +2,219 @@
 
 **Status:** Active
 
-**Version:** 1.0
-
-**Owner:** EOP Architecture Governance
-
 ---
 
 # Purpose
 
-This directory contains the architectural knowledge of the EOP platform.
+This directory contains the complete architectural documentation for the EOP platform.
 
-Its purpose is to ensure that architecture:
+The documentation describes:
 
-- is explicitly documented
-- evolves consistently
-- remains independent of implementation
-- can be understood without relying on historical conversations
+- architectural vision
+- architecture principles
+- governance
+- capability architecture
+- architecture decisions
+- implementation guidance
 
-This directory is the architectural source of truth for EOP.
+This documentation is the authoritative source for platform architecture.
 
 ---
 
-# Architecture Philosophy
-
-EOP follows a strict separation between:
+# Documentation Structure
 
 ```
-Discovery
-
-↓
-
-Architecture
-
-↓
-
-Implementation
-
-↓
-
-Review
+architecture/
+│
+├── README.md
+│
+├── 00-governance/
+│
+├── 10-reference/
+│
+├── 20-templates/
+│
+├── adrs/
+│
+└── capabilities/
 ```
 
-Each phase has a different responsibility.
+---
 
-Architecture is documented before implementation.
+# Reading Order
 
-Implementation follows architecture.
+New architects, developers, and AI assistants should read the documentation in the following order.
 
-Architecture is never inferred from implementation.
+## 1. Vision
+
+Start here.
+
+Defines where the platform is going.
+
+- ARCHITECTURE_VISION.md
+
+---
+
+## 2. Principles
+
+Defines architectural philosophy.
+
+- ARCHITECTURE_PRINCIPLES.md
+
+---
+
+## 3. Governance
+
+Defines how architecture evolves.
+
+Read:
+
+- ARCHITECTURE_GOVERNANCE.md
+- ARCHITECTURE_REVIEW_CHECKLIST.md
+- ARCHITECTURE_STATUS.md
+- ARCHITECTURE_CHANGELOG.md
+
+---
+
+## 4. Reference
+
+Understand the existing architecture.
+
+Read:
+
+- REPOSITORY_CENSUS.md
+- ARCHITECTURE_INVENTORY.md
+- CAPABILITY_CATALOG.md
+- CAPABILITY_DEPENDENCY_GRAPH.md
+- MASTER_ARCHITECTURE_BLUEPRINT.md
+- MASTER_ARCHITECTURE_ROADMAP.md
+
+---
+
+## 5. Templates
+
+Before creating architecture documents.
+
+Read:
+
+- ADR_TEMPLATE.md
+- CAPABILITY_TEMPLATE.md
+- AI_DISCOVERY_GUIDE.md
+- CLAUDE_IMPLEMENTATION_GUIDE.md
+
+---
+
+## 6. Architecture Decisions
+
+Read all accepted ADRs.
+
+Location
+
+```
+adrs/
+```
+
+---
+
+## 7. Capability Documents
+
+Each capability contains:
+
+```
+discovery.md
+
+decision.md
+
+implementation-plan.md
+```
+
+Location
+
+```
+capabilities/
+```
+
+---
+
+# Documentation Categories
+
+## Vision
+
+Long-term architectural direction.
+
+Examples
+
+- Architecture Vision
+
+---
+
+## Governance
+
+How architecture is managed.
+
+Examples
+
+- Architecture Governance
+- Review Checklist
+- Status
+- Changelog
+
+---
+
+## Reference
+
+Current architecture.
+
+Examples
+
+- Repository Census
+- Architecture Inventory
+- Blueprint
+- Roadmap
+
+---
+
+## Templates
+
+Reusable document templates.
+
+Examples
+
+- ADR Template
+- Capability Template
+
+---
+
+## Decisions
+
+Architectural decisions.
+
+Examples
+
+- ADR-001
+- ADR-002
+- ADR-007
+
+---
+
+## Capabilities
+
+Capability-level architecture.
+
+Each capability owns:
+
+- Discovery
+- Decision
+- Implementation Plan
 
 ---
 
 # Architecture Lifecycle
 
-Every significant capability follows the same lifecycle.
+Every capability follows the same lifecycle.
 
 ```
 Repository Discovery
-
-↓
-
-Capability Discovery
 
 ↓
 
@@ -70,7 +222,15 @@ Architecture Decision
 
 ↓
 
-ADR (when required)
+ADR
+
+↓
+
+Blueprint Update
+
+↓
+
+Roadmap Update
 
 ↓
 
@@ -78,475 +238,150 @@ Implementation Plan
 
 ↓
 
+Architecture Review
+
+↓
+
 Implementation
 
 ↓
 
-Architecture Review
+Architecture Audit
 
 ↓
 
 Merge
 ```
 
-No phase should be skipped.
+Architecture always precedes implementation.
 
 ---
 
-# Repository Structure
+# AI Workflow
 
-```
-docs/
-└── architecture/
-    │
-    ├── README.md
-    │
-    ├── ARCHITECTURE_GOVERNANCE.md
-    ├── AI_DISCOVERY_GUIDE.md
-    ├── CLAUDE_IMPLEMENTATION_GUIDE.md
-    │
-    ├── MASTER_ARCHITECTURE_BLUEPRINT.md
-    ├── MASTER_ARCHITECTURE_ROADMAP.md
-    │
-    ├── ARCHITECTURE_DECISION_RECORDS/
-    │
-    ├── capabilities/
-    │
-    └── templates/
-```
+When using AI assistants:
 
----
+1. Read Architecture Vision.
 
-# Document Overview
+2. Read Architecture Principles.
 
-## README.md
+3. Read Architecture Governance.
 
-Entry point for the architecture repository.
+4. Read Blueprint.
 
-Start reading here.
+5. Read Roadmap.
 
----
+6. Read the target capability.
 
-## ARCHITECTURE_GOVERNANCE.md
+7. Read relevant ADRs.
 
-Defines the architecture governance process.
+8. Implement only the approved architecture.
 
-Describes:
-
-- roles
-- responsibilities
-- development lifecycle
-- review process
-- architecture authority
-
-Read before contributing.
-
----
-
-## AI_DISCOVERY_GUIDE.md
-
-Defines how repository discovery is performed.
-
-Applies to:
-
-- repository audits
-- architecture inventory
-- dependency analysis
-- capability discovery
-
-Discovery produces evidence only.
-
----
-
-## CLAUDE_IMPLEMENTATION_GUIDE.md
-
-Defines implementation governance.
-
-Applies to:
-
-- implementation
-- testing
-- repository modification
-
-Implementation follows approved architecture.
-
----
-
-## MASTER_ARCHITECTURE_BLUEPRINT.md
-
-Defines the current architecture of the platform.
-
-Contains:
-
-- capability map
-- dependency graph
-- platform architecture
-- layer boundaries
-
-Represents the current architecture.
-
----
-
-## MASTER_ARCHITECTURE_ROADMAP.md
-
-Defines the architectural evolution of EOP.
-
-Contains:
-
-- implementation phases
-- future capabilities
-- architectural milestones
-
-Represents future architecture.
-
----
-
-## ARCHITECTURE_DECISION_RECORDS
-
-Stores permanent architecture decisions.
-
-Each ADR documents:
-
-- context
-- decision
-- consequences
-
-ADRs are immutable historical records.
-
----
-
-## capabilities
-
-Each capability owns its own architecture.
-
-Typical structure:
-
-```
-<capability>/
-
-    discovery.md
-
-    decision.md
-
-    implementation-plan.md
-```
-
-Additional documents may be added when necessary.
-
----
-
-## templates
-
-Provides reusable templates.
-
-Templates include:
-
-- ADR template
-- Capability template
-
-New capabilities should begin from these templates.
-
----
-
-# Reading Order
-
-For new contributors:
-
-1.
-
-```
-README.md
-```
-
-↓
-
-2.
-
-```
-ARCHITECTURE_GOVERNANCE.md
-```
-
-↓
-
-3.
-
-```
-MASTER_ARCHITECTURE_BLUEPRINT.md
-```
-
-↓
-
-4.
-
-```
-MASTER_ARCHITECTURE_ROADMAP.md
-```
-
-↓
-
-5.
-
-Relevant capability documents
-
-↓
-
-6.
-
-Relevant ADR
-
----
-
-# Capability Workflow
-
-Every capability follows:
-
-```
-Discovery
-
-↓
-
-decision.md
-
-↓
-
-ADR (if required)
-
-↓
-
-implementation-plan.md
-
-↓
-
-Implementation
-
-↓
-
-Architecture Review
-```
-
-This workflow is mandatory.
-
----
-
-# Source of Truth
-
-Architecture documents are authoritative in the following order.
-
-Level 1
-
-Architecture Decision Records
-
-↓
-
-Level 2
-
-Capability Decision
-
-↓
-
-Level 3
-
-Implementation Plan
-
-↓
-
-Level 4
-
-Master Architecture Blueprint
-
-↓
-
-Level 5
-
-Master Architecture Roadmap
-
-↓
-
-Level 6
-
-Existing Repository
-
-Repository implementation must follow approved architecture.
+AI must not introduce new architecture.
 
 ---
 
 # Repository Governance
 
-Architecture documentation should evolve independently from production code whenever practical.
+Architecture changes require:
 
-Recommended workflow:
-
-```
-Architecture Branch
-
-↓
-
-Architecture Review
-
-↓
-
-Merge
-
-↓
-
-Implementation Branch
-
-↓
-
-Implementation Review
-
-↓
-
-Merge
-```
-
-This preserves a clear separation between architecture and implementation.
+- Repository evidence
+- Architecture review
+- Approved ADR
+- Updated Blueprint
+- Updated Roadmap
+- Updated Changelog
 
 ---
 
-# AI-Assisted Development
+# Directory Overview
 
-EOP supports AI-assisted development.
+## 00-governance
 
-AI operates in two modes.
+Platform governance.
 
-## Discovery
+Contains:
 
-Governed by:
-
-```
-AI_DISCOVERY_GUIDE.md
-```
-
-Role:
-
-Repository Analyst
-
-Produces:
-
-- evidence
-- findings
-- dependency analysis
-
-Does not produce architecture.
+- Architecture Vision
+- Principles
+- Governance
+- Status
+- Changelog
+- Review Checklist
 
 ---
 
-## Implementation
+## 10-reference
 
-Governed by:
+Repository reference.
 
-```
-CLAUDE_IMPLEMENTATION_GUIDE.md
-```
+Contains:
 
-Role:
-
-Implementation Engineer
-
-Produces:
-
-- production code
-- tests
-- documentation updates (when requested)
-
-Does not redesign architecture.
+- Repository Census
+- Architecture Inventory
+- Capability Catalog
+- Dependency Graph
+- Blueprint
+- Roadmap
 
 ---
 
-# Architecture Principles
+## 20-templates
 
-The following principles apply throughout EOP.
+Reusable templates.
 
-1.
+Contains:
 
-Architecture precedes implementation.
-
-2.
-
-Discovery precedes architecture.
-
-3.
-
-Repository evidence precedes architectural decisions.
-
-4.
-
-Architecture is documented.
-
-5.
-
-Architecture evolves through ADR.
-
-6.
-
-Implementation follows architecture.
-
-7.
-
-Architecture review precedes merge.
+- ADR Template
+- Capability Template
+- AI Discovery Guide
+- Claude Implementation Guide
 
 ---
 
-# Contributing
+## adrs
 
-Before implementing a new capability:
+Architecture Decision Records.
 
-1.
-
-Perform discovery.
-
-2.
-
-Review existing architecture.
-
-3.
-
-Review relevant ADR.
-
-4.
-
-Review the capability decision.
-
-5.
-
-Review the implementation plan.
-
-6.
-
-Implement according to governance.
+One document per accepted architecture decision.
 
 ---
 
-# Future Evolution
+## capabilities
 
-This architecture repository is expected to evolve over time.
+Capability architecture.
 
-Future additions may include:
+Each capability contains:
 
-- Architecture Review Checklist
-- Technical Debt Register
-- Architecture Metrics
-- Capability Maturity Model
-- Architecture Decision Index
-- Dependency Heatmap
-
-These documents extend the governance process without replacing it.
+- discovery.md
+- decision.md
+- implementation-plan.md
 
 ---
 
-# Guiding Principle
+# Contribution Rules
 
-Architecture is a product.
+Before changing architecture:
 
-It evolves intentionally.
+1. Complete Repository Discovery.
+2. Document the decision.
+3. Create or update the ADR.
+4. Update Blueprint if required.
+5. Update Roadmap if required.
+6. Update Changelog.
+7. Complete Architecture Review.
+8. Proceed with implementation.
 
-Discovery provides evidence.
+---
 
-Architecture provides direction.
+# Success Criteria
 
-Implementation provides execution.
+The architecture documentation is considered healthy when:
 
-Review preserves consistency.
+- every capability is documented
+- every architectural decision has an ADR
+- Blueprint matches implemented architecture
+- Roadmap reflects planned evolution
+- documentation stays synchronized with production code
 
-The repository remains the single source of truth.
+This documentation serves as the authoritative architectural knowledge base for the EOP platform.
