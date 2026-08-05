@@ -1,303 +1,534 @@
-# EOP Master Architecture Roadmap
+# Master Architecture Roadmap
 
-Status: Active
-
-Version: 1.1
-
-Date: 2026-08-04
-
-Owner:
-
-EOP Architecture Governance
+**Document:** Master Architecture Roadmap
+**Status:** Active
+**Owner:** Architecture Governance
+**Version:** 1.0
+**Last Updated:** 2026-08-05
 
 ---
 
-# 1. Purpose
+# Purpose
 
-This roadmap defines the capability evolution sequence of EOP.
+This roadmap defines the long-term architectural evolution of the EOP platform.
 
-The roadmap is capability-driven.
+It answers:
 
-It is not tied to GitHub Pull Request numbering.
+- What architecture already exists?
+- What capability comes next?
+- Which capabilities are intentionally deferred?
+- Which architectural foundations must be completed first?
+
+This document is architectural.
+
+It is **not** a product roadmap or release plan.
 
 ---
 
-# 2. Roadmap Principles
+# Architecture Vision
 
-Implementation follows:
+The EOP platform evolves through successive architectural layers.
 
+```
 Foundation
-↓
-Platform Capability
-↓
-Domain Capability
-↓
-Automation
 
-No domain feature should bypass required platform foundations.
+↓
+
+Identity
+
+↓
+
+Authorization
+
+↓
+
+Business Capabilities
+
+↓
+
+Enterprise Platform
+```
+
+Each layer depends on the stability of the previous layer.
 
 ---
 
-# 3. Phase Overview
+# Current Architecture State
 
-Phase 1
-Identity & Authorization Foundation
-Phase 2
-Workflow Governance
-Phase 3
-Workforce Authorization
-Phase 4
-Business Automation
-Phase 5
-Enterprise Intelligence
+```
+Authentication
+        │
+        ▼
+Identity Context
+        │
+        ▼
+Authorization Foundation
+        │
+        ▼
+Capability Authorization
+        │
+        ▼
+Business Capabilities
+```
 
 ---
 
-# Phase 1 — Identity & Authorization Foundation
+# Architecture Phases
 
-Status:
+---
 
-Discovery Complete
+# Phase 1 — Platform Foundation
 
-Architecture Decision Complete
+## Status
 
-Implementation Pending
+```
+Completed
+```
 
-Objective:
+---
 
-Create the foundation required for secure business operations.
+## Objectives
+
+Establish the common architectural foundation.
+
+---
+
+## Capabilities
+
+| Capability           | Status |
+| -------------------- | ------ |
+| Layered Architecture | ✅     |
+| Repository Pattern   | ✅     |
+| Unit of Work         | ✅     |
+| SQLAlchemy Models    | ✅     |
+| API Structure        | ✅     |
+| Validation Pattern   | ✅     |
+
+---
+
+## Related ADR
+
+- ADR-001
+- ADR-002
+
+---
+
+# Phase 2 — HR Domain Foundation
+
+## Status
+
+```
+Completed
+```
+
+---
+
+## Objectives
+
+Build reusable HR master-data capabilities.
+
+---
+
+## Capabilities
+
+| Capability        | Status |
+| ----------------- | ------ |
+| Job Grade         | ✅     |
+| Employment Type   | ✅     |
+| Employment Status | ✅     |
+| Shift             | ✅     |
+| Holiday           | ✅     |
+
+---
+
+## Related ADR
+
+- ADR-003
+
+---
+
+# Phase 3 — Identity Foundation
+
+## Status
+
+```
+Completed
+```
+
+---
+
+## Objectives
+
+Provide deterministic employee identity resolution.
+
+---
+
+## Capability
+
+```
+Identity Context
+```
+
+---
+
+## Deliverables
+
+- EmployeeContext
+- RequestContext
+- CurrentRequestContext
+
+---
+
+## Related ADR
+
+- ADR-006
+
+---
+
+# Phase 4 — Authorization Foundation
+
+## Status
+
+```
+Completed
+```
+
+---
+
+## Objectives
+
+Provide reusable authorization infrastructure.
+
+---
+
+## Deliverables
+
+- AuthorizationRequest
+- AuthorizationDecision
+- AuthorizationEvaluator
+- AuthorizationService
+
+---
+
+## Consumers
+
+Current:
+
+- Approval Authorization
+
+Future:
+
+- Leave
+- Attendance
+- Payroll
+- Performance
+- Recruitment
+
+---
+
+## Related ADR
+
+- ADR-007
+
+---
+
+## Implemented
+
+```
+PR-052
+```
+
+---
+
+# Phase 5 — Capability Authorization
+
+## Status
+
+```
+In Progress
+```
+
+---
+
+## Objective
+
+Each business capability defines and owns its authorization policy while consuming the Authorization Foundation.
 
 ---
 
 ## Completed
 
-### Identity Link
-
-Status:
-
-Completed
-
-Artifact:
-
-ADR-004
-
-Implemented:
-
-HrEmployee.user_id
+| Capability             | Status |
+| ---------------------- | ------ |
+| Approval Authorization | ✅     |
 
 ---
 
-### Authorization Discovery
+## Current Policy
 
-Status:
+```
+Manager Approval
+```
 
-Completed
+Rule:
 
-Artifact:
+```
+request.employee.manager_id
+==
+approver.employee.id
+```
 
-capabilities/
-identity-authorization/
-discovery.md
-
----
-
-### Authorization Decision
-
-Status:
-
-Completed
-
-Artifacts:
-
-decision.md
-ADR-005
+Only direct manager approval is supported.
 
 ---
 
-## Implementation Scope
+## Related ADR
 
-Build:
-
-Employee Context Resolver
-
-Defined by:
-
-ADR-006
-
-Behavior:
-
-- missing employee rejected
-- multiple employee rejected
-Authorization Context
-Permission Abstraction
+- ADR-008
 
 ---
 
-## Not Included
+## Implemented
 
-Do not implement:
-
-- approval policy
-- manager hierarchy
-- ownership rules
-- organization authorization
-- delegated authority
+```
+PR-053
+```
 
 ---
 
-# Phase 2 — Workflow Governance
+## Remaining Capability Authorizations
 
-Dependency:
-
-Phase 1
-
-Objective:
-
-Make workflow decisions secure and auditable.
-
-Capabilities:
-
-## Approval Authorization
-
-Implement:
-
-- approve permission
-- reject permission
-- authorization policy
-
-Consumers:
-
-- Leave Approval
-- Overtime Approval
-- Timesheet Approval
+| Capability                | Status  |
+| ------------------------- | ------- |
+| Leave Authorization       | Planned |
+| Attendance Authorization  | Planned |
+| Payroll Authorization     | Planned |
+| Recruitment Authorization | Planned |
+| Performance Authorization | Planned |
 
 ---
 
-## Workflow History
+# Phase 6 — Enterprise Authorization
 
-Future:
+## Status
 
-- decision history
-- actor tracking
-- timestamps
-- audit trail
-
----
-
-# Phase 3 — Workforce Authorization
-
-Dependency:
-
-Phase 1
-
-Phase 2
-
-Objective:
-
-Protect employee-scoped operations.
-
-Consumers:
-
-## Leave
-
-Authorization:
-
-- employee ownership
-- approver scope
+```
+Planned
+```
 
 ---
 
-## Overtime
+## Objective
 
-Authorization:
-
-- employee ownership
-- approval boundary
+Extend authorization beyond capability-specific policies.
 
 ---
 
-## Timesheet
+## Planned Capabilities
 
-Authorization:
+### Permission Model
 
-- employee ownership
-- project scope
-
----
-
-## Reconciliation
-
-Authorization:
-
-- employee access scope
+Reusable permission vocabulary.
 
 ---
 
-# Phase 4 — Business Automation
+### Policy Engine
 
-Objective:
-
-Introduce business intelligence.
-
-Capabilities:
-
-- leave balance engine
-- attendance rules
-- payroll integration
-- policy automation
+Reusable policy evaluation.
 
 ---
 
-# Phase 5 — Enterprise Intelligence
+### Delegated Approval
 
-Future capability:
-
-- analytics
-- reporting
-- compliance
-- workforce insights
+Temporary approval delegation.
 
 ---
 
-# 4. Current Priority Queue
+### Organization Hierarchy
 
-Order:
+Enterprise reporting structure.
 
-Identity Authorization Foundation
+---
 
+### Workflow Assignment
+
+Dynamic approver assignment.
+
+---
+
+## Dependencies
+
+Requires:
+
+- Identity Context
+- Authorization Foundation
+- Capability Authorization
+
+---
+
+# Phase 7 — Enterprise Platform
+
+## Status
+
+```
+Future
+```
+
+---
+
+## Potential Capabilities
+
+- Event Bus
+- Audit Platform
+- Notification Platform
+- Scheduling Engine
+- Reporting Platform
+- Search Platform
+- Integration Platform
+
+Future ADRs required.
+
+---
+
+# Capability Roadmap
+
+| Capability               | Status         |
+| ------------------------ | -------------- |
+| Identity Context         | ✅ Implemented |
+| Authorization Foundation | ✅ Implemented |
+| Approval Authorization   | ✅ Implemented |
+| Leave Authorization      | Planned        |
+| Attendance Authorization | Planned        |
+| Payroll Authorization    | Planned        |
+| Permission Model         | Deferred       |
+| Policy Engine            | Deferred       |
+| Delegated Approval       | Deferred       |
+| Organization Hierarchy   | Deferred       |
+
+---
+
+# Dependency Roadmap
+
+```
+Authentication
+        │
+        ▼
+Identity Context
+        │
+        ▼
+Authorization Foundation
+        │
+        ▼
 Approval Authorization
-
-Ownership Authorization
-
-Workflow History
-
-Business Automation
-
----
-
-# 5. Architecture Governance Rule
-
-Every future capability must provide:
-
-1. Discovery
-
-2. Architecture Decision
-
-3. ADR (when needed)
-
-4. Implementation Plan
-
-5. Code
-
-6. Validation
+        │
+        ▼
+Leave Authorization
+        │
+        ▼
+Attendance Authorization
+        │
+        ▼
+Payroll Authorization
+        │
+        ▼
+Enterprise Authorization
+```
 
 ---
 
-# 6. Source Documents
+# Deferred Architecture
 
-Related:
+The following remain intentionally outside the current roadmap phase.
 
-MASTER_ARCHITECTURE_BLUEPRINT.md
-ARCHITECTURE_INVENTORY.md
-CAPABILITY_DEPENDENCY_GRAPH.md
-ARCHITECTURE_DECISION_RECORDS/
+- Permission Model
+- Policy Engine
+- Approval Roles
+- Delegated Approval
+- Recursive Manager Hierarchy
+- Workflow Assignment
+- Organization Graph
+
+Each requires a dedicated ADR before implementation.
+
+---
+
+# Technical Debt Alignment
+
+Current roadmap blockers and deferred work are tracked in:
+
+```
+TECHNICAL_DEBT_REGISTER.md
+```
+
+Current tracked debt:
+
+- TD-001 — EmployeeContext HTTP Exception Mapping
+- TD-002 — Approval Authorization Concurrency Protection
+- TD-003 — Employee Manager Hierarchy Limitation
+- TD-004 — Permission and Policy Model
+- TD-005 — Authorization Foundation Consumer Coverage
+
+---
+
+# Governance Principles
+
+Architecture evolves according to the following sequence:
+
+```
+Discovery
+
+↓
+
+Policy Discovery
+
+↓
+
+ADR (if required)
+
+↓
+
+Capability Decision
+
+↓
+
+Implementation Plan
+
+↓
+
+Implementation
+
+↓
+
+Architecture Review
+
+↓
+
+Merge
+```
+
+No implementation may bypass this governance process.
+
+---
+
+# Success Criteria
+
+The architecture roadmap is considered healthy when:
+
+- Platform foundations remain stable.
+- Business capabilities consume shared foundations.
+- Capability-specific policies remain isolated.
+- Architectural decisions are documented before implementation.
+- Technical debt is tracked and intentionally managed.
+
+---
+
+# Related Documents
+
+- MASTER_ARCHITECTURE_BLUEPRINT.md
+- ARCHITECTURE_STATUS.md
+- ARCHITECTURE_CHANGELOG.md
+- ARCHITECTURE_DECISION_INDEX.md
+- CAPABILITY_CATALOG.md
+- TECHNICAL_DEBT_REGISTER.md
+- ARCHITECTURE_PRINCIPLES.md
+- ADR-001 ~ ADR-008

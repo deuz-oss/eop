@@ -1,0 +1,295 @@
+# ADR-008 — Approval Authorization Policy Model
+
+**Status:** Accepted
+
+**Date:** 2026-08-05
+
+**Supersedes:** None
+
+**Superseded by:** None
+
+---
+
+# Context
+
+ADR-007 introduced the Authorization Foundation.
+
+The platform now provides:
+
+- AuthorizationRequest
+- AuthorizationService
+- AuthorizationEvaluator
+- AuthorizationDecision
+
+These abstractions define _how_ authorization is evaluated.
+
+They intentionally do **not** define _what_ business policy should be evaluated.
+
+During implementation of Approval Authorization, Architecture Review identified a missing architectural decision.
+
+ApprovalAuthorizationEvaluator cannot be implemented because the platform does not define the approval authorization policy.
+
+Repository discovery confirms:
+
+- Approval endpoints currently require authentication only.
+- ApprovalService performs workflow orchestration only.
+- No approval authorization exists.
+- No approval policy exists.
+- No ownership model exists.
+- No permission model exists.
+- No manager authorization model exists.
+
+Without a policy model, AuthorizationEvaluator has no deterministic predicate to evaluate.
+
+---
+
+# Problem
+
+Approval authorization requires answering the following question:
+
+> Who is allowed to approve a request?
+
+This question cannot be answered by implementation.
+
+It is an architectural policy decision.
+
+---
+
+# Decision
+
+The platform adopts a dedicated Approval Authorization Policy.
+
+Authorization Foundation remains policy-agnostic.
+
+Business policy is defined separately.
+
+Approval Authorization evaluates policy.
+
+Authorization Foundation evaluates decisions.
+
+---
+
+# Architectural Separation
+
+The platform separates responsibilities into four layers.
+
+```
+Authorization Foundation
+
+↓
+
+Policy
+
+↓
+
+Business Capability
+
+↓
+
+Workflow
+```
+
+Responsibilities:
+
+Authorization Foundation
+
+- evaluation mechanism
+- request model
+- decision model
+
+Policy
+
+- approval rules
+- approver eligibility
+
+Business Capability
+
+- invokes authorization
+- reacts to allow / deny
+
+Workflow
+
+- executes approval
+- changes business state
+
+---
+
+# Policy Ownership
+
+Approval policy belongs to architecture.
+
+It is not inferred from:
+
+- roles
+- manager hierarchy
+- ownership
+- workflow
+- repository data
+
+unless explicitly defined by architecture.
+
+Implementation must never invent policy.
+
+---
+
+# Initial Policy Model
+
+The Approval Authorization Policy defines approver eligibility independently of the Authorization Foundation.
+
+The policy may use one or more approval sources.
+
+Examples include:
+
+- manager hierarchy
+- organizational hierarchy
+- delegated approver
+- role-based approver
+- workflow assignment
+
+These are policy options.
+
+They are not implementation assumptions.
+
+---
+
+# Deferred Policy Decisions
+
+ADR-008 intentionally does **not** choose:
+
+- manager approval
+- role approval
+- ownership approval
+- hybrid approval
+- delegated approval
+
+Each policy requires repository evidence and architectural approval.
+
+Future ADRs or capability decisions may refine the policy.
+
+---
+
+# Implementation Constraint
+
+Implementation must never:
+
+- invent approver roles
+- assume manager approval
+- infer ownership
+- infer hierarchy
+- infer workflow policy
+
+If no approved policy exists:
+
+implementation must stop.
+
+---
+
+# Authorization Foundation
+
+ADR-007 remains unchanged.
+
+Authorization Foundation continues to provide:
+
+- AuthorizationRequest
+- AuthorizationEvaluator
+- AuthorizationDecision
+- AuthorizationService
+
+without embedding approval policy.
+
+---
+
+# Consequences
+
+Approval Authorization cannot be implemented until an approved policy exists.
+
+Once policy is approved:
+
+ApprovalAuthorizationEvaluator evaluates that policy.
+
+No changes to Authorization Foundation are required.
+
+---
+
+# Benefits
+
+The platform separates:
+
+policy
+
+from
+
+authorization mechanism.
+
+Benefits include:
+
+- reusable Authorization Foundation
+- reusable policy model
+- consistent business authorization
+- capability independence
+- future extensibility
+
+---
+
+# Risks
+
+Approval implementation is blocked until policy is defined.
+
+This is intentional.
+
+Architecture must always define policy before implementation.
+
+---
+
+# Alternatives Considered
+
+## Always Allow
+
+Rejected.
+
+Provides no authorization.
+
+---
+
+## Always Deny
+
+Rejected.
+
+Makes approval unusable.
+
+---
+
+## Infer Manager Hierarchy
+
+Rejected.
+
+Manager hierarchy has not been approved as approval policy.
+
+---
+
+## Invent APPROVER Role
+
+Rejected.
+
+Role vocabulary must be introduced explicitly through architecture.
+
+---
+
+## Embed Policy in AuthorizationEvaluator
+
+Rejected.
+
+Authorization Foundation must remain policy-agnostic.
+
+---
+
+# References
+
+- ADR-004
+- ADR-005
+- ADR-006
+- ADR-007
+- Approval Authorization Discovery
+- Approval Authorization Decision
+- Approval Authorization Implementation Plan
+- MASTER_ARCHITECTURE_BLUEPRINT.md

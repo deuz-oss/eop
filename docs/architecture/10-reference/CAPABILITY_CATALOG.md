@@ -1,202 +1,596 @@
-# EOP Capability Catalog
+# Capability Catalog
 
+**Document:** Capability Catalog
 **Status:** Active
-
+**Owner:** Architecture Governance
 **Version:** 1.0
-
-**Owner:** EOP Architecture Governance
+**Last Updated:** 2026-08-05
 
 ---
 
 # Purpose
 
-This document is the authoritative catalog of all architectural capabilities within the EOP platform.
+This document provides a catalog of all architectural capabilities within the EOP platform.
 
-It provides a high-level inventory of platform and business capabilities, their ownership, dependencies, and implementation status.
+A capability represents a cohesive architectural responsibility that may be implemented by one or more modules.
 
-Unlike the Master Architecture Roadmap, this document is not time-based. It reflects the current architectural landscape.
+This catalog provides:
+
+- capability ownership
+- implementation status
+- architectural dependencies
+- governing ADRs
+- implementation references
+
+Detailed implementation remains in the individual capability documents.
 
 ---
 
 # Capability Lifecycle
 
-Each capability progresses through the following lifecycle:
+| Status | Meaning |
+|--------|---------|
+| Planned | Architecture approved but not implemented |
+| In Progress | Currently being implemented |
+| Implemented | Fully implemented |
+| Deferred | Explicitly postponed |
+| Retired | No longer used |
+
+---
+
+# Capability Overview
+
+| Capability | Status | Owner | Primary ADR |
+|------------|--------|-------|-------------|
+| Identity Context | Implemented | Platform | ADR-006 |
+| Authorization Foundation | Implemented | Platform | ADR-007 |
+| Approval Authorization | Implemented | Approval | ADR-008 |
+| Approval Workflow | Implemented | Approval | ADR-004 |
+| HR Master Data | Implemented | HR | ADR-003 |
+| Permission Model | Deferred | Platform | Future ADR |
+| Policy Engine | Deferred | Platform | Future ADR |
+| Delegated Approval | Deferred | Approval | Future ADR |
+| Organization Hierarchy | Deferred | HR | Future ADR |
+
+---
+
+# Identity Context
+
+**Status**
 
 ```
-Proposed
-    ↓
-Discovery
-    ↓
-Decision
-    ↓
-ADR
-    ↓
-Implementation Plan
-    ↓
-Implementation
-    ↓
-Architecture Review
-    ↓
-Complete
+Implemented
 ```
 
 ---
 
-# Capability Classification
+## Purpose
 
-Capabilities are classified into one of the following categories:
+Provides deterministic employee identity resolution.
 
-| Category       | Description                               |
-| -------------- | ----------------------------------------- |
-| Platform       | Shared capabilities reused across domains |
-| HR             | Human Resource domain                     |
-| Attendance     | Attendance and workforce operations       |
-| Payroll        | Payroll and compensation                  |
-| Infrastructure | Cross-cutting technical capabilities      |
+Flow:
+
+```
+CurrentUser
+
+↓
+
+HrEmployee
+
+↓
+
+EmployeeContext
+```
 
 ---
 
-# Platform Capabilities
+## Responsibilities
 
-| Capability               | Category | Status      | Depends On       | Used By                      |
-| ------------------------ | -------- | ----------- | ---------------- | ---------------------------- |
-| Authentication           | Platform | Complete    | —                | All secured APIs             |
-| Identity Context         | Platform | Complete    | Authentication   | Authorization Foundation     |
-| Authorization Foundation | Platform | In Progress | Identity Context | Future business capabilities |
-| Audit _(planned)_        | Platform | Planned     | Authentication   | All business domains         |
-| Notification _(planned)_ | Platform | Planned     | Authentication   | Workflow capabilities        |
-| Workflow _(planned)_     | Platform | Planned     | Authorization    | Approval, Leave, Overtime    |
-| Scheduling _(planned)_   | Platform | Planned     | Authentication   | Attendance, Payroll          |
+- Resolve authenticated user
+- Resolve employee
+- Build RequestContext
+- Provide EmployeeContext
+
+---
+
+## Dependencies
+
+- Authentication
+
+---
+
+## Consumers
+
+- Authorization Foundation
+- Approval Authorization
+
+---
+
+## Governing ADR
+
+ADR-006
+
+---
+
+## Implementation
+
+Implemented
+
+---
+
+# Authorization Foundation
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Provides reusable authorization infrastructure.
+
+---
+
+## Responsibilities
+
+Provides:
+
+- AuthorizationRequest
+- AuthorizationDecision
+- AuthorizationEvaluator
+- AuthorizationService
+
+---
+
+## Does NOT Define
+
+- roles
+- permissions
+- ownership
+- approval rules
+
+---
+
+## Dependencies
+
+Identity Context
+
+---
+
+## Consumers
+
+- Approval Authorization
+
+---
+
+## Governing ADR
+
+ADR-007
+
+---
+
+## Implementation
+
+Completed in:
+
+```
+PR-052
+```
+
+---
+
+# Approval Authorization
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Protect approval workflows using capability-specific authorization policy.
+
+---
+
+## Policy
+
+Current policy:
+
+```
+Manager Approval
+```
+
+Authorization rule:
+
+```
+request.employee.manager_id
+==
+approver.employee.id
+```
+
+Only direct manager approval is supported.
+
+---
+
+## Responsibilities
+
+- Evaluate approval authorization
+- Produce AuthorizationDecision
+- Deny unauthorized approvals
+
+---
+
+## Architecture
+
+```
+CurrentRequestContext
+
+↓
+
+AuthorizationRequest
+
+↓
+
+AuthorizationService
+
+↓
+
+ApprovalAuthorizationEvaluator
+
+↓
+
+AuthorizationDecision
+
+↓
+
+ApprovalService
+```
+
+---
+
+## Dependencies
+
+Requires:
+
+- Identity Context
+- Authorization Foundation
+- Approval Workflow
+
+---
+
+## Consumers
+
+- Leave Approval
+- Overtime Approval
+- Timesheet Approval
+
+---
+
+## Governing ADR
+
+ADR-008
+
+---
+
+## Implementation
+
+Completed in:
+
+```
+PR-053
+```
+
+---
+
+## Out of Scope
+
+Not implemented:
+
+- delegated approval
+- recursive hierarchy
+- approval roles
+- workflow assignment
+- permission model
+- policy engine
+
+---
+
+# Approval Workflow
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Execute approval business workflows.
+
+---
+
+## Responsibilities
+
+- approve
+- reject
+- state transition
+
+---
+
+## Delegates
+
+Authorization to:
+
+```
+Approval Authorization
+```
+
+---
+
+## Governing ADR
+
+ADR-004
+
+---
+
+## Implementation
+
+Implemented
 
 ---
 
 # HR Master Data
 
-| Capability        | Status   |
-| ----------------- | -------- |
-| Job Grade         | Complete |
-| Employment Type   | Complete |
-| Employment Status | Complete |
-| Shift             | Complete |
-| Holiday           | Complete |
-| HR Employee       | Complete |
+**Status**
+
+```
+Implemented
+```
 
 ---
 
-# Workforce Operations
+## Purpose
 
-| Capability     | Status                           |
-| -------------- | -------------------------------- |
-| Leave          | Complete (authorization pending) |
-| Timesheet      | Complete (authorization pending) |
-| Overtime       | Complete (authorization pending) |
-| Attendance     | Planned                          |
-| Reconciliation | Complete (authorization pending) |
+Provide reusable HR reference data.
 
 ---
 
-# Authorization Roadmap
+## Includes
 
-| Capability               | Status      |
-| ------------------------ | ----------- |
-| Authorization Foundation | In Progress |
-| Approval Authorization   | Planned     |
-| Leave Authorization      | Planned     |
-| Timesheet Authorization  | Planned     |
-| Overtime Authorization   | Planned     |
-| Attendance Authorization | Planned     |
+- Job Grade
+- Employment Type
+- Employment Status
+- Shift
+- Holiday
 
 ---
 
-# Dependency Overview
+## Governing ADR
+
+ADR-003
+
+---
+
+# Deferred Capabilities
+
+---
+
+# Permission Model
+
+**Status**
+
+```
+Deferred
+```
+
+---
+
+## Purpose
+
+Introduce reusable permission vocabulary.
+
+---
+
+## Depends On
+
+Authorization Foundation
+
+---
+
+## Reason
+
+Current architecture does not require centralized permissions.
+
+---
+
+# Policy Engine
+
+**Status**
+
+```
+Deferred
+```
+
+---
+
+## Purpose
+
+Provide reusable policy evaluation.
+
+---
+
+## Depends On
+
+Permission Model
+
+---
+
+## Reason
+
+Current capability-specific evaluators are sufficient.
+
+---
+
+# Delegated Approval
+
+**Status**
+
+```
+Deferred
+```
+
+---
+
+## Purpose
+
+Support delegated approval authority.
+
+---
+
+## Depends On
+
+Approval Authorization
+
+---
+
+## Reason
+
+Business policy not yet defined.
+
+---
+
+# Organization Hierarchy
+
+**Status**
+
+```
+Deferred
+```
+
+---
+
+## Purpose
+
+Support hierarchical reporting relationships.
+
+---
+
+## Current State
+
+Only direct manager exists:
+
+```
+Employee
+
+↓
+
+Manager
+```
+
+---
+
+## Not Supported
+
+- manager chain
+- director hierarchy
+- escalation path
+
+---
+
+# Capability Dependency Graph
 
 ```
 Authentication
-        │
-        ▼
+
+↓
+
 Identity Context
-        │
-        ▼
+
+↓
+
 Authorization Foundation
-        │
-        ▼
+
+↓
+
+Approval Authorization
+
+↓
+
+Approval Workflow
+
+↓
+
 Business Capabilities
 ```
 
-Business capabilities consume platform capabilities but never the reverse.
+---
+
+# Capability Maturity
+
+| Capability | Discovery | Decision | Implementation | Status |
+|------------|-----------|----------|----------------|--------|
+| Identity Context | ✓ | ✓ | ✓ | Implemented |
+| Authorization Foundation | ✓ | ✓ | ✓ | Implemented |
+| Approval Authorization | ✓ | ✓ | ✓ | Implemented |
+| Approval Workflow | ✓ | ✓ | ✓ | Implemented |
+| Permission Model | ✗ | ✗ | ✗ | Deferred |
+| Policy Engine | ✗ | ✗ | ✗ | Deferred |
+| Delegated Approval | ✗ | ✗ | ✗ | Deferred |
+| Organization Hierarchy | ✗ | ✗ | ✗ | Deferred |
 
 ---
 
-# Capability Ownership
+# Technical Debt
 
-Platform capabilities are maintained by the Architecture team.
+Known capability limitations are tracked in:
 
-Business capabilities are maintained by their respective domain owners.
+```
+TECHNICAL_DEBT_REGISTER.md
+```
 
-Architecture governance remains responsible for:
+Current related debt:
 
-- Capability boundaries
-- Architectural consistency
-- Dependency direction
-- ADR approval
-
----
-
-# Capability Status Definitions
-
-| Status      | Meaning                        |
-| ----------- | ------------------------------ |
-| Proposed    | Identified but not started     |
-| Discovery   | Repository evidence collected  |
-| Decision    | Architecture approved          |
-| Planned     | Implementation planned         |
-| In Progress | Implementation underway        |
-| Complete    | Implemented and reviewed       |
-| Deprecated  | Scheduled for removal          |
-| Retired     | No longer part of the platform |
+- TD-001 EmployeeContext HTTP Exception Mapping
+- TD-002 Approval Authorization Concurrency Protection
+- TD-003 Employee Manager Hierarchy Limitation
+- TD-004 Permission and Policy Model
+- TD-005 Authorization Foundation Consumer Coverage
 
 ---
 
-# Governance
+# Governance Rules
 
-Every new capability must include:
+Every new capability must provide:
 
-- Discovery
-- Decision
-- ADR (if required)
-- Implementation Plan
+1. Discovery
+2. Policy Discovery (if applicable)
+3. Capability Decision
+4. Implementation Plan
+5. Architecture Review
 
-Capabilities must be registered in this catalog before implementation begins.
+Capabilities must not introduce new architecture independently.
 
----
-
-# Relationship to Other Documents
-
-This document answers:
-
-> **What capabilities exist?**
-
-Related documents answer different questions:
-
-| Document                      | Purpose                                   |
-| ----------------------------- | ----------------------------------------- |
-| Repository Census             | What exists in the repository?            |
-| Architecture Inventory        | How is the repository organized?          |
-| Capability Dependency Graph   | How do capabilities depend on each other? |
-| Master Architecture Blueprint | What is the target architecture?          |
-| Master Architecture Roadmap   | In what order will capabilities evolve?   |
-| Architecture Status           | What is the implementation progress?      |
+Architecture changes require ADR approval.
 
 ---
 
-# Success Criteria
+# References
 
-The Capability Catalog is considered healthy when:
-
-- every architectural capability is registered
-- ownership is explicit
-- dependencies are documented
-- lifecycle status is current
-- capability boundaries remain clear
-
-This catalog serves as the primary inventory of the EOP architecture.
+- MASTER_ARCHITECTURE_ROADMAP.md
+- ARCHITECTURE_STATUS.md
+- ARCHITECTURE_CHANGELOG.md
+- ARCHITECTURE_DECISION_INDEX.md
+- TECHNICAL_DEBT_REGISTER.md
+- ADR-003
+- ADR-004
+- ADR-006
+- ADR-007
+- ADR-008
