@@ -284,3 +284,25 @@ Authorization foundation akan digunakan oleh:
 # 12. Architecture Principle
 
 No business operation should bypass authorization context once the capability is available.
+
+---
+
+# Employee Context Resolution
+
+Decision reference:
+
+ADR-006
+
+Employee Context Resolver is responsible for converting:
+
+CurrentUser
+
+into:
+
+EmployeeContext
+
+Rules:
+
+- zero employee → error
+- multiple employee → error
+- deterministic context required

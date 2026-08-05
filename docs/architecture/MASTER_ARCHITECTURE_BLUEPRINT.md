@@ -494,3 +494,27 @@ Future capabilities:
 | ADR-003 | Approval Workflow Capability |
 | ADR-004 | Employee Identity Link       |
 | ADR-005 | Authorization Context Model  |
+
+---
+
+# Employee Context Resolution
+
+Employee identity resolution is centralized.
+
+Flow:
+
+CurrentUser
+
+↓
+
+Employee Context Resolver
+
+↓
+
+EmployeeContext
+
+Rules:
+
+- no implicit employee selection
+- no ambiguous identity
+- no automatic switching

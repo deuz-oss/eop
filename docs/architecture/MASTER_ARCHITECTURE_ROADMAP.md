@@ -119,6 +119,15 @@ ADR-005
 Build:
 
 Employee Context Resolver
+
+Defined by:
+
+ADR-006
+
+Behavior:
+
+- missing employee rejected
+- multiple employee rejected
 Authorization Context
 Permission Abstraction
 
