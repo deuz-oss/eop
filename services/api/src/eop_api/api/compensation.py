@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -16,9 +17,12 @@ from eop_api.schemas.pagination import Page
 from eop_api.services.compensation import (
     CompensationAuthorizationDeniedError,
     CompensationService,
-    DuplicateCompensationError,
+    CorrectionTargetEmployeeMismatchError,
+    CorrectionTargetNotFoundError,
     EmployeeNotFoundError,
+    OverlappingCompensationPeriodError,
 )
+from eop_api.services.effective_dating_evaluator import AmbiguousEffectiveStateError
 
 router = APIRouter(prefix="/hr/compensation", tags=["Compensation"])
 
@@ -42,11 +46,17 @@ async def create_compensation(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
         ) from exc
-    except DuplicateCompensationError as exc:
+    except CorrectionTargetNotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Compensation already exists for this employee",
+            status_code=status.HTTP_404_NOT_FOUND, detail="Correction target Compensation not found"
         ) from exc
+    except CorrectionTargetEmployeeMismatchError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Correction target must belong to the same employee",
+        ) from exc
+    except OverlappingCompensationPeriodError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InvalidMoneyError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
@@ -85,15 +95,22 @@ async def get_compensation_by_employee(
     employee_id: uuid.UUID,
     service: CompensationServiceDep,
     request_context: CurrentRequestContext,
+    as_of: date | None = None,
 ) -> CompensationResponse:
+    """The Compensation effective for `employee_id` as of `as_of` (default: today).
+
+    `as_of` is a mechanical default (`date.today()`), not a business
+    policy choice -- resolving "current" via Effective Dating's own
+    as-of-date mechanism (`EffectiveDatingEvaluator`).
+    """
     try:
-        compensation = await service.get_by_employee(employee_id, request_context)
+        compensation = await service.get_by_employee(employee_id, request_context, as_of)
     except CompensationAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except AmbiguousEffectiveStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if compensation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Compensation not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Compensation not found")
     return CompensationResponse.model_validate(compensation)
 
 
@@ -108,9 +125,7 @@ async def get_compensation(
     except CompensationAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if compensation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Compensation not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Compensation not found")
     return CompensationResponse.model_validate(compensation)
 
 
@@ -123,16 +138,10 @@ async def update_compensation(
 ) -> CompensationResponse:
     try:
         compensation = await service.update(compensation_id, data, request_context)
-    except InvalidMoneyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
-        ) from exc
     except CompensationAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if compensation is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Compensation not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Compensation not found")
     return CompensationResponse.model_validate(compensation)
 
 
@@ -147,6 +156,4 @@ async def delete_compensation(
     except CompensationAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Compensation not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Compensation not found")
