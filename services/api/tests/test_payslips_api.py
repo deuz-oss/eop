@@ -13,6 +13,7 @@ from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
 
 
@@ -83,6 +84,57 @@ def user() -> User:
 def user_headers(client: TestClient, user: User) -> dict[str, str]:
     response = client.post(
         "/auth/login", json={"email": "member@example.com", "password": "member-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def other() -> User:
+    """An authenticated user who does not own the payslip under test."""
+    return asyncio.run(_create_user(email="other@example.com", password="other-pass"))
+
+
+@pytest.fixture
+def other_headers(client: TestClient, other: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "other@example.com", "password": "other-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def _seed_admin(user_id: uuid.UUID) -> None:
+    """Grants the `admin` role directly at the DB layer.
+
+    Mirrors `test_roles_api.py`'s `_seed_admin`: `PayrollRun` is Role Based
+    (`RequireRole("admin")`), so creating one for these Payslip tests requires
+    an admin-privileged caller, separate from the employee-owner caller that
+    creates their own `Payslip`.
+    """
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+@pytest.fixture
+def admin_user() -> User:
+    return asyncio.run(_create_user(email="admin@example.com", password="admin-pass"))
+
+
+@pytest.fixture
+def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
+    asyncio.run(_seed_admin(admin_user.id))
+
+    response = client.post(
+        "/auth/login", json={"email": "admin@example.com", "password": "admin-pass"}
     )
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -224,11 +276,13 @@ def _create_shift(
     return response.json()
 
 
-def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
+def _create_employee(
+    client: TestClient, headers: dict[str, str], *, user_id: str | None = None
+) -> dict:
     """Creates its own HR master-data scaffolding, suffixed by a fresh id so
-    multiple employees can be created within the same test without violating
-    `code`/`name` uniqueness constraints. Mirrors
-    `test_attendance_events_api.py`'s `_create_employee` helper."""
+    multiple employees (e.g. owner + non-owner) can be created within the
+    same test without violating `code`/`name` uniqueness constraints.
+    Mirrors `test_attendance_events_api.py`'s `_create_employee` helper."""
     suffix = uuid.uuid4().hex[:8]
     organization = _create_organization(client, headers, name=f"Acme Corp {suffix}")
     department = _create_department(
@@ -277,6 +331,8 @@ def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
         "hire_date": "2024-01-15",
         "employment_status": "active",
     }
+    if user_id is not None:
+        payload["user_id"] = user_id
 
     response = client.post("/hr/employees", json=payload, headers=headers)
     assert response.status_code == 201
@@ -348,9 +404,11 @@ def test_get_payslip_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_create_payslip(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
-    payroll_run = _create_payroll_run(client, user_headers)
+def test_create_payslip(
+    client: TestClient, user: User, user_headers: dict[str, str], admin_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
 
     body = _create_payslip(
         client, user_headers, employee_id=employee["id"], payroll_run_id=payroll_run["id"]
@@ -364,9 +422,10 @@ def test_create_payslip(client: TestClient, user_headers: dict[str, str]):
 
 
 def test_create_payslip_rejects_missing_employee(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str], admin_headers: dict[str, str]
 ):
-    payroll_run = _create_payroll_run(client, user_headers)
+    _create_employee(client, user_headers, user_id=str(user.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
 
     response = client.post(
         "/payslips",
@@ -385,9 +444,9 @@ def test_create_payslip_rejects_missing_employee(
 
 
 def test_create_payslip_rejects_missing_payroll_run(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     response = client.post(
         "/payslips",
@@ -405,9 +464,38 @@ def test_create_payslip_rejects_missing_payroll_run(
     assert response.status_code == 404
 
 
-def test_get_payslip(client: TestClient, user_headers: dict[str, str]):
+def test_create_payslip_forbidden_for_non_owner(
+    client: TestClient,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
     employee = _create_employee(client, user_headers)
-    payroll_run = _create_payroll_run(client, user_headers)
+    _create_employee(client, user_headers, user_id=str(other.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
+
+    response = client.post(
+        "/payslips",
+        json={
+            "employee_id": employee["id"],
+            "payroll_run_id": payroll_run["id"],
+            "gross_salary_amount": "1000.00",
+            "gross_salary_currency": "IDR",
+            "net_salary_amount": "1000.00",
+            "net_salary_currency": "IDR",
+        },
+        headers=other_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_get_payslip(
+    client: TestClient, user: User, user_headers: dict[str, str], admin_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
     created = _create_payslip(
         client, user_headers, employee_id=employee["id"], payroll_run_id=payroll_run["id"]
     )
@@ -418,23 +506,55 @@ def test_get_payslip(client: TestClient, user_headers: dict[str, str]):
     assert response.json()["id"] == created["id"]
 
 
-def test_get_payslip_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_get_payslip_not_found(client: TestClient, user: User, user_headers: dict[str, str]):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.get(f"/payslips/{uuid.uuid4()}", headers=user_headers)
 
     assert response.status_code == 404
 
 
-def test_list_payslips(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
-    payroll_run = _create_payroll_run(client, user_headers)
+def test_get_payslip_forbidden_for_non_owner(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
+    created = _create_payslip(
+        client, user_headers, employee_id=employee["id"], payroll_run_id=payroll_run["id"]
+    )
+    _create_employee(client, user_headers, user_id=str(other.id))
+
+    response = client.get(f"/payslips/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403
+
+
+def test_list_payslips_returns_only_owned(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(client, user_headers, user_id=str(other.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
     _create_payslip(
         client, user_headers, employee_id=employee["id"], payroll_run_id=payroll_run["id"]
     )
     _create_payslip(
-        client, user_headers, employee_id=employee["id"], payroll_run_id=payroll_run["id"]
+        client, other_headers, employee_id=other_employee["id"], payroll_run_id=payroll_run["id"]
     )
 
     response = client.get("/payslips", headers=user_headers)
 
     assert response.status_code == 200
-    assert len(response.json()) == 2
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["employee_id"] == employee["id"]

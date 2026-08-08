@@ -13,6 +13,7 @@ from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
 
 
@@ -65,12 +66,48 @@ async def _create_user(*, email: str, password: str) -> User:
 
 
 @pytest.fixture
-def user() -> User:
+def admin_user() -> User:
+    return asyncio.run(_create_user(email="admin@example.com", password="admin-pass"))
+
+
+async def _seed_admin(user_id: uuid.UUID) -> None:
+    """Grants the `admin` role directly at the DB layer.
+
+    Mirrors `test_roles_api.py`'s `_seed_admin`: the API has no bootstrap
+    endpoint for the very first admin, since `/roles` itself requires the
+    `admin` role.
+    """
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+@pytest.fixture
+def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
+    asyncio.run(_seed_admin(admin_user.id))
+
+    response = client.post(
+        "/auth/login", json={"email": "admin@example.com", "password": "admin-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def member_user() -> User:
+    """An authenticated user without the `admin` role."""
     return asyncio.run(_create_user(email="member@example.com", password="member-pass"))
 
 
 @pytest.fixture
-def user_headers(client: TestClient, user: User) -> dict[str, str]:
+def member_headers(client: TestClient, member_user: User) -> dict[str, str]:
     response = client.post(
         "/auth/login", json={"email": "member@example.com", "password": "member-pass"}
     )
@@ -124,56 +161,56 @@ def test_delete_payroll_run_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_create_payroll_run(client: TestClient, user_headers: dict[str, str]):
-    body = _create_payroll_run(client, user_headers)
+def test_create_payroll_run(client: TestClient, admin_headers: dict[str, str]):
+    body = _create_payroll_run(client, admin_headers)
 
     assert body["code"] == "RUN-001"
     assert body["name"] == "First Run"
     uuid.UUID(body["id"])
 
 
-def test_create_payroll_run_rejects_blank_name(client: TestClient, user_headers: dict[str, str]):
+def test_create_payroll_run_rejects_blank_name(client: TestClient, admin_headers: dict[str, str]):
     response = client.post(
-        "/hr/payroll-runs", json={"code": "RUN-001", "name": ""}, headers=user_headers
+        "/hr/payroll-runs", json={"code": "RUN-001", "name": ""}, headers=admin_headers
     )
 
     assert response.status_code == 422
 
 
 def test_create_payroll_run_rejects_duplicate_code(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_payroll_run(client, user_headers, code="RUN-001")
+    _create_payroll_run(client, admin_headers, code="RUN-001")
 
     response = client.post(
         "/hr/payroll-runs",
         json={"code": "RUN-001", "name": "Other"},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 409
 
 
-def test_get_payroll_run(client: TestClient, user_headers: dict[str, str]):
-    created = _create_payroll_run(client, user_headers, code="RUN-001", name="First Run")
+def test_get_payroll_run(client: TestClient, admin_headers: dict[str, str]):
+    created = _create_payroll_run(client, admin_headers, code="RUN-001", name="First Run")
 
-    response = client.get(f"/hr/payroll-runs/{created['id']}", headers=user_headers)
+    response = client.get(f"/hr/payroll-runs/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json()["name"] == "First Run"
 
 
-def test_get_payroll_run_not_found(client: TestClient, user_headers: dict[str, str]):
-    response = client.get(f"/hr/payroll-runs/{uuid.uuid4()}", headers=user_headers)
+def test_get_payroll_run_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.get(f"/hr/payroll-runs/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
 
 
-def test_list_payroll_runs(client: TestClient, user_headers: dict[str, str]):
-    _create_payroll_run(client, user_headers, code="RUN-001", name="First Run")
-    _create_payroll_run(client, user_headers, code="RUN-002", name="Second Run")
+def test_list_payroll_runs(client: TestClient, admin_headers: dict[str, str]):
+    _create_payroll_run(client, admin_headers, code="RUN-001", name="First Run")
+    _create_payroll_run(client, admin_headers, code="RUN-002", name="Second Run")
 
-    response = client.get("/hr/payroll-runs", headers=user_headers)
+    response = client.get("/hr/payroll-runs", headers=admin_headers)
 
     assert response.status_code == 200
     names = {item["name"] for item in response.json()}
@@ -181,12 +218,12 @@ def test_list_payroll_runs(client: TestClient, user_headers: dict[str, str]):
 
 
 def test_list_payroll_runs_paginated_default_pagination(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
     for i in range(3):
-        _create_payroll_run(client, user_headers, code=f"RUN-{i}", name=f"Run {i}")
+        _create_payroll_run(client, admin_headers, code=f"RUN-{i}", name=f"Run {i}")
 
-    response = client.get("/hr/payroll-runs/paginated", headers=user_headers)
+    response = client.get("/hr/payroll-runs/paginated", headers=admin_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -197,13 +234,13 @@ def test_list_payroll_runs_paginated_default_pagination(
 
 
 def test_list_payroll_runs_paginated_custom_offset(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
     for i in range(5):
-        _create_payroll_run(client, user_headers, code=f"RUN-{i}", name=f"Run {i}")
+        _create_payroll_run(client, admin_headers, code=f"RUN-{i}", name=f"Run {i}")
 
     response = client.get(
-        "/hr/payroll-runs/paginated", headers=user_headers, params={"offset": 2}
+        "/hr/payroll-runs/paginated", headers=admin_headers, params={"offset": 2}
     )
 
     assert response.status_code == 200
@@ -214,13 +251,13 @@ def test_list_payroll_runs_paginated_custom_offset(
 
 
 def test_list_payroll_runs_paginated_search_by_name(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_payroll_run(client, user_headers, code="RUN-001", name="August Run")
-    _create_payroll_run(client, user_headers, code="RUN-002", name="September Run")
+    _create_payroll_run(client, admin_headers, code="RUN-001", name="August Run")
+    _create_payroll_run(client, admin_headers, code="RUN-002", name="September Run")
 
     response = client.get(
-        "/hr/payroll-runs/paginated", headers=user_headers, params={"q": "august"}
+        "/hr/payroll-runs/paginated", headers=admin_headers, params={"q": "august"}
     )
 
     assert response.status_code == 200
@@ -230,13 +267,13 @@ def test_list_payroll_runs_paginated_search_by_name(
 
 
 def test_list_payroll_runs_paginated_search_by_code(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_payroll_run(client, user_headers, code="RUN-AUG-01", name="First")
-    _create_payroll_run(client, user_headers, code="RUN-SEP-01", name="Second")
+    _create_payroll_run(client, admin_headers, code="RUN-AUG-01", name="First")
+    _create_payroll_run(client, admin_headers, code="RUN-SEP-01", name="Second")
 
     response = client.get(
-        "/hr/payroll-runs/paginated", headers=user_headers, params={"q": "aug"}
+        "/hr/payroll-runs/paginated", headers=admin_headers, params={"q": "aug"}
     )
 
     assert response.status_code == 200
@@ -246,61 +283,103 @@ def test_list_payroll_runs_paginated_search_by_code(
 
 
 def test_list_payroll_runs_paginated_no_query_returns_all(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_payroll_run(client, user_headers, code="RUN-001", name="First Run")
-    _create_payroll_run(client, user_headers, code="RUN-002", name="Second Run")
+    _create_payroll_run(client, admin_headers, code="RUN-001", name="First Run")
+    _create_payroll_run(client, admin_headers, code="RUN-002", name="Second Run")
 
-    response = client.get("/hr/payroll-runs/paginated", headers=user_headers)
+    response = client.get("/hr/payroll-runs/paginated", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json()["total"] == 2
 
 
-def test_update_payroll_run(client: TestClient, user_headers: dict[str, str]):
-    created = _create_payroll_run(client, user_headers, name="Before")
+def test_update_payroll_run(client: TestClient, admin_headers: dict[str, str]):
+    created = _create_payroll_run(client, admin_headers, name="Before")
 
     response = client.put(
-        f"/hr/payroll-runs/{created['id']}", json={"name": "After"}, headers=user_headers
+        f"/hr/payroll-runs/{created['id']}", json={"name": "After"}, headers=admin_headers
     )
 
     assert response.status_code == 200
     assert response.json()["name"] == "After"
 
 
-def test_update_payroll_run_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_update_payroll_run_not_found(client: TestClient, admin_headers: dict[str, str]):
     response = client.put(
-        f"/hr/payroll-runs/{uuid.uuid4()}", json={"name": "After"}, headers=user_headers
+        f"/hr/payroll-runs/{uuid.uuid4()}", json={"name": "After"}, headers=admin_headers
     )
 
     assert response.status_code == 404
 
 
 def test_update_payroll_run_rejects_duplicate_code(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_payroll_run(client, user_headers, code="RUN-001")
-    other = _create_payroll_run(client, user_headers, code="RUN-002")
+    _create_payroll_run(client, admin_headers, code="RUN-001")
+    other = _create_payroll_run(client, admin_headers, code="RUN-002")
 
     response = client.put(
-        f"/hr/payroll-runs/{other['id']}", json={"code": "RUN-001"}, headers=user_headers
+        f"/hr/payroll-runs/{other['id']}", json={"code": "RUN-001"}, headers=admin_headers
     )
 
     assert response.status_code == 409
 
 
-def test_delete_payroll_run(client: TestClient, user_headers: dict[str, str]):
-    created = _create_payroll_run(client, user_headers, name="To Delete")
+def test_delete_payroll_run(client: TestClient, admin_headers: dict[str, str]):
+    created = _create_payroll_run(client, admin_headers, name="To Delete")
 
-    response = client.delete(f"/hr/payroll-runs/{created['id']}", headers=user_headers)
+    response = client.delete(f"/hr/payroll-runs/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 204
     assert (
-        client.get(f"/hr/payroll-runs/{created['id']}", headers=user_headers).status_code == 404
+        client.get(f"/hr/payroll-runs/{created['id']}", headers=admin_headers).status_code == 404
     )
 
 
-def test_delete_payroll_run_not_found(client: TestClient, user_headers: dict[str, str]):
-    response = client.delete(f"/hr/payroll-runs/{uuid.uuid4()}", headers=user_headers)
+def test_delete_payroll_run_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.delete(f"/hr/payroll-runs/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
+
+
+def test_create_payroll_run_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
+    response = client.post(
+        "/hr/payroll-runs", json={"code": "RUN-001", "name": "First Run"}, headers=member_headers
+    )
+
+    assert response.status_code == 403
+
+
+def test_list_payroll_runs_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
+    response = client.get("/hr/payroll-runs", headers=member_headers)
+
+    assert response.status_code == 403
+
+
+def test_get_payroll_run_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
+    response = client.get(f"/hr/payroll-runs/{uuid.uuid4()}", headers=member_headers)
+
+    assert response.status_code == 403
+
+
+def test_update_payroll_run_rejects_non_admin(
+    client: TestClient, admin_headers: dict[str, str], member_headers: dict[str, str]
+):
+    created = _create_payroll_run(client, admin_headers)
+
+    response = client.put(
+        f"/hr/payroll-runs/{created['id']}", json={"name": "After"}, headers=member_headers
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_payroll_run_rejects_non_admin(
+    client: TestClient, admin_headers: dict[str, str], member_headers: dict[str, str]
+):
+    created = _create_payroll_run(client, admin_headers)
+
+    response = client.delete(f"/hr/payroll-runs/{created['id']}", headers=member_headers)
+
+    assert response.status_code == 403

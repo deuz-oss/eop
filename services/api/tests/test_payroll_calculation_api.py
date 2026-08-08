@@ -13,6 +13,7 @@ from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
 
 
@@ -72,6 +73,42 @@ def user() -> User:
 def user_headers(client: TestClient, user: User) -> dict[str, str]:
     response = client.post(
         "/auth/login", json={"email": "member@example.com", "password": "member-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def _seed_admin(user_id: uuid.UUID) -> None:
+    """Grants the `admin` role directly at the DB layer.
+
+    Mirrors `test_roles_api.py`'s `_seed_admin`: `PayrollRun` is now Role
+    Based (`RequireRole("admin")`), so creating one in these tests requires
+    an admin-privileged caller, separate from the employee-owner caller that
+    creates their own `Compensation`.
+    """
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+@pytest.fixture
+def admin_user() -> User:
+    return asyncio.run(_create_user(email="admin@example.com", password="admin-pass"))
+
+
+@pytest.fixture
+def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
+    asyncio.run(_seed_admin(admin_user.id))
+
+    response = client.post(
+        "/auth/login", json={"email": "admin@example.com", "password": "admin-pass"}
     )
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -202,7 +239,9 @@ def _create_shift(client: TestClient, headers: dict[str, str], *, code: str) -> 
     return response.json()
 
 
-def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
+def _create_employee(
+    client: TestClient, headers: dict[str, str], *, user_id: str | None = None
+) -> dict:
     suffix = uuid.uuid4().hex[:8]
     organization = _create_organization(client, headers, name=f"Acme Corp {suffix}")
     department = _create_department(
@@ -251,6 +290,8 @@ def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
         "hire_date": "2024-01-15",
         "employment_status": "active",
     }
+    if user_id is not None:
+        payload["user_id"] = user_id
 
     response = client.post("/hr/employees", json=payload, headers=headers)
     assert response.status_code == 201
@@ -289,9 +330,14 @@ def test_calculate_payroll_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_calculate_payroll_end_to_end(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
-    payroll_run = _create_payroll_run(client, user_headers)
+def test_calculate_payroll_end_to_end(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
     _create_compensation(client, user_headers, employee_id=employee["id"])
 
     response = client.post(
@@ -309,10 +355,13 @@ def test_calculate_payroll_end_to_end(client: TestClient, user_headers: dict[str
 
 
 def test_calculate_payroll_rejects_missing_compensation(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    admin_headers: dict[str, str],
 ):
-    employee = _create_employee(client, user_headers)
-    payroll_run = _create_payroll_run(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
 
     response = client.post(
         "/payroll-calculation/calculate",
@@ -323,9 +372,14 @@ def test_calculate_payroll_rejects_missing_compensation(
     assert response.status_code == 404
 
 
-def test_calculate_payroll_rejects_duplicate(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
-    payroll_run = _create_payroll_run(client, user_headers)
+def test_calculate_payroll_rejects_duplicate(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
     _create_compensation(client, user_headers, employee_id=employee["id"])
 
     client.post(

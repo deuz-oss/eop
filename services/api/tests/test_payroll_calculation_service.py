@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
 from eop_api.db.base import Base
+from eop_api.models.hr_employee import HrEmployee
+from eop_api.models.user import User
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
@@ -24,6 +26,7 @@ from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
 from eop_api.schemas.compensation import CompensationCreate, CompensationUpdate
 from eop_api.services.compensation import CompensationService
+from eop_api.services.employee_context import EmployeeContext, RequestContext
 from eop_api.services.payroll_calculation import (
     CompensationInactiveError,
     CompensationNotFoundError,
@@ -155,6 +158,47 @@ async def payroll_run_id(session_factory: Callable[[], AsyncSession]) -> uuid.UU
         return payroll_run.id
 
 
+def _request_context(employee_id: uuid.UUID) -> RequestContext:
+    """A `RequestContext` built entirely in memory, scoped to `employee_id`.
+
+    Mirrors `test_compensation_service.py`'s `_request_context` helper --
+    used here only so this file's own direct `compensation_service.create`/
+    `.update` fixture calls (setup for `PayrollCalculationService`, not
+    `PayrollCalculationService` itself, which always calls with
+    `request_context=None`, per `services/payroll_calculation.py`) satisfy
+    `CompensationService`'s now-required `request_context` parameter as the
+    resource's owner.
+    """
+    user = User(
+        id=uuid.uuid4(),
+        email="actor@example.com",
+        password_hash="hash",
+        full_name="Actor",
+        is_active=True,
+    )
+    employee = HrEmployee(
+        id=employee_id,
+        employee_number="ACT-1",
+        first_name="Actor",
+        last_name="One",
+        full_name="Actor One",
+        email="actor@example.com",
+        organization_id=uuid.uuid4(),
+        department_id=uuid.uuid4(),
+        position_id=uuid.uuid4(),
+        team_id=uuid.uuid4(),
+        location_id=uuid.uuid4(),
+        job_grade_id=uuid.uuid4(),
+        employment_type_id=uuid.uuid4(),
+        employment_status_id=uuid.uuid4(),
+        shift_id=uuid.uuid4(),
+        hire_date=date(2020, 1, 1),
+        employment_status="active",
+        user_id=user.id,
+    )
+    return RequestContext(user=user, employee_context=EmployeeContext(user=user, employee=employee))
+
+
 async def test_calculate_sets_net_equal_to_gross(
     service: PayrollCalculationService,
     compensation_service: CompensationService,
@@ -167,7 +211,8 @@ async def test_calculate_sets_net_equal_to_gross(
             base_salary_amount=Decimal("5000000.00"),
             base_salary_currency="IDR",
             effective_from=date(2026, 1, 1),
-        )
+        ),
+        _request_context(employee_id),
     )
 
     payslip = await service.calculate(payroll_run_id, employee_id)
@@ -199,9 +244,12 @@ async def test_calculate_rejects_inactive_compensation(
             base_salary_amount=Decimal("5000000.00"),
             base_salary_currency="IDR",
             effective_from=date(2026, 1, 1),
-        )
+        ),
+        _request_context(employee_id),
     )
-    await compensation_service.update(compensation.id, CompensationUpdate(is_active=False))
+    await compensation_service.update(
+        compensation.id, CompensationUpdate(is_active=False), _request_context(employee_id)
+    )
 
     with pytest.raises(CompensationInactiveError):
         await service.calculate(payroll_run_id, employee_id)
@@ -219,7 +267,8 @@ async def test_calculate_rejects_duplicate_payslip(
             base_salary_amount=Decimal("5000000.00"),
             base_salary_currency="IDR",
             effective_from=date(2026, 1, 1),
-        )
+        ),
+        _request_context(employee_id),
     )
     await service.calculate(payroll_run_id, employee_id)
 

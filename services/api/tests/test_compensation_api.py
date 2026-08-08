@@ -84,6 +84,21 @@ def user_headers(client: TestClient, user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def other() -> User:
+    """An authenticated user who does not own the compensation under test."""
+    return asyncio.run(_create_user(email="other@example.com", password="other-pass"))
+
+
+@pytest.fixture
+def other_headers(client: TestClient, other: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "other@example.com", "password": "other-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _create_organization(client: TestClient, headers: dict[str, str], *, name: str) -> dict:
     response = client.post("/organizations", json={"name": name})
     assert response.status_code == 201
@@ -220,9 +235,13 @@ def _create_shift(
     return response.json()
 
 
-def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
-    """Creates its own HR master-data scaffolding, mirroring
-    `test_payslips_api.py`'s `_create_employee` helper."""
+def _create_employee(
+    client: TestClient, headers: dict[str, str], *, user_id: str | None = None
+) -> dict:
+    """Creates its own HR master-data scaffolding, suffixed by a fresh id so
+    multiple employees (e.g. owner + non-owner) can be created within the
+    same test without violating `code`/`name` uniqueness constraints.
+    Mirrors `test_attendance_events_api.py`'s `_create_employee` helper."""
     suffix = uuid.uuid4().hex[:8]
     organization = _create_organization(client, headers, name=f"Acme Corp {suffix}")
     department = _create_department(
@@ -271,6 +290,8 @@ def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
         "hire_date": "2024-01-15",
         "employment_status": "active",
     }
+    if user_id is not None:
+        payload["user_id"] = user_id
 
     response = client.post("/hr/employees", json=payload, headers=headers)
     assert response.status_code == 201
@@ -314,8 +335,8 @@ def test_create_compensation_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_create_compensation(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_create_compensation(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     body = _create_compensation(client, user_headers, employee_id=employee["id"])
 
@@ -327,9 +348,9 @@ def test_create_compensation(client: TestClient, user_headers: dict[str, str]):
 
 
 def test_create_compensation_normalizes_precision(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     body = _create_compensation(
         client, user_headers, employee_id=employee["id"], base_salary_amount="10.125"
@@ -339,8 +360,10 @@ def test_create_compensation_normalizes_precision(
 
 
 def test_create_compensation_rejects_missing_employee(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.post(
         "/hr/compensation",
         json={
@@ -356,9 +379,9 @@ def test_create_compensation_rejects_missing_employee(
 
 
 def test_create_compensation_rejects_duplicate_employee(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     _create_compensation(client, user_headers, employee_id=employee["id"])
 
     response = client.post(
@@ -376,9 +399,9 @@ def test_create_compensation_rejects_duplicate_employee(
 
 
 def test_create_compensation_rejects_empty_currency(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
 
     response = client.post(
         "/hr/compensation",
@@ -394,8 +417,30 @@ def test_create_compensation_rejects_empty_currency(
     assert response.status_code == 422
 
 
-def test_get_compensation(client: TestClient, user_headers: dict[str, str]):
+def test_create_compensation_forbidden_for_non_owner(
+    client: TestClient, user_headers: dict[str, str], other: User, other_headers: dict[str, str]
+):
     employee = _create_employee(client, user_headers)
+    _create_employee(
+        client, user_headers, user_id=str(other.id)
+    )
+
+    response = client.post(
+        "/hr/compensation",
+        json={
+            "employee_id": employee["id"],
+            "base_salary_amount": "1000.00",
+            "base_salary_currency": "IDR",
+            "effective_from": "2026-01-01",
+        },
+        headers=other_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_get_compensation(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_compensation(client, user_headers, employee_id=employee["id"])
 
     response = client.get(f"/hr/compensation/{created['id']}", headers=user_headers)
@@ -404,14 +449,32 @@ def test_get_compensation(client: TestClient, user_headers: dict[str, str]):
     assert response.json()["id"] == created["id"]
 
 
-def test_get_compensation_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_get_compensation_not_found(client: TestClient, user: User, user_headers: dict[str, str]):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.get(f"/hr/compensation/{uuid.uuid4()}", headers=user_headers)
 
     assert response.status_code == 404
 
 
-def test_get_compensation_by_employee(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_get_compensation_forbidden_for_non_owner(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_compensation(client, user_headers, employee_id=employee["id"])
+    _create_employee(client, user_headers, user_id=str(other.id))
+
+    response = client.get(f"/hr/compensation/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403
+
+
+def test_get_compensation_by_employee(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_compensation(client, user_headers, employee_id=employee["id"])
 
     response = client.get(
@@ -422,22 +485,48 @@ def test_get_compensation_by_employee(client: TestClient, user_headers: dict[str
     assert response.json()["id"] == created["id"]
 
 
-def test_list_compensation(client: TestClient, user_headers: dict[str, str]):
-    employee_1 = _create_employee(client, user_headers)
-    employee_2 = _create_employee(client, user_headers)
-    _create_compensation(client, user_headers, employee_id=employee_1["id"])
-    _create_compensation(client, user_headers, employee_id=employee_2["id"])
+def test_get_compensation_by_employee_forbidden_for_non_owner(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    _create_compensation(client, user_headers, employee_id=employee["id"])
+    _create_employee(client, user_headers, user_id=str(other.id))
+
+    response = client.get(
+        f"/hr/compensation/by-employee/{employee['id']}", headers=other_headers
+    )
+
+    assert response.status_code == 403
+
+
+def test_list_compensation_returns_only_owned(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(client, user_headers, user_id=str(other.id))
+    _create_compensation(client, user_headers, employee_id=employee["id"])
+    _create_compensation(client, other_headers, employee_id=other_employee["id"])
 
     response = client.get("/hr/compensation", headers=user_headers)
 
     assert response.status_code == 200
-    assert len(response.json()) == 2
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["employee_id"] == employee["id"]
 
 
 def test_update_compensation_mutates_same_record(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, user: User, user_headers: dict[str, str]
 ):
-    employee = _create_employee(client, user_headers)
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_compensation(client, user_headers, employee_id=employee["id"])
 
     response = client.put(
@@ -454,7 +543,11 @@ def test_update_compensation_mutates_same_record(
     assert len(listed.json()) == 1
 
 
-def test_update_compensation_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_update_compensation_not_found(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
     response = client.put(
         f"/hr/compensation/{uuid.uuid4()}",
         json={"base_salary_amount": "1500.00"},
@@ -464,11 +557,47 @@ def test_update_compensation_not_found(client: TestClient, user_headers: dict[st
     assert response.status_code == 404
 
 
-def test_delete_compensation(client: TestClient, user_headers: dict[str, str]):
-    employee = _create_employee(client, user_headers)
+def test_update_compensation_forbidden_for_non_owner(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_compensation(client, user_headers, employee_id=employee["id"])
+    _create_employee(client, user_headers, user_id=str(other.id))
+
+    response = client.put(
+        f"/hr/compensation/{created['id']}",
+        json={"base_salary_amount": "1500.00"},
+        headers=other_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_compensation(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_compensation(client, user_headers, employee_id=employee["id"])
 
     response = client.delete(f"/hr/compensation/{created['id']}", headers=user_headers)
 
     assert response.status_code == 204
     assert client.get(f"/hr/compensation/{created['id']}", headers=user_headers).status_code == 404
+
+
+def test_delete_compensation_forbidden_for_non_owner(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_compensation(client, user_headers, employee_id=employee["id"])
+    _create_employee(client, user_headers, user_id=str(other.id))
+
+    response = client.delete(f"/hr/compensation/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403
