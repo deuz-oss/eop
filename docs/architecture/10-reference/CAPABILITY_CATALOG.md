@@ -46,8 +46,17 @@ Detailed implementation remains in the individual capability documents.
 | Authorization Foundation | Implemented | Platform | ADR-007 |
 | Approval Authorization | Implemented | Approval | ADR-008 |
 | Leave Authorization | Implemented | Leave | ADR-007 |
+| Payroll Authorization | Implemented | Payroll | ADR-007 |
 | Approval Workflow | Implemented | Approval | ADR-004 |
 | HR Master Data | Implemented | HR | ADR-003 |
+| Effective Dating | Implemented | Platform | — (capability decision only) |
+| Monetary Representation | Implemented | Platform | — (capability decision only) |
+| Compensation | Implemented | HR | — (capability decision only) |
+| Payroll (Run + Calculation) | Implemented | Payroll | — (capability decision only) |
+| Payslip | Implemented | Payroll | — (capability decision only) |
+| Payroll Calculation (Advanced) | Blocked | Payroll | Pending business decision |
+| Shift Assignment | Blocked | HR | Pending business decision |
+| Work Schedule | Blocked | HR | Pending business decision |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -496,6 +505,246 @@ ADR-003
 
 ---
 
+# Effective Dating
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Reusable temporal-validity mechanism: column-composition mixin (`effective_from`/`effective_to`) plus a stateless evaluator. No persistence of its own, no business policy.
+
+---
+
+## Consumers
+
+- Compensation
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/effective-dating/decision.md` §12
+
+---
+
+# Monetary Representation
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Shared `Money` type (frozen dataclass, two-decimal half-up normalization) for monetary values.
+
+---
+
+## Consumers
+
+- Compensation
+- Payslip
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/monetary-representation/implementation-readiness-review.md`, `monetary-adoption-policy.md`
+
+---
+
+# Compensation
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Effective-dated employee compensation history: multiple historical rows per employee, overlap rejection, compensating-correction semantics (`corrects_id`).
+
+---
+
+## Dependencies
+
+- Effective Dating
+- Monetary Representation
+- HrEmployee, JobGrade
+
+---
+
+## Consumers
+
+- Payroll Calculation (base-salary tier)
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/compensation/decision.md` §17–19
+
+---
+
+## Out of Scope
+
+- Daily Rate persistence
+- Allowance ownership/model
+- Payroll as-of-date resolution
+
+---
+
+# Payroll (Run + Calculation)
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`PayrollRun` lifecycle (DRAFT → PROCESSING → COMPLETED) and base-salary `PayrollCalculationService`.
+
+---
+
+## Dependencies
+
+- Compensation
+- Payroll Authorization
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/payroll/decision.md`, `architecture-review.md`
+
+---
+
+## Out of Scope
+
+- tax/statutory formula calculation
+- pay-period cadence beyond iteration 1–2
+- rate sources beyond Compensation base salary
+(tracked separately as Payroll Calculation (Advanced) — Blocked)
+
+---
+
+# Payslip
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Structural payslip record — create/get/list only ("CRUD-minus-mutation").
+
+---
+
+## Dependencies
+
+- Payroll (Run + Calculation)
+- Monetary Representation
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/payslip/decision.md`, `architecture-review.md`
+
+---
+
+# Blocked Capabilities
+
+Architecture governance has completed as much as repository evidence allows; implementation remains blocked on unresolved business/product decisions. No business rules have been invented to unblock these.
+
+---
+
+# Payroll Calculation (Advanced)
+
+**Status**
+
+```
+Blocked
+```
+
+---
+
+## Reason
+
+Requires pay-period cadence, tax/statutory formula, and execution-mechanism decisions not evidenced in the repository.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/payroll-calculation/decision.md`
+
+---
+
+# Shift Assignment
+
+**Status**
+
+```
+Blocked
+```
+
+---
+
+## Reason
+
+11 of 13 open items are business gaps (effective-dating necessity, dedicated lifecycle, LeaveRequest hour-consumption, naming). 2 are architecture-only and do not by themselves unblock implementation.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/shift-assignment/implementation-plan.md` §12
+
+---
+
+# Work Schedule
+
+**Status**
+
+```
+Blocked
+```
+
+---
+
+## Reason
+
+15 blocking unknowns, predominantly business/repository gaps with no corresponding repository evidence.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/work-schedule/implementation-plan.md` §12
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -658,7 +907,16 @@ Business Capabilities
 | Authorization Foundation | ✓ | ✓ | ✓ | Implemented |
 | Approval Authorization | ✓ | ✓ | ✓ | Implemented |
 | Leave Authorization | ✓ | ✓ | ✓ | Implemented |
+| Payroll Authorization | ✓ | ✓ | ✓ | Implemented |
 | Approval Workflow | ✓ | ✓ | ✓ | Implemented |
+| Effective Dating | ✓ | ✓ | ✓ | Implemented |
+| Monetary Representation | ✓ | ✓ | ✓ | Implemented |
+| Compensation | ✓ | ✓ | ✓ | Implemented |
+| Payroll (Run + Calculation) | ✓ | ✓ | ✓ | Implemented |
+| Payslip | ✓ | ✓ | ✓ | Implemented |
+| Payroll Calculation (Advanced) | ✓ | ✗ | ✗ | Blocked |
+| Shift Assignment | ✓ | ✗ | ✗ | Blocked |
+| Work Schedule | ✓ | ✗ | ✗ | Blocked |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
