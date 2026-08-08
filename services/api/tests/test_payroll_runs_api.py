@@ -1,4 +1,5 @@
 import asyncio
+import calendar
 import uuid
 from collections.abc import Generator
 
@@ -121,14 +122,33 @@ def _create_payroll_run(
     *,
     code: str = "RUN-001",
     name: str = "First Run",
+    month: int = 1,
+    currency: str = "IDR",
 ) -> dict:
+    """`month` (1-12, year fixed at 2026) lets callers creating more than one
+    `PayrollRun` in a single test give each a non-overlapping period (D1:
+    exactly one calendar month; D8/E7: overlap is rejected per-currency) --
+    without every call site needing to compute period bounds itself.
+    """
+    period_start, period_end = _month_bounds(month)
     response = client.post(
         "/hr/payroll-runs",
-        json={"code": code, "name": name},
+        json={
+            "code": code,
+            "name": name,
+            "period_start": period_start,
+            "period_end": period_end,
+            "currency": currency,
+        },
         headers=headers,
     )
     assert response.status_code == 201
     return response.json()
+
+
+def _month_bounds(month: int, year: int = 2026) -> tuple[str, str]:
+    last_day = calendar.monthrange(year, month)[1]
+    return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
 
 
 def test_create_payroll_run_requires_authentication(client: TestClient):
@@ -185,7 +205,13 @@ def test_create_payroll_run_rejects_duplicate_code(
 
     response = client.post(
         "/hr/payroll-runs",
-        json={"code": "RUN-001", "name": "Other"},
+        json={
+            "code": "RUN-001",
+            "name": "Other",
+            "period_start": "2026-01-01",
+            "period_end": "2026-01-31",
+            "currency": "IDR",
+        },
         headers=admin_headers,
     )
 
@@ -208,8 +234,8 @@ def test_get_payroll_run_not_found(client: TestClient, admin_headers: dict[str, 
 
 
 def test_list_payroll_runs(client: TestClient, admin_headers: dict[str, str]):
-    _create_payroll_run(client, admin_headers, code="RUN-001", name="First Run")
-    _create_payroll_run(client, admin_headers, code="RUN-002", name="Second Run")
+    _create_payroll_run(client, admin_headers, code="RUN-001", name="First Run", month=1)
+    _create_payroll_run(client, admin_headers, code="RUN-002", name="Second Run", month=2)
 
     response = client.get("/hr/payroll-runs", headers=admin_headers)
 
@@ -222,7 +248,7 @@ def test_list_payroll_runs_paginated_default_pagination(
     client: TestClient, admin_headers: dict[str, str]
 ):
     for i in range(3):
-        _create_payroll_run(client, admin_headers, code=f"RUN-{i}", name=f"Run {i}")
+        _create_payroll_run(client, admin_headers, code=f"RUN-{i}", name=f"Run {i}", month=i + 1)
 
     response = client.get("/hr/payroll-runs/paginated", headers=admin_headers)
 
@@ -238,11 +264,9 @@ def test_list_payroll_runs_paginated_custom_offset(
     client: TestClient, admin_headers: dict[str, str]
 ):
     for i in range(5):
-        _create_payroll_run(client, admin_headers, code=f"RUN-{i}", name=f"Run {i}")
+        _create_payroll_run(client, admin_headers, code=f"RUN-{i}", name=f"Run {i}", month=i + 1)
 
-    response = client.get(
-        "/hr/payroll-runs/paginated", headers=admin_headers, params={"offset": 2}
-    )
+    response = client.get("/hr/payroll-runs/paginated", headers=admin_headers, params={"offset": 2})
 
     assert response.status_code == 200
     body = response.json()
@@ -254,8 +278,8 @@ def test_list_payroll_runs_paginated_custom_offset(
 def test_list_payroll_runs_paginated_search_by_name(
     client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_payroll_run(client, admin_headers, code="RUN-001", name="August Run")
-    _create_payroll_run(client, admin_headers, code="RUN-002", name="September Run")
+    _create_payroll_run(client, admin_headers, code="RUN-001", name="August Run", month=1)
+    _create_payroll_run(client, admin_headers, code="RUN-002", name="September Run", month=2)
 
     response = client.get(
         "/hr/payroll-runs/paginated", headers=admin_headers, params={"q": "august"}
@@ -270,12 +294,10 @@ def test_list_payroll_runs_paginated_search_by_name(
 def test_list_payroll_runs_paginated_search_by_code(
     client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_payroll_run(client, admin_headers, code="RUN-AUG-01", name="First")
-    _create_payroll_run(client, admin_headers, code="RUN-SEP-01", name="Second")
+    _create_payroll_run(client, admin_headers, code="RUN-AUG-01", name="First", month=1)
+    _create_payroll_run(client, admin_headers, code="RUN-SEP-01", name="Second", month=2)
 
-    response = client.get(
-        "/hr/payroll-runs/paginated", headers=admin_headers, params={"q": "aug"}
-    )
+    response = client.get("/hr/payroll-runs/paginated", headers=admin_headers, params={"q": "aug"})
 
     assert response.status_code == 200
     body = response.json()
@@ -286,8 +308,8 @@ def test_list_payroll_runs_paginated_search_by_code(
 def test_list_payroll_runs_paginated_no_query_returns_all(
     client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_payroll_run(client, admin_headers, code="RUN-001", name="First Run")
-    _create_payroll_run(client, admin_headers, code="RUN-002", name="Second Run")
+    _create_payroll_run(client, admin_headers, code="RUN-001", name="First Run", month=1)
+    _create_payroll_run(client, admin_headers, code="RUN-002", name="Second Run", month=2)
 
     response = client.get("/hr/payroll-runs/paginated", headers=admin_headers)
 
@@ -317,8 +339,8 @@ def test_update_payroll_run_not_found(client: TestClient, admin_headers: dict[st
 def test_update_payroll_run_rejects_duplicate_code(
     client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_payroll_run(client, admin_headers, code="RUN-001")
-    other = _create_payroll_run(client, admin_headers, code="RUN-002")
+    _create_payroll_run(client, admin_headers, code="RUN-001", month=1)
+    other = _create_payroll_run(client, admin_headers, code="RUN-002", month=2)
 
     response = client.put(
         f"/hr/payroll-runs/{other['id']}", json={"code": "RUN-001"}, headers=admin_headers
@@ -333,9 +355,7 @@ def test_delete_payroll_run(client: TestClient, admin_headers: dict[str, str]):
     response = client.delete(f"/hr/payroll-runs/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 204
-    assert (
-        client.get(f"/hr/payroll-runs/{created['id']}", headers=admin_headers).status_code == 404
-    )
+    assert client.get(f"/hr/payroll-runs/{created['id']}", headers=admin_headers).status_code == 404
 
 
 def test_delete_payroll_run_not_found(client: TestClient, admin_headers: dict[str, str]):

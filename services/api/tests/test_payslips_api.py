@@ -343,7 +343,15 @@ def _create_payroll_run(
     client: TestClient, headers: dict[str, str], *, code: str = "RUN-001", name: str = "First Run"
 ) -> dict:
     response = client.post(
-        "/hr/payroll-runs", json={"code": code, "name": name}, headers=headers
+        "/hr/payroll-runs",
+        json={
+            "code": code,
+            "name": name,
+            "period_start": "2026-01-01",
+            "period_end": "2026-01-31",
+            "currency": "IDR",
+        },
+        headers=headers,
     )
     assert response.status_code == 201
     return response.json()

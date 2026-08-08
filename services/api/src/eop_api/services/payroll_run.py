@@ -1,5 +1,7 @@
+import calendar
 import uuid
 from collections.abc import Callable, Sequence
+from datetime import date
 
 from eop_api.core.payroll import PayrollRunStatus
 from eop_api.models.payroll_run import PayrollRun
@@ -33,7 +35,26 @@ class InvalidPayrollRunTransitionError(Exception):
     Per `docs/architecture/capabilities/payroll/decision.md` Addendum
     (Version 2) §1: `DRAFT -> PROCESSING -> COMPLETED` only, each transition
     explicit and deterministic -- there is no generic `status` setter.
+    Also raised by `start_processing` if the run is already `COMPLETED`
+    (E5's immutability boundary) -- `DRAFT`/`PROCESSING` are both accepted
+    there for D9's pre-completion rerun (`implementation-plan.md` §3.3).
     """
+
+
+class InvalidPayrollPeriodError(Exception):
+    """Raised when `period_start`/`period_end` do not form exactly one
+    calendar month (D1: monthly payroll period, E6: `PayrollRun` owns the
+    payroll period -- `implementation-plan.md` §3.2). No separate
+    `PayPeriod` entity is introduced; this is a service-layer validation
+    on `PayrollRun`'s own two columns.
+    """
+
+
+class OverlappingPayrollRunPeriodError(Exception):
+    """Raised when a new `PayrollRun`'s period overlaps an existing run's
+    period for the same `currency` (D8/E7: one currency per `PayrollRun`,
+    segmented by currency -- different currencies may have a run for the
+    same month)."""
 
 
 class PayrollRunService:
@@ -66,18 +87,42 @@ class PayrollRunService:
         self._uow_factory = uow_factory
 
     async def create(self, data: PayrollRunCreate) -> PayrollRun:
+        self._validate_period(data.period_start, data.period_end)
+
         async with self._uow_factory() as uow:
             repo = PayrollRunRepository(uow.session)
 
             if await repo.get_by_code(data.code):
                 raise DuplicatePayrollRunCodeError(data.code)
 
-            payroll_run = await repo.create(
-                **data.model_dump(), status=PayrollRunStatus.DRAFT
+            overlapping = await repo.find_overlapping_period(
+                data.currency, data.period_start, data.period_end
             )
+            if overlapping:
+                raise OverlappingPayrollRunPeriodError(
+                    f"PayrollRun period {data.period_start}..{data.period_end} "
+                    f"overlaps an existing run for currency {data.currency!r}"
+                )
+
+            payroll_run = await repo.create(**data.model_dump(), status=PayrollRunStatus.DRAFT)
             await uow.commit()
             uow.session.expunge(payroll_run)
             return payroll_run
+
+    @staticmethod
+    def _validate_period(period_start: date, period_end: date) -> None:
+        """D1: `period_start`/`period_end` must form exactly one calendar month."""
+        if period_start.day != 1:
+            raise InvalidPayrollPeriodError(
+                f"period_start {period_start} must be the first day of a calendar month"
+            )
+        last_day = calendar.monthrange(period_start.year, period_start.month)[1]
+        expected_end = period_start.replace(day=last_day)
+        if period_end != expected_end:
+            raise InvalidPayrollPeriodError(
+                f"period_end {period_end} must be the last day of {period_start:%Y-%m} "
+                f"({expected_end}), forming exactly one calendar month"
+            )
 
     async def get(self, payroll_run_id: uuid.UUID) -> PayrollRun | None:
         async with self._uow_factory() as uow:
@@ -108,9 +153,7 @@ class PayrollRunService:
             uow.session.expunge_all()
             return page
 
-    async def update(
-        self, payroll_run_id: uuid.UUID, data: PayrollRunUpdate
-    ) -> PayrollRun | None:
+    async def update(self, payroll_run_id: uuid.UUID, data: PayrollRunUpdate) -> PayrollRun | None:
         async with self._uow_factory() as uow:
             repo = PayrollRunRepository(uow.session)
             payroll_run = await repo.get(payroll_run_id)
@@ -135,9 +178,7 @@ class PayrollRunService:
         async with self._uow_factory() as uow:
             repo = PayrollRunRepository(uow.session)
 
-            if await PayslipRepository(uow.session).get_by(
-                Payslip.payroll_run_id, payroll_run_id
-            ):
+            if await PayslipRepository(uow.session).get_by(Payslip.payroll_run_id, payroll_run_id):
                 raise PayrollRunHasPayslipsError(str(payroll_run_id))
 
             deleted = await repo.delete(payroll_run_id)
@@ -146,10 +187,34 @@ class PayrollRunService:
             return deleted
 
     async def start_processing(self, payroll_run_id: uuid.UUID) -> PayrollRun | None:
-        """`DRAFT -> PROCESSING`. Returns `None` if `payroll_run_id` doesn't exist."""
-        return await self._transition(
-            payroll_run_id, expected=PayrollRunStatus.DRAFT, target=PayrollRunStatus.PROCESSING
-        )
+        """`DRAFT -> PROCESSING`, or an idempotent no-op reaffirmation if
+        already `PROCESSING` -- pre-completion rerun support (D9,
+        `implementation-plan.md` §3.3). Raises
+        `InvalidPayrollRunTransitionError` only if the run is already
+        `COMPLETED` (E5's immutability boundary). Returns `None` if
+        `payroll_run_id` doesn't exist.
+        """
+        async with self._uow_factory() as uow:
+            repo = PayrollRunRepository(uow.session)
+            payroll_run = await repo.get(payroll_run_id)
+            if payroll_run is None:
+                return None
+
+            if payroll_run.status == PayrollRunStatus.COMPLETED:
+                raise InvalidPayrollRunTransitionError(
+                    f"Cannot start processing PayrollRun {payroll_run_id}: already COMPLETED"
+                )
+
+            if payroll_run.status == PayrollRunStatus.PROCESSING:
+                uow.session.expunge(payroll_run)
+                return payroll_run
+
+            updated = await repo.update(payroll_run_id, status=PayrollRunStatus.PROCESSING)
+            assert updated is not None
+            await uow.commit()
+            await uow.session.refresh(updated)
+            uow.session.expunge(updated)
+            return updated
 
     async def complete(self, payroll_run_id: uuid.UUID) -> PayrollRun | None:
         """`PROCESSING -> COMPLETED`. Returns `None` if `payroll_run_id` doesn't exist."""

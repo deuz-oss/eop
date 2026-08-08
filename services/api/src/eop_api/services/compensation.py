@@ -249,6 +249,28 @@ class CompensationService:
             uow.session.expunge_all()
             return compensations
 
+    async def list_active_as_of(self, as_of_date: date) -> Sequence[Compensation]:
+        """Every `Compensation` row that is both `is_active=True` and
+        effective as of `as_of_date`, unscoped across employees.
+
+        Advanced Payroll's `PayrollCalculationService.calculate_batch`
+        eligibility source (superseding `list_active` for that one caller,
+        `implementation-plan.md` §1.1/§5): `is_active=True` alone can match
+        more than one historical row per employee now that Compensation is
+        effective-dated (`decision.md` §18), which `list_active` does not
+        account for. Persistence-only: may return more than one row per
+        `employee_id` (e.g. a correction and the row it corrects) --
+        resolving down to one answer per employee remains
+        `get_by_employee`'s job; callers of this method must deduplicate by
+        `employee_id` before iterating and re-resolve each one via
+        `get_by_employee`, exactly as `calculate_batch` does.
+        """
+        async with self._uow_factory() as uow:
+            repo = CompensationRepository(uow.session)
+            compensations = await repo.list_active_as_of(as_of_date)
+            uow.session.expunge_all()
+            return compensations
+
     async def list(self, request_context: RequestContext) -> Sequence[Compensation]:
         """Compensation records owned by the caller's own `employee_id`."""
         async with self._uow_factory() as uow:

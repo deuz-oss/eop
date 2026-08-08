@@ -103,13 +103,37 @@ class CompensationRepository(BaseRepository[Compensation]):
     async def list_active(self) -> Sequence[Compensation]:
         """Every `Compensation` row with `is_active=True`.
 
-        Used only by `PayrollCalculationService`'s batch orchestration to
-        determine the eligible-employee set for a `PayrollRun`, per
-        `models/compensation.py`'s own documented purpose for `is_active`:
-        "no longer considered by payroll processing" when `False`. No new
-        eligibility rule is introduced here.
+        Superseded as `PayrollCalculationService`'s batch eligibility source
+        by `list_active_as_of` (Advanced Payroll,
+        `implementation-plan.md` §1.1/§5): `is_active=True` alone can match
+        more than one historical row per employee now that Compensation is
+        effective-dated (`decision.md` §18), which this method does not
+        account for. Kept unmodified and unremoved for API/test
+        compatibility -- no existing caller of this exact method is changed.
         """
         stmt = select(Compensation).where(Compensation.is_active.is_(True))
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+    async def list_active_as_of(self, as_of_date: date) -> Sequence[Compensation]:
+        """Every `Compensation` row that is both `is_active=True` and
+        effective as of `as_of_date`, unscoped across employees.
+
+        Used only by `PayrollCalculationService.calculate_batch`'s
+        eligibility determination (`implementation-plan.md` §5/§7).
+        Persistence-only: may return more than one row per `employee_id`
+        (e.g. a correction and the row it corrects, or genuinely ambiguous
+        data) -- resolving down to one answer per employee is
+        `CompensationService.get_by_employee`'s job (already-tested
+        correction-precedence + `AmbiguousEffectiveStateError` logic),
+        which `PayrollCalculationService.calculate` calls per employee; this
+        method deliberately does not duplicate that resolution.
+        """
+        stmt = select(Compensation).where(
+            Compensation.is_active.is_(True),
+            Compensation.effective_from <= as_of_date,
+            (Compensation.effective_to.is_(None)) | (Compensation.effective_to >= as_of_date),
+        )
         result = await self.session.execute(stmt)
         return result.scalars().all()
 

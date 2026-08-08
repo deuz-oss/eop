@@ -1,4 +1,6 @@
+import uuid
 from collections.abc import Mapping, Sequence
+from datetime import date
 from typing import Any
 
 from sqlalchemy import select
@@ -23,6 +25,32 @@ class PayrollRunRepository(BaseRepository[PayrollRun]):
         stmt = select(PayrollRun).where(PayrollRun.code == code)
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def find_overlapping_period(
+        self,
+        currency: str,
+        period_start: date,
+        period_end: date,
+        *,
+        exclude_id: uuid.UUID | None = None,
+    ) -> Sequence[PayrollRun]:
+        """Existing `PayrollRun` rows for `currency` whose period overlaps
+        `[period_start, period_end]`. Implements D8/E7 (one currency per
+        `PayrollRun`, segmented by currency): two runs for the same period
+        may coexist only if their currencies differ. Mirrors
+        `CompensationRepository.find_overlapping_periods`'s range-overlap
+        shape (`period_start`/`period_end` are never open-ended here, unlike
+        Compensation's `effective_to`, since D1 fixes every `PayrollRun` to
+        exactly one calendar month)."""
+        stmt = select(PayrollRun).where(
+            PayrollRun.currency == currency,
+            PayrollRun.period_start <= period_end,
+            PayrollRun.period_end >= period_start,
+        )
+        if exclude_id is not None:
+            stmt = stmt.where(PayrollRun.id != exclude_id)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
 
     async def paginate(
         self,
