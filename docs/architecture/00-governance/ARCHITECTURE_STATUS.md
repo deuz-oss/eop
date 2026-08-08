@@ -68,6 +68,15 @@ Business Capability
 | Authorization Foundation | Implemented | Generic authorization mechanism |
 | Approval Authorization | Implemented | Manager Approval policy |
 | Leave Authorization | Implemented | Owner Only policy |
+| Payroll Authorization | Implemented | Authorization enforcement on payroll capabilities |
+| Effective Dating | Implemented | Column-composition mixin + stateless evaluator for temporal validity |
+| Monetary Representation | Implemented | Shared `Money` type for monetary values |
+| Compensation | Implemented | Effective-dated employee compensation history |
+| Payroll (Run + Calculation) | Implemented | Payroll run lifecycle and base-salary payroll calculation |
+| Payslip | Implemented | Structural payslip record (create/get/list) |
+| Payroll Calculation (Advanced) | Blocked | Tax/formula engine — pending business decisions |
+| Shift Assignment | Blocked | Pending business decisions (see capability decision doc) |
+| Work Schedule | Blocked | Pending business decisions (see capability decision doc) |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -395,6 +404,171 @@ Authorization Foundation
 
 ---
 
+# Business Domain Capabilities
+
+---
+
+# Effective Dating
+
+**Status:**
+
+Implemented
+
+**Related:**
+
+- `docs/architecture/capabilities/effective-dating/decision.md` §12
+
+---
+
+## Purpose
+
+Provides a reusable temporal-validity mechanism for aggregates that must retain historical, effective-dated rows.
+
+Components:
+
+- `EffectiveDatingMixin` (column-composition mixin — `effective_from`/`effective_to`)
+- `EffectiveDatingEvaluator` (stateless resolve/is-effective evaluation)
+
+---
+
+## Design Principle
+
+Effective Dating owns the temporal mechanism only. It has no persistence of its own and no business policy — overlap rules, correction semantics, and business meaning belong to the consuming capability.
+
+---
+
+## Consumers
+
+Current:
+
+- Compensation
+
+---
+
+# Monetary Representation
+
+**Status:**
+
+Implemented
+
+**Related:**
+
+- `docs/architecture/capabilities/monetary-representation/implementation-readiness-review.md`
+- `docs/architecture/capabilities/monetary-representation/monetary-adoption-policy.md`
+
+---
+
+## Purpose
+
+Provides a shared `Money` type (frozen dataclass, two-decimal half-up normalization) for monetary values, replacing ad hoc float/Decimal handling per capability.
+
+---
+
+## Consumers
+
+Current:
+
+- Compensation
+- Payslip
+
+---
+
+# Compensation
+
+**Status:**
+
+Implemented
+
+**Related:**
+
+- `docs/architecture/capabilities/compensation/decision.md` §17–19
+- `docs/architecture/capabilities/compensation/final-governance-summary.md` (superseded by §17–19 addendums — retained for governance history only)
+
+---
+
+## Purpose
+
+Represents the monetary terms agreed between employer and employee as an effective-dated history, not a single mutable row.
+
+---
+
+## Responsibilities
+
+Compensation owns:
+
+- employee compensation agreement and business meaning
+- effective-dated history (multiple historical rows per employee via Effective Dating)
+- overlap policy (mutually exclusive effective periods, hard reject)
+- compensating-correction semantics (`corrects_id`, corrected row remains immutable)
+
+Compensation does not own:
+
+- payroll calculation or execution
+- payslip generation
+- the monetary or temporal mechanism (consumed from Monetary Representation / Effective Dating)
+
+---
+
+## Constraints
+
+The capability does not implement:
+
+- Daily Rate persistence
+- Allowance ownership/model
+- Payroll's as-of-date resolution (`PayrollRun` date/period semantics remain deferred; Payroll integration with multi-row Compensation is a separate task)
+
+---
+
+# Payroll (Run + Calculation)
+
+**Status:**
+
+Implemented
+
+**Related:**
+
+- `docs/architecture/capabilities/payroll/decision.md`
+- `docs/architecture/capabilities/payroll/architecture-review.md`
+
+---
+
+## Purpose
+
+Provides payroll run lifecycle (`PayrollRun`: DRAFT → PROCESSING → COMPLETED) and base-salary payroll calculation (`PayrollCalculationService`).
+
+---
+
+## Constraints
+
+Scoped to the accepted implementation plan only. Does not implement:
+
+- tax/statutory formula calculation
+- pay-period cadence beyond what iteration 1–2 requires
+- rate sources beyond Compensation's base salary
+
+These remain the separate, still-blocked "Payroll Calculation (Advanced)" capability — see Deferred Architecture below.
+
+---
+
+# Payslip
+
+**Status:**
+
+Implemented
+
+**Related:**
+
+- `docs/architecture/capabilities/payslip/decision.md`
+- `docs/architecture/capabilities/payslip/architecture-review.md` ("Approved with Known Risks")
+
+---
+
+## Purpose
+
+Structural payslip record. Scoped to create/get/list only — no update or delete ("CRUD-minus-mutation"), matching the accepted implementation plan.
+
+---
+
 # Authorization Adoption Status
 
 Current adoption:
@@ -507,6 +681,42 @@ Direct Manager
 - recursive hierarchy
 - escalation chain
 - organizational graph
+
+---
+
+# Blocked — Pending Business Decision
+
+The following capabilities have completed architecture governance work but implementation remains genuinely blocked on unresolved business/product decisions (not architecture). No business rules have been invented to unblock them.
+
+---
+
+## Payroll Calculation (Advanced)
+
+**Status:** Blocked
+
+**Related:** `docs/architecture/capabilities/payroll-calculation/decision.md`
+
+Requires business/product decisions this repository does not evidence: pay-period cadence, tax/statutory formula, and execution mechanism (request- vs. event/job-driven). Distinct from the already-implemented base-salary Payroll Calculation above.
+
+---
+
+## Shift Assignment
+
+**Status:** Blocked
+
+**Related:** `docs/architecture/capabilities/shift-assignment/implementation-plan.md` §12
+
+11 of 13 open items are genuine business gaps (effective-dating necessity, dedicated lifecycle, LeaveRequest hour-consumption interaction, naming). The remaining 2 (relationship shape, delete rule) are architecture-only and could be resolved without new business input, but do not by themselves unblock implementation while the business gaps remain open.
+
+---
+
+## Work Schedule
+
+**Status:** Blocked
+
+**Related:** `docs/architecture/capabilities/work-schedule/implementation-plan.md` §12
+
+15 blocking unknowns, predominantly business/repository gaps (recurring-schedule identity, overlap validation, historical lookup) with no corresponding evidence anywhere in the repository.
 
 ---
 
