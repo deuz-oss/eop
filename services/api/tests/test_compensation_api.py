@@ -306,17 +306,20 @@ def _create_compensation(
     base_salary_amount: str = "1000.00",
     base_salary_currency: str = "IDR",
     effective_from: str = "2026-01-01",
+    effective_to: str | None = None,
+    corrects_id: str | None = None,
 ) -> dict:
-    response = client.post(
-        "/hr/compensation",
-        json={
-            "employee_id": employee_id,
-            "base_salary_amount": base_salary_amount,
-            "base_salary_currency": base_salary_currency,
-            "effective_from": effective_from,
-        },
-        headers=headers,
-    )
+    payload = {
+        "employee_id": employee_id,
+        "base_salary_amount": base_salary_amount,
+        "base_salary_currency": base_salary_currency,
+        "effective_from": effective_from,
+    }
+    if effective_to is not None:
+        payload["effective_to"] = effective_to
+    if corrects_id is not None:
+        payload["corrects_id"] = corrects_id
+    response = client.post("/hr/compensation", json=payload, headers=headers)
     assert response.status_code == 201
     return response.json()
 
@@ -378,11 +381,19 @@ def test_create_compensation_rejects_missing_employee(
     assert response.status_code == 404
 
 
-def test_create_compensation_rejects_duplicate_employee(
+def test_create_compensation_allows_multiple_historical_rows(
     client: TestClient, user: User, user_headers: dict[str, str]
 ):
+    """`docs/architecture/capabilities/compensation/decision.md` §17 (Accepted):
+    multiple Compensation rows may exist per employee."""
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    _create_compensation(client, user_headers, employee_id=employee["id"])
+    first = _create_compensation(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+    )
 
     response = client.post(
         "/hr/compensation",
@@ -390,12 +401,111 @@ def test_create_compensation_rejects_duplicate_employee(
             "employee_id": employee["id"],
             "base_salary_amount": "2000.00",
             "base_salary_currency": "IDR",
-            "effective_from": "2026-02-01",
+            "effective_from": "2026-07-01",
+        },
+        headers=user_headers,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["id"] != first["id"]
+
+
+def test_create_compensation_rejects_overlapping_period(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """§19, Option O1 (Accepted): overlapping periods for the same
+    employee are rejected -- maps to 409, the project's standard conflict
+    response."""
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    _create_compensation(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+    )
+
+    response = client.post(
+        "/hr/compensation",
+        json={
+            "employee_id": employee["id"],
+            "base_salary_amount": "2000.00",
+            "base_salary_currency": "IDR",
+            "effective_from": "2026-03-01",
         },
         headers=user_headers,
     )
 
     assert response.status_code == 409
+
+
+def test_create_compensation_correction(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    target = _create_compensation(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        base_salary_amount="1000.00",
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+    )
+
+    response = client.post(
+        "/hr/compensation",
+        json={
+            "employee_id": employee["id"],
+            "base_salary_amount": "1100.00",
+            "base_salary_currency": "IDR",
+            "effective_from": "2026-01-01",
+            "effective_to": "2026-06-30",
+            "corrects_id": target["id"],
+        },
+        headers=user_headers,
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["corrects_id"] == target["id"]
+    assert body["id"] != target["id"]
+
+
+def test_create_compensation_correction_invalid_target(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+
+    response = client.post(
+        "/hr/compensation",
+        json={
+            "employee_id": employee["id"],
+            "base_salary_amount": "1000.00",
+            "base_salary_currency": "IDR",
+            "effective_from": "2026-01-01",
+            "corrects_id": str(uuid.uuid4()),
+        },
+        headers=user_headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_create_compensation_response_contains_effective_to_and_corrects_id(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+
+    body = _create_compensation(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+    )
+
+    assert body["effective_to"] == "2026-06-30"
+    assert body["corrects_id"] is None
 
 
 def test_create_compensation_rejects_empty_currency(
@@ -421,9 +531,7 @@ def test_create_compensation_forbidden_for_non_owner(
     client: TestClient, user_headers: dict[str, str], other: User, other_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
-    _create_employee(
-        client, user_headers, user_id=str(other.id)
-    )
+    _create_employee(client, user_headers, user_id=str(other.id))
 
     response = client.post(
         "/hr/compensation",
@@ -477,12 +585,44 @@ def test_get_compensation_by_employee(client: TestClient, user: User, user_heade
     employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_compensation(client, user_headers, employee_id=employee["id"])
 
-    response = client.get(
-        f"/hr/compensation/by-employee/{employee['id']}", headers=user_headers
-    )
+    response = client.get(f"/hr/compensation/by-employee/{employee['id']}", headers=user_headers)
 
     assert response.status_code == 200
     assert response.json()["id"] == created["id"]
+
+
+def test_get_compensation_by_employee_resolves_as_of_date(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    earlier = _create_compensation(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        base_salary_amount="1000.00",
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+    )
+    response = client.post(
+        "/hr/compensation",
+        json={
+            "employee_id": employee["id"],
+            "base_salary_amount": "1200.00",
+            "base_salary_currency": "IDR",
+            "effective_from": "2026-07-01",
+        },
+        headers=user_headers,
+    )
+    assert response.status_code == 201
+
+    response = client.get(
+        f"/hr/compensation/by-employee/{employee['id']}",
+        params={"as_of": "2026-03-01"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == earlier["id"]
 
 
 def test_get_compensation_by_employee_forbidden_for_non_owner(
@@ -496,9 +636,7 @@ def test_get_compensation_by_employee_forbidden_for_non_owner(
     _create_compensation(client, user_headers, employee_id=employee["id"])
     _create_employee(client, user_headers, user_id=str(other.id))
 
-    response = client.get(
-        f"/hr/compensation/by-employee/{employee['id']}", headers=other_headers
-    )
+    response = client.get(f"/hr/compensation/by-employee/{employee['id']}", headers=other_headers)
 
     assert response.status_code == 403
 
@@ -523,21 +661,26 @@ def test_list_compensation_returns_only_owned(
     assert body[0]["employee_id"] == employee["id"]
 
 
-def test_update_compensation_mutates_same_record(
+def test_update_compensation_only_changes_is_active(
     client: TestClient, user: User, user_headers: dict[str, str]
 ):
+    """`CompensationUpdate` carries only `is_active`
+    (`docs/architecture/capabilities/compensation/decision.md` §18, Option A3) --
+    `base_salary_amount` cannot be changed via `PUT`, since that would mutate
+    a historical fact in place; unrecognized fields are ignored, not applied."""
     employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_compensation(client, user_headers, employee_id=employee["id"])
 
     response = client.put(
         f"/hr/compensation/{created['id']}",
-        json={"base_salary_amount": "1500.00"},
+        json={"base_salary_amount": "1500.00", "is_active": False},
         headers=user_headers,
     )
 
     assert response.status_code == 200
     assert response.json()["id"] == created["id"]
-    assert response.json()["base_salary_amount"] == "1500.00"
+    assert response.json()["base_salary_amount"] == created["base_salary_amount"]
+    assert response.json()["is_active"] is False
 
     listed = client.get("/hr/compensation", headers=user_headers)
     assert len(listed.json()) == 1
