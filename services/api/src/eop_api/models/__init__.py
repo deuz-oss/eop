@@ -1,6 +1,7 @@
 from eop_api.models.assignment import Assignment
 from eop_api.models.attendance_event import AttendanceEvent
 from eop_api.models.audit_log import AuditLog
+from eop_api.models.compensation import Compensation
 from eop_api.models.department import Department
 from eop_api.models.employee import Employee
 from eop_api.models.employment_status import EmploymentStatus
@@ -15,6 +16,8 @@ from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
 from eop_api.models.organization import Organization
 from eop_api.models.overtime_request import OvertimeRequest
+from eop_api.models.payroll_run import PayrollRun
+from eop_api.models.payslip import Payslip
 from eop_api.models.position import Position
 from eop_api.models.project import Project
 from eop_api.models.role import Role
@@ -29,6 +32,7 @@ __all__ = [
     "Assignment",
     "AttendanceEvent",
     "AuditLog",
+    "Compensation",
     "Department",
     "Employee",
     "EmploymentStatus",
@@ -43,6 +47,8 @@ __all__ = [
     "LocationType",
     "Organization",
     "OvertimeRequest",
+    "PayrollRun",
+    "Payslip",
     "Position",
     "Project",
     "Role",

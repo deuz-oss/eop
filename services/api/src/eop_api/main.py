@@ -10,6 +10,7 @@ from eop_api.api.assignments import router as assignments_router
 from eop_api.api.attendance_events import router as attendance_events_router
 from eop_api.api.audit_logs import router as audit_logs_router
 from eop_api.api.auth import router as auth_router
+from eop_api.api.compensation import router as compensation_router
 from eop_api.api.dashboard import router as dashboard_router
 from eop_api.api.departments import router as departments_router
 from eop_api.api.employees import router as employees_router
@@ -26,6 +27,9 @@ from eop_api.api.location_types import router as location_types_router
 from eop_api.api.locations import router as locations_router
 from eop_api.api.organizations import router as organizations_router
 from eop_api.api.overtime_requests import router as overtime_requests_router
+from eop_api.api.payroll_calculation import router as payroll_calculation_router
+from eop_api.api.payroll_runs import router as payroll_runs_router
+from eop_api.api.payslips import router as payslips_router
 from eop_api.api.positions import router as positions_router
 from eop_api.api.projects import router as projects_router
 from eop_api.api.reconciliation import router as reconciliation_router
@@ -98,10 +102,14 @@ app.include_router(employment_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(employment_statuses_router, responses=PROBLEM_RESPONSES)
 app.include_router(shifts_router, responses=PROBLEM_RESPONSES)
 app.include_router(holidays_router, responses=PROBLEM_RESPONSES)
+app.include_router(compensation_router, responses=PROBLEM_RESPONSES)
 app.include_router(attendance_events_router, responses=PROBLEM_RESPONSES)
 app.include_router(leave_requests_router, responses=PROBLEM_RESPONSES)
 app.include_router(leave_balances_router, responses=PROBLEM_RESPONSES)
 app.include_router(overtime_requests_router, responses=PROBLEM_RESPONSES)
+app.include_router(payroll_runs_router, responses=PROBLEM_RESPONSES)
+app.include_router(payslips_router, responses=PROBLEM_RESPONSES)
+app.include_router(payroll_calculation_router, responses=PROBLEM_RESPONSES)
 app.include_router(timesheets_router, responses=PROBLEM_RESPONSES)
 app.include_router(reconciliation_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
