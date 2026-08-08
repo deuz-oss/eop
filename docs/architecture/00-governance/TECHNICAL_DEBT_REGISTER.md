@@ -56,7 +56,7 @@ Technical debt:
 
 | ID | Title | Capability | Severity | Status |
 |---|---|---|---|---|
-| TD-001 | EmployeeContext HTTP Exception Mapping | Identity Context | Medium | Open |
+| TD-001 | EmployeeContext HTTP Exception Mapping | Identity Context | Medium | Resolved |
 | TD-002 | Approval Authorization Concurrency Protection | Approval Authorization | Low | Open |
 | TD-003 | Employee Manager Hierarchy Limitation | HR Employee | Medium | Open |
 | TD-004 | Permission and Policy Model Not Implemented | Authorization | Medium | Open |
@@ -66,8 +66,22 @@ Technical debt:
 
 # TD-001 — EmployeeContext HTTP Exception Mapping
 
-**Status:** Open
+**Status:** Resolved
 **Severity:** Medium
+
+**Resolution:**
+
+Centralized mapping added in `dependencies/employee_context.py`'s
+`get_employee_context`, mirroring `dependencies/auth.py`'s
+`get_current_user` (same DI-layer exception-to-`HTTPException` pattern):
+
+```
+EmployeeContextNotFoundError  -> HTTP 403 Forbidden
+MultipleEmployeeContextError  -> HTTP 409 Conflict
+```
+
+Not implemented inside any individual consumer, per this entry's own
+Constraints. Covered by `tests/test_employee_context_dependency.py`.
 
 **Capability:**
 
