@@ -9,7 +9,15 @@ from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.payroll_run import PayrollRunCreate, PayrollRunResponse, PayrollRunUpdate
-from eop_api.services.payroll_run import DuplicatePayrollRunCodeError, PayrollRunService
+from eop_api.schemas.payslip import PayslipResponse
+from eop_api.services.payroll_calculation import PayrollCalculationService
+from eop_api.services.payroll_run import (
+    DuplicatePayrollRunCodeError,
+    InvalidPayrollRunTransitionError,
+    PayrollRunHasPayslipsError,
+    PayrollRunService,
+)
+from eop_api.services.payslip import PayrollRunNotFoundError
 
 router = APIRouter(prefix="/hr/payroll-runs", tags=["Payroll Runs"])
 
@@ -19,6 +27,15 @@ def get_payroll_run_service() -> PayrollRunService:
 
 
 PayrollRunServiceDep = Annotated[PayrollRunService, Depends(get_payroll_run_service)]
+
+
+def get_payroll_calculation_service() -> PayrollCalculationService:
+    return PayrollCalculationService()
+
+
+PayrollCalculationServiceDep = Annotated[
+    PayrollCalculationService, Depends(get_payroll_calculation_service)
+]
 
 # PayrollRun Authorization Policy: Role Based (`RequireRole("admin")`), not Owner
 # Only -- `PayrollRun` carries no `employee_id` (`models/payroll_run.py`), so no
@@ -101,6 +118,36 @@ async def update_payroll_run(
 async def delete_payroll_run(
     payroll_run_id: uuid.UUID, service: PayrollRunServiceDep, _: RequirePayrollAdmin
 ) -> None:
-    deleted = await service.delete(payroll_run_id)
+    try:
+        deleted = await service.delete(payroll_run_id)
+    except PayrollRunHasPayslipsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payroll run has payslips and cannot be deleted",
+        ) from exc
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll run not found")
+
+
+@router.post("/{payroll_run_id}/process", response_model=list[PayslipResponse])
+async def process_payroll_run(
+    payroll_run_id: uuid.UUID,
+    service: PayrollCalculationServiceDep,
+    _: RequirePayrollAdmin,
+) -> list[PayslipResponse]:
+    """Runs Payroll Calculation for every eligible employee in `payroll_run_id`'s batch.
+
+    Transitions the run `DRAFT -> PROCESSING -> COMPLETED`
+    (`PayrollCalculationService.calculate_batch`); rejects a run that is not
+    currently `DRAFT` (already processed, or processing already in
+    progress).
+    """
+    try:
+        payslips = await service.calculate_batch(payroll_run_id)
+    except PayrollRunNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Payroll run not found"
+        ) from exc
+    except InvalidPayrollRunTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return [PayslipResponse.model_validate(payslip) for payslip in payslips]

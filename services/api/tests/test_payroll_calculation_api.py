@@ -114,6 +114,21 @@ def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def other() -> User:
+    """A second employee-owner, distinct from `user`, for batch tests needing two employees."""
+    return asyncio.run(_create_user(email="other@example.com", password="other-pass"))
+
+
+@pytest.fixture
+def other_headers(client: TestClient, other: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "other@example.com", "password": "other-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _create_organization(client: TestClient, headers: dict[str, str], *, name: str) -> dict:
     response = client.post("/organizations", json={"name": name})
     assert response.status_code == 201
@@ -392,5 +407,116 @@ def test_calculate_payroll_rejects_duplicate(
         json={"payroll_run_id": payroll_run["id"], "employee_id": employee["id"]},
         headers=user_headers,
     )
+
+    assert response.status_code == 409
+
+
+def test_process_payroll_run_requires_authentication(client: TestClient):
+    response = client.post(f"/hr/payroll-runs/{uuid.uuid4()}/process")
+
+    assert response.status_code == 401
+
+
+def test_process_payroll_run_rejects_non_admin(
+    client: TestClient, user_headers: dict[str, str], admin_headers: dict[str, str]
+):
+    payroll_run = _create_payroll_run(client, admin_headers)
+
+    response = client.post(f"/hr/payroll-runs/{payroll_run['id']}/process", headers=user_headers)
+
+    assert response.status_code == 403
+
+
+def test_process_payroll_run_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.post(f"/hr/payroll-runs/{uuid.uuid4()}/process", headers=admin_headers)
+
+    assert response.status_code == 404
+
+
+def test_process_payroll_run_batch(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(client, user_headers, user_id=str(other.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
+    _create_compensation(client, user_headers, employee_id=employee["id"])
+    _create_compensation(client, other_headers, employee_id=other_employee["id"])
+
+    response = client.post(f"/hr/payroll-runs/{payroll_run['id']}/process", headers=admin_headers)
+
+    assert response.status_code == 200
+    payslips = response.json()
+    assert {p["employee_id"] for p in payslips} == {employee["id"], other_employee["id"]}
+    for payslip in payslips:
+        assert payslip["gross_salary_amount"] == "5000000.00"
+        assert payslip["net_salary_amount"] == "5000000.00"
+
+    run_after = client.get(f"/hr/payroll-runs/{payroll_run['id']}", headers=admin_headers)
+    assert run_after.json()["status"] == "COMPLETED"
+
+
+def test_process_payroll_run_excludes_inactive_compensation(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(client, user_headers, user_id=str(other.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
+    _create_compensation(client, user_headers, employee_id=employee["id"])
+    inactive = _create_compensation(
+        client, other_headers, employee_id=other_employee["id"]
+    )
+    client.put(
+        f"/hr/compensation/{inactive['id']}", json={"is_active": False}, headers=other_headers
+    )
+
+    response = client.post(f"/hr/payroll-runs/{payroll_run['id']}/process", headers=admin_headers)
+
+    assert response.status_code == 200
+    payslips = response.json()
+    assert {p["employee_id"] for p in payslips} == {employee["id"]}
+
+
+def test_process_payroll_run_rejects_already_completed(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
+    _create_compensation(client, user_headers, employee_id=employee["id"])
+    client.post(f"/hr/payroll-runs/{payroll_run['id']}/process", headers=admin_headers)
+
+    response = client.post(f"/hr/payroll-runs/{payroll_run['id']}/process", headers=admin_headers)
+
+    assert response.status_code == 409
+
+
+def test_delete_payroll_run_with_payslips_rejected(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    payroll_run = _create_payroll_run(client, admin_headers)
+    _create_compensation(client, user_headers, employee_id=employee["id"])
+    client.post(
+        "/payroll-calculation/calculate",
+        json={"payroll_run_id": payroll_run["id"], "employee_id": employee["id"]},
+        headers=user_headers,
+    )
+
+    response = client.delete(f"/hr/payroll-runs/{payroll_run['id']}", headers=admin_headers)
 
     assert response.status_code == 409

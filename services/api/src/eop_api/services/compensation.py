@@ -130,6 +130,22 @@ class CompensationService:
             uow.session.expunge(compensation)
             return compensation
 
+    async def list_active(self) -> Sequence[Compensation]:
+        """Every `Compensation` row with `is_active=True`, unscoped.
+
+        Used only by `PayrollCalculationService`'s internal batch
+        orchestration, not reachable via any API route -- mirrors
+        `get_by_employee`'s trusted-internal-caller pattern (no
+        `request_context`, no authorization), for the same reason: this is a
+        system-driven payroll computation step, not a request acting on
+        behalf of one employee.
+        """
+        async with self._uow_factory() as uow:
+            repo = CompensationRepository(uow.session)
+            compensations = await repo.list_active()
+            uow.session.expunge_all()
+            return compensations
+
     async def list(self, request_context: RequestContext) -> Sequence[Compensation]:
         """Compensation records owned by the caller's own `employee_id`."""
         async with self._uow_factory() as uow:
