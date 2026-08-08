@@ -30,6 +30,97 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — EmployeeContext HTTP Exception Mapping Resolved
+
+**Reference:**
+
+- PR #67
+- TECHNICAL_DEBT_REGISTER.md TD-001
+
+**Capability:**
+
+Identity Context
+
+**Status:**
+
+Resolved
+
+---
+
+## Summary
+
+`EmployeeContextNotFoundError`/`MultipleEmployeeContextError` now map to HTTP 403/409 in `dependencies/employee_context.py`, mirroring `dependencies/auth.py`'s existing DI-layer exception pattern, instead of propagating to the generic handler as unhandled 500s.
+
+---
+
+# 2026-08-09 — Shift Assignment Closed (Subsumed by Work Schedule)
+
+**Reference:**
+
+- PR #66
+- `docs/architecture/capabilities/shift-assignment/final-governance-summary.md`
+
+**Capability:**
+
+Shift Assignment
+
+**Status:**
+
+Closed — Subsumed by Work Schedule
+
+---
+
+## Summary
+
+Shift Assignment's governance chain (previously "Additional Governance Required") was reconciled against the newly-merged Work Schedule capability. Work Schedule's `WorkSchedule` aggregate already implements, field for field, the effective-dated employee↔shift relationship Shift Assignment's own governance investigated. No separate `ShiftAssignment` entity was built, to avoid duplicating an already-merged mechanism.
+
+---
+
+# 2026-08-09 — Work Schedule Completed
+
+**Reference:**
+
+- PR #65
+- `docs/architecture/capabilities/work-schedule/iteration-1-implementation-plan.md`
+
+**Capability:**
+
+Work Schedule
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Work Schedule's 15 blocking unknowns and 6 missing-concepts classifications were resolved under CPO/CTO directive, primarily by reuse of precedent established after the capability's original governance chain was written (Effective Dating, Compensation's `corrects_id` correction lineage, Owner Only authorization). Implemented as an employee-scoped, effective-dated aggregate (`WorkSchedule`: `employee_id`, `shift_id`, seven weekday flags, `effective_from`/`effective_to`, `corrects_id`).
+
+---
+
+# 2026-08-09 — Payroll Calculation (Advanced) Completed
+
+**Reference:**
+
+- `docs/architecture/capabilities/payroll-calculation/decision.md`
+
+**Capability:**
+
+Payroll Calculation (Advanced)
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Pay-period cadence, configurable statutory/tax deduction (`PayrollStatutoryParameter`), overtime calculation, and daily/hourly rate resolution implemented, layered onto the base-salary Payroll Calculation capability. Attendance/leave deduction was deliberately scoped out as a no-op pending Work Schedule's existence (now resolved as its own capability, but not yet wired into payroll calculation — a separate, still-open integration decision).
+
+---
+
 # 2026-08-05 — Approval Authorization Completed
 
 **Reference:**

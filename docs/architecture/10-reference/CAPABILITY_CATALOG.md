@@ -54,9 +54,9 @@ Detailed implementation remains in the individual capability documents.
 | Compensation | Implemented | HR | — (capability decision only) |
 | Payroll (Run + Calculation) | Implemented | Payroll | — (capability decision only) |
 | Payslip | Implemented | Payroll | — (capability decision only) |
-| Payroll Calculation (Advanced) | Blocked | Payroll | Pending business decision |
-| Shift Assignment | Blocked | HR | Pending business decision |
-| Work Schedule | Blocked | HR | Pending business decision |
+| Payroll Calculation (Advanced) | Implemented | Payroll | — (capability decision only) |
+| Shift Assignment | Closed — Subsumed by Work Schedule | HR | — |
+| Work Schedule | Implemented | HR | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -673,31 +673,25 @@ Structural payslip record — create/get/list only ("CRUD-minus-mutation").
 
 ---
 
-# Blocked Capabilities
-
-Architecture governance has completed as much as repository evidence allows; implementation remains blocked on unresolved business/product decisions. No business rules have been invented to unblock these.
-
----
-
 # Payroll Calculation (Advanced)
 
 **Status**
 
 ```
-Blocked
+Implemented
 ```
 
 ---
 
-## Reason
+## Purpose
 
-Requires pay-period cadence, tax/statutory formula, and execution-mechanism decisions not evidenced in the repository.
+Pay-period cadence, statutory/tax deduction, overtime, and rate-resolution calculation, layered onto the base Payroll (Run + Calculation) capability.
 
 ---
 
 ## Governing Decision
 
-`docs/architecture/capabilities/payroll-calculation/decision.md`
+`docs/architecture/capabilities/payroll-calculation/decision.md` (business decisions resolved), `payroll-calculation/iteration-1-implementation-plan.md`
 
 ---
 
@@ -706,20 +700,20 @@ Requires pay-period cadence, tax/statutory formula, and execution-mechanism deci
 **Status**
 
 ```
-Blocked
+Closed — Subsumed by Work Schedule
 ```
 
 ---
 
 ## Reason
 
-11 of 13 open items are business gaps (effective-dating necessity, dedicated lifecycle, LeaveRequest hour-consumption, naming). 2 are architecture-only and do not by themselves unblock implementation.
+Work Schedule's `WorkSchedule` aggregate (`employee_id`, `shift_id`, `effective_from`/`effective_to`, `corrects_id`) is, field for field, the effective-dated employee↔shift relationship this capability's own governance investigated. Building a separate `ShiftAssignment` entity would duplicate an already-merged mechanism. No implementation exists under this name; `WorkSchedule.get_by_employee` is the resolution method.
 
 ---
 
 ## Governing Decision
 
-`docs/architecture/capabilities/shift-assignment/implementation-plan.md` §12
+`docs/architecture/capabilities/shift-assignment/final-governance-summary.md`
 
 ---
 
@@ -728,20 +722,20 @@ Blocked
 **Status**
 
 ```
-Blocked
+Implemented
 ```
 
 ---
 
-## Reason
+## Purpose
 
-15 blocking unknowns, predominantly business/repository gaps with no corresponding repository evidence.
+Employee-scoped, effective-dated weekly working-day pattern plus the `Shift` worked on those days, with `corrects_id` correction lineage.
 
 ---
 
 ## Governing Decision
 
-`docs/architecture/capabilities/work-schedule/implementation-plan.md` §12
+`docs/architecture/capabilities/work-schedule/iteration-1-implementation-plan.md` (gaps resolved under CPO/CTO directive, citing Effective Dating/Compensation precedent)
 
 ---
 
@@ -914,9 +908,9 @@ Business Capabilities
 | Compensation | ✓ | ✓ | ✓ | Implemented |
 | Payroll (Run + Calculation) | ✓ | ✓ | ✓ | Implemented |
 | Payslip | ✓ | ✓ | ✓ | Implemented |
-| Payroll Calculation (Advanced) | ✓ | ✗ | ✗ | Blocked |
-| Shift Assignment | ✓ | ✗ | ✗ | Blocked |
-| Work Schedule | ✓ | ✗ | ✗ | Blocked |
+| Payroll Calculation (Advanced) | ✓ | ✓ | ✓ | Implemented |
+| Shift Assignment | ✓ | ✓ | — | Closed — Subsumed by Work Schedule |
+| Work Schedule | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
