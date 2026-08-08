@@ -166,6 +166,7 @@ def test_create_payroll_run(client: TestClient, admin_headers: dict[str, str]):
 
     assert body["code"] == "RUN-001"
     assert body["name"] == "First Run"
+    assert body["status"] == "DRAFT"
     uuid.UUID(body["id"])
 
 

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
+from eop_api.core.payroll import PayrollRunStatus
 from eop_api.db.base import Base
 from eop_api.models.hr_employee import HrEmployee
 from eop_api.models.user import User
@@ -33,7 +34,8 @@ from eop_api.services.payroll_calculation import (
     DuplicatePayslipError,
     PayrollCalculationService,
 )
-from eop_api.services.payslip import PayslipService
+from eop_api.services.payroll_run import InvalidPayrollRunTransitionError, PayrollRunService
+from eop_api.services.payslip import PayrollRunNotFoundError, PayslipService
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
 
 pytestmark = pytest.mark.anyio
@@ -91,49 +93,59 @@ def payslip_service(uow_factory: Callable[[], SQLAlchemyUnitOfWork]) -> PayslipS
 
 
 @pytest.fixture
-async def employee_id(session_factory: Callable[[], AsyncSession]) -> uuid.UUID:
+def payroll_run_service(
+    uow_factory: Callable[[], SQLAlchemyUnitOfWork],
+) -> PayrollRunService:
+    return PayrollRunService(uow_factory)
+
+
+async def _create_hr_employee(
+    session_factory: Callable[[], AsyncSession], *, suffix: str
+) -> uuid.UUID:
     async with session_factory() as session:
-        organization = await OrganizationRepository(session).create(name="Acme Corp")
+        organization = await OrganizationRepository(session).create(name=f"Acme Corp {suffix}")
         department = await DepartmentRepository(session).create(
-            organization_id=organization.id, code="ENG", name="Engineering"
+            organization_id=organization.id, code=f"ENG-{suffix}", name="Engineering"
         )
         position = await PositionRepository(session).create(
             organization_id=organization.id,
             department_id=department.id,
-            code="ENG-1",
+            code=f"ENG-1-{suffix}",
             name="Engineer",
         )
         team = await TeamRepository(session).create(
             organization_id=organization.id,
             department_id=department.id,
-            code="BACKEND",
+            code=f"BACKEND-{suffix}",
             name="Backend Team",
         )
         location_type = await LocationTypeRepository(session).create(
-            code="OFFICE", name="Office"
+            code=f"OFFICE-{suffix}", name="Office"
         )
         location = await LocationRepository(session).create(
-            code="HQ", name="HQ", location_type_id=location_type.id
+            code=f"HQ-{suffix}", name="HQ", location_type_id=location_type.id
         )
-        job_grade = await JobGradeRepository(session).create(code="L1", name="Junior", level=1)
+        job_grade = await JobGradeRepository(session).create(
+            code=f"L1-{suffix}", name="Junior", level=ord(suffix[0]) - ord("a") + 1
+        )
         employment_type = await EmploymentTypeRepository(session).create(
-            code="FT", name="Full-Time"
+            code=f"FT-{suffix}", name="Full-Time"
         )
         employment_status = await EmploymentStatusRepository(session).create(
-            code="ACTIVE", name="Active"
+            code=f"ACTIVE-{suffix}", name="Active"
         )
         shift = await ShiftRepository(session).create(
-            code="DAY",
+            code=f"DAY-{suffix}",
             name="Day Shift",
             start_time=datetime(2024, 1, 1, 9, 0).time(),
             end_time=datetime(2024, 1, 1, 17, 0).time(),
         )
         employee = await HrEmployeeRepository(session).create(
-            employee_number="EMP-1",
+            employee_number=f"EMP-{suffix}",
             first_name="Ada",
             last_name="Lovelace",
             full_name="Ada Lovelace",
-            email="ada@example.com",
+            email=f"ada-{suffix}@example.com",
             organization_id=organization.id,
             department_id=department.id,
             position_id=position.id,
@@ -148,6 +160,16 @@ async def employee_id(session_factory: Callable[[], AsyncSession]) -> uuid.UUID:
         )
         await session.commit()
         return employee.id
+
+
+@pytest.fixture
+async def employee_id(session_factory: Callable[[], AsyncSession]) -> uuid.UUID:
+    return await _create_hr_employee(session_factory, suffix="a")
+
+
+@pytest.fixture
+async def other_employee_id(session_factory: Callable[[], AsyncSession]) -> uuid.UUID:
+    return await _create_hr_employee(session_factory, suffix="b")
 
 
 @pytest.fixture
@@ -274,3 +296,106 @@ async def test_calculate_rejects_duplicate_payslip(
 
     with pytest.raises(DuplicatePayslipError):
         await service.calculate(payroll_run_id, employee_id)
+
+
+async def _add_active_compensation(
+    compensation_service: CompensationService, employee_id: uuid.UUID
+) -> None:
+    await compensation_service.create(
+        CompensationCreate(
+            employee_id=employee_id,
+            base_salary_amount=Decimal("5000000.00"),
+            base_salary_currency="IDR",
+            effective_from=date(2026, 1, 1),
+        ),
+        _request_context(employee_id),
+    )
+
+
+async def test_calculate_batch_processes_eligible_employees(
+    service: PayrollCalculationService,
+    compensation_service: CompensationService,
+    payroll_run_service: PayrollRunService,
+    employee_id: uuid.UUID,
+    other_employee_id: uuid.UUID,
+    payroll_run_id: uuid.UUID,
+):
+    await _add_active_compensation(compensation_service, employee_id)
+    await _add_active_compensation(compensation_service, other_employee_id)
+
+    payslips = await service.calculate_batch(payroll_run_id)
+
+    assert {p.employee_id for p in payslips} == {employee_id, other_employee_id}
+    for payslip in payslips:
+        assert payslip.gross_salary_amount == Decimal("5000000.00")
+        assert payslip.net_salary_amount == Decimal("5000000.00")
+
+    payroll_run = await payroll_run_service.get(payroll_run_id)
+    assert payroll_run is not None
+    assert payroll_run.status == PayrollRunStatus.COMPLETED
+
+
+async def test_calculate_batch_excludes_inactive_compensation(
+    service: PayrollCalculationService,
+    compensation_service: CompensationService,
+    employee_id: uuid.UUID,
+    other_employee_id: uuid.UUID,
+    payroll_run_id: uuid.UUID,
+):
+    await _add_active_compensation(compensation_service, employee_id)
+    inactive = await compensation_service.create(
+        CompensationCreate(
+            employee_id=other_employee_id,
+            base_salary_amount=Decimal("3000000.00"),
+            base_salary_currency="IDR",
+            effective_from=date(2026, 1, 1),
+        ),
+        _request_context(other_employee_id),
+    )
+    await compensation_service.update(
+        inactive.id, CompensationUpdate(is_active=False), _request_context(other_employee_id)
+    )
+
+    payslips = await service.calculate_batch(payroll_run_id)
+
+    assert {p.employee_id for p in payslips} == {employee_id}
+
+
+async def test_calculate_batch_skips_already_calculated_employee(
+    service: PayrollCalculationService,
+    compensation_service: CompensationService,
+    payslip_service: PayslipService,
+    employee_id: uuid.UUID,
+    other_employee_id: uuid.UUID,
+    payroll_run_id: uuid.UUID,
+):
+    """An employee already calculated (outside the batch call) is skipped, not an error."""
+    await _add_active_compensation(compensation_service, employee_id)
+    await _add_active_compensation(compensation_service, other_employee_id)
+    await service.calculate(payroll_run_id, employee_id)
+
+    payslips = await service.calculate_batch(payroll_run_id)
+
+    assert {p.employee_id for p in payslips} == {other_employee_id}
+    all_payslips = await payslip_service.list(_request_context(employee_id))
+    assert any(p.employee_id == employee_id for p in all_payslips)
+
+
+async def test_calculate_batch_rejects_missing_payroll_run(
+    service: PayrollCalculationService, employee_id: uuid.UUID
+):
+    with pytest.raises(PayrollRunNotFoundError):
+        await service.calculate_batch(uuid.uuid4())
+
+
+async def test_calculate_batch_rejects_already_completed_run(
+    service: PayrollCalculationService,
+    compensation_service: CompensationService,
+    employee_id: uuid.UUID,
+    payroll_run_id: uuid.UUID,
+):
+    await _add_active_compensation(compensation_service, employee_id)
+    await service.calculate_batch(payroll_run_id)
+
+    with pytest.raises(InvalidPayrollRunTransitionError):
+        await service.calculate_batch(payroll_run_id)

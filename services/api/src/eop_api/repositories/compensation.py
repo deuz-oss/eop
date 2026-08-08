@@ -2,6 +2,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
@@ -24,6 +25,19 @@ class CompensationRepository(BaseRepository[Compensation]):
 
     async def get_by_employee_id(self, employee_id: uuid.UUID) -> Compensation | None:
         return await self.get_by(Compensation.employee_id, employee_id)
+
+    async def list_active(self) -> Sequence[Compensation]:
+        """Every `Compensation` row with `is_active=True`.
+
+        Used only by `PayrollCalculationService`'s batch orchestration to
+        determine the eligible-employee set for a `PayrollRun`, per
+        `models/compensation.py`'s own documented purpose for `is_active`:
+        "no longer considered by payroll processing" when `False`. No new
+        eligibility rule is introduced here.
+        """
+        stmt = select(Compensation).where(Compensation.is_active.is_(True))
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
 
     async def paginate(
         self,

@@ -7,11 +7,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
+from eop_api.core.payroll import PayrollRunStatus
 from eop_api.db.base import Base
 from eop_api.schemas.pagination import PaginationParams
 from eop_api.schemas.payroll_run import PayrollRunCreate, PayrollRunUpdate
 from eop_api.schemas.search import SearchParams
-from eop_api.services.payroll_run import DuplicatePayrollRunCodeError, PayrollRunService
+from eop_api.services.payroll_run import (
+    DuplicatePayrollRunCodeError,
+    InvalidPayrollRunTransitionError,
+    PayrollRunService,
+)
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
 
 pytestmark = pytest.mark.anyio
@@ -60,6 +65,54 @@ async def test_create_and_get(service: PayrollRunService):
     assert fetched is not None
     assert fetched.code == "RUN-001"
     assert fetched.name == "First Run"
+
+
+async def test_create_starts_in_draft(service: PayrollRunService):
+    payroll_run = await service.create(PayrollRunCreate(code="RUN-001", name="First Run"))
+
+    assert payroll_run.status == PayrollRunStatus.DRAFT
+
+
+async def test_start_processing_transitions_draft_to_processing(service: PayrollRunService):
+    payroll_run = await service.create(PayrollRunCreate(code="RUN-001", name="First Run"))
+
+    updated = await service.start_processing(payroll_run.id)
+
+    assert updated is not None
+    assert updated.status == PayrollRunStatus.PROCESSING
+
+
+async def test_start_processing_rejects_non_draft(service: PayrollRunService):
+    payroll_run = await service.create(PayrollRunCreate(code="RUN-001", name="First Run"))
+    await service.start_processing(payroll_run.id)
+
+    with pytest.raises(InvalidPayrollRunTransitionError):
+        await service.start_processing(payroll_run.id)
+
+
+async def test_start_processing_missing_returns_none(service: PayrollRunService):
+    assert await service.start_processing(uuid.uuid4()) is None
+
+
+async def test_complete_transitions_processing_to_completed(service: PayrollRunService):
+    payroll_run = await service.create(PayrollRunCreate(code="RUN-001", name="First Run"))
+    await service.start_processing(payroll_run.id)
+
+    updated = await service.complete(payroll_run.id)
+
+    assert updated is not None
+    assert updated.status == PayrollRunStatus.COMPLETED
+
+
+async def test_complete_rejects_non_processing(service: PayrollRunService):
+    payroll_run = await service.create(PayrollRunCreate(code="RUN-001", name="First Run"))
+
+    with pytest.raises(InvalidPayrollRunTransitionError):
+        await service.complete(payroll_run.id)
+
+
+async def test_complete_missing_returns_none(service: PayrollRunService):
+    assert await service.complete(uuid.uuid4()) is None
 
 
 async def test_create_rejects_duplicate_code(service: PayrollRunService):

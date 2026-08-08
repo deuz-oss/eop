@@ -389,3 +389,19 @@ async def test_delete_denied_for_non_owner(
 
     with pytest.raises(CompensationAuthorizationDeniedError):
         await service.delete(compensation.id, _request_context(other_employee_id))
+
+
+async def test_list_active_returns_only_active(
+    service: CompensationService, employee_id: uuid.UUID, other_employee_id: uuid.UUID
+):
+    active = await service.create(_create(employee_id), _request_context(employee_id))
+    inactive = await service.create(
+        _create(other_employee_id), _request_context(other_employee_id)
+    )
+    await service.update(
+        inactive.id, CompensationUpdate(is_active=False), _request_context(other_employee_id)
+    )
+
+    items = await service.list_active()
+
+    assert {item.id for item in items} == {active.id}
