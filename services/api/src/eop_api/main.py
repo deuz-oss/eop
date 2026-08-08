@@ -6,12 +6,14 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from eop_api.api.allowances import router as allowances_router
 from eop_api.api.assignments import router as assignments_router
 from eop_api.api.attendance_events import router as attendance_events_router
 from eop_api.api.audit_logs import router as audit_logs_router
 from eop_api.api.auth import router as auth_router
 from eop_api.api.compensation import router as compensation_router
 from eop_api.api.dashboard import router as dashboard_router
+from eop_api.api.deductions import router as deductions_router
 from eop_api.api.departments import router as departments_router
 from eop_api.api.employees import router as employees_router
 from eop_api.api.employment_statuses import router as employment_statuses_router
@@ -103,6 +105,8 @@ app.include_router(employment_statuses_router, responses=PROBLEM_RESPONSES)
 app.include_router(shifts_router, responses=PROBLEM_RESPONSES)
 app.include_router(holidays_router, responses=PROBLEM_RESPONSES)
 app.include_router(compensation_router, responses=PROBLEM_RESPONSES)
+app.include_router(allowances_router, responses=PROBLEM_RESPONSES)
+app.include_router(deductions_router, responses=PROBLEM_RESPONSES)
 app.include_router(attendance_events_router, responses=PROBLEM_RESPONSES)
 app.include_router(leave_requests_router, responses=PROBLEM_RESPONSES)
 app.include_router(leave_balances_router, responses=PROBLEM_RESPONSES)

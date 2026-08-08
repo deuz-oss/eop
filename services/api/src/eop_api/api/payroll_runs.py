@@ -10,10 +10,16 @@ from eop_api.dependencies.search import Search
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.payroll_run import PayrollRunCreate, PayrollRunResponse, PayrollRunUpdate
 from eop_api.schemas.payslip import PayslipResponse
-from eop_api.services.payroll_calculation import PayrollCalculationService
+from eop_api.services.payroll_calculation import (
+    PayrollCalculationService,
+    PayrollRunAlreadyCompletedError,
+    PayrollRunMissingPeriodError,
+)
 from eop_api.services.payroll_run import (
     DuplicatePayrollRunCodeError,
+    InvalidPayrollPeriodError,
     InvalidPayrollRunTransitionError,
+    OverlappingPayrollRunPeriodError,
     PayrollRunHasPayslipsError,
     PayrollRunService,
 )
@@ -58,6 +64,12 @@ async def create_payroll_run(
             status_code=status.HTTP_409_CONFLICT,
             detail="Payroll run code already exists",
         ) from exc
+    except InvalidPayrollPeriodError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
+        ) from exc
+    except OverlappingPayrollRunPeriodError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return PayrollRunResponse.model_validate(payroll_run)
 
 
@@ -138,9 +150,10 @@ async def process_payroll_run(
     """Runs Payroll Calculation for every eligible employee in `payroll_run_id`'s batch.
 
     Transitions the run `DRAFT -> PROCESSING -> COMPLETED`
-    (`PayrollCalculationService.calculate_batch`); rejects a run that is not
-    currently `DRAFT` (already processed, or processing already in
-    progress).
+    (`PayrollCalculationService.calculate_batch`). May be called again on a
+    `DRAFT`/`PROCESSING` run to rerun the calculation (D9) -- any existing
+    Payslips for the run are cleared and recomputed. Rejects only a run
+    that is already `COMPLETED` (E5's immutability boundary).
     """
     try:
         payslips = await service.calculate_batch(payroll_run_id)
@@ -148,6 +161,13 @@ async def process_payroll_run(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Payroll run not found"
         ) from exc
+    except PayrollRunAlreadyCompletedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payroll run is already completed and immutable",
+        ) from exc
+    except PayrollRunMissingPeriodError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InvalidPayrollRunTransitionError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     return [PayslipResponse.model_validate(payslip) for payslip in payslips]

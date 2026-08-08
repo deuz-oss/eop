@@ -7,11 +7,15 @@ from eop_api.foundation.monetary.types import InvalidMoneyError
 from eop_api.schemas.payroll_calculation import PayrollCalculationRequest
 from eop_api.schemas.payslip import PayslipResponse
 from eop_api.services.payroll_calculation import (
+    CompensationCurrencyMismatchError,
     CompensationInactiveError,
     CompensationNotFoundError,
     DuplicatePayslipError,
     PayrollCalculationService,
+    PayrollRunAlreadyCompletedError,
+    PayrollRunMissingPeriodError,
 )
+from eop_api.services.payroll_statutory_parameter import MissingStatutoryParameterError
 from eop_api.services.payslip import EmployeeNotFoundError, PayrollRunNotFoundError
 
 router = APIRouter(prefix="/payroll-calculation", tags=["Payroll Calculation"])
@@ -55,6 +59,17 @@ async def calculate_payroll(
             status_code=status.HTTP_409_CONFLICT,
             detail="Payslip already exists for this employee and payroll run",
         ) from exc
+    except PayrollRunAlreadyCompletedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Payroll run is already completed and immutable",
+        ) from exc
+    except CompensationCurrencyMismatchError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except PayrollRunMissingPeriodError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except MissingStatutoryParameterError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except InvalidMoneyError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)

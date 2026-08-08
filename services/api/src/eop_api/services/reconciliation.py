@@ -1,6 +1,6 @@
 import uuid
-from collections.abc import Callable
-from datetime import UTC, date, datetime, time
+from collections.abc import Callable, Sequence
+from datetime import UTC, date, datetime, time, timedelta
 
 from eop_api.repositories.attendance_event import AttendanceEventRepository
 from eop_api.repositories.holiday import HolidayRepository
@@ -78,9 +78,9 @@ class ReconciliationService:
                     employee_id=employee_id, date=target_date, status="holiday"
                 )
 
-            leave_requests = await LeaveRequestRepository(
-                uow.session
-            ).find_for_employee_on_date(employee_id, target_date)
+            leave_requests = await LeaveRequestRepository(uow.session).find_for_employee_on_date(
+                employee_id, target_date
+            )
             if any(request.status == APPROVED_STATUS for request in leave_requests):
                 return AttendanceReconciliationResponse(
                     employee_id=employee_id, date=target_date, status="leave"
@@ -98,6 +98,27 @@ class ReconciliationService:
             return AttendanceReconciliationResponse(
                 employee_id=employee_id, date=target_date, status="absent"
             )
+
+    async def get_range(
+        self, employee_id: uuid.UUID, start_date: date, end_date: date
+    ) -> Sequence[AttendanceReconciliationResponse]:
+        """Every day's reconciliation result for `employee_id` in
+        `[start_date, end_date]`, inclusive.
+
+        Read-only, additive convenience method for Payroll's attendance/
+        leave deduction calculation (D5,
+        `docs/architecture/capabilities/payroll-calculation/
+        implementation-plan.md` §5/§7): internally loops `reconcile`'s own
+        existing single-date classification logic -- does not change the
+        per-day classification rules (design doc's four-rule precedence,
+        unchanged) or introduce any new persistence.
+        """
+        results = []
+        current = start_date
+        while current <= end_date:
+            results.append(await self.reconcile(employee_id, current))
+            current += timedelta(days=1)
+        return results
 
     @staticmethod
     def _day_bounds(target_date: date) -> tuple[datetime, datetime]:

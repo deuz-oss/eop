@@ -315,7 +315,15 @@ def _create_employee(
 
 def _create_payroll_run(client: TestClient, headers: dict[str, str]) -> dict:
     response = client.post(
-        "/hr/payroll-runs", json={"code": "RUN-001", "name": "First Run"}, headers=headers
+        "/hr/payroll-runs",
+        json={
+            "code": "RUN-001",
+            "name": "First Run",
+            "period_start": "2026-01-01",
+            "period_end": "2026-01-31",
+            "currency": "IDR",
+        },
+        headers=headers,
     )
     assert response.status_code == 201
     return response.json()
@@ -472,9 +480,7 @@ def test_process_payroll_run_excludes_inactive_compensation(
     other_employee = _create_employee(client, user_headers, user_id=str(other.id))
     payroll_run = _create_payroll_run(client, admin_headers)
     _create_compensation(client, user_headers, employee_id=employee["id"])
-    inactive = _create_compensation(
-        client, other_headers, employee_id=other_employee["id"]
-    )
+    inactive = _create_compensation(client, other_headers, employee_id=other_employee["id"])
     client.put(
         f"/hr/compensation/{inactive['id']}", json={"is_active": False}, headers=other_headers
     )
