@@ -32,6 +32,7 @@ from eop_api.models.team import Team
 from eop_api.models.timesheet import Timesheet
 from eop_api.models.user import User
 from eop_api.models.user_role import user_roles
+from eop_api.models.work_schedule import WorkSchedule
 
 __all__ = [
     "Allowance",
@@ -68,4 +69,5 @@ __all__ = [
     "Timesheet",
     "User",
     "user_roles",
+    "WorkSchedule",
 ]

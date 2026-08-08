@@ -40,6 +40,7 @@ from eop_api.api.shifts import router as shifts_router
 from eop_api.api.tasks import router as tasks_router
 from eop_api.api.teams import router as teams_router
 from eop_api.api.timesheets import router as timesheets_router
+from eop_api.api.work_schedules import router as work_schedules_router
 from eop_api.core.config import settings
 from eop_api.core.logging import configure_logging
 from eop_api.db.engine import engine
@@ -103,6 +104,7 @@ app.include_router(job_grades_router, responses=PROBLEM_RESPONSES)
 app.include_router(employment_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(employment_statuses_router, responses=PROBLEM_RESPONSES)
 app.include_router(shifts_router, responses=PROBLEM_RESPONSES)
+app.include_router(work_schedules_router, responses=PROBLEM_RESPONSES)
 app.include_router(holidays_router, responses=PROBLEM_RESPONSES)
 app.include_router(compensation_router, responses=PROBLEM_RESPONSES)
 app.include_router(allowances_router, responses=PROBLEM_RESPONSES)
