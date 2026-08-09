@@ -1,0 +1,636 @@
+import asyncio
+import uuid
+from collections.abc import Generator
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
+from eop_api.core.config import settings
+from eop_api.core.security import hash_password
+from eop_api.db.base import Base
+from eop_api.main import app
+from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
+from eop_api.repositories.user import UserRepository
+
+DEFAULT_VISITED_AT = "2026-01-05T09:00:00Z"
+
+
+@pytest.fixture(autouse=True)
+def _tables() -> Generator[None]:
+    async def _create() -> None:
+        engine = create_async_engine(settings.database_url)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await engine.dispose()
+
+    async def _truncate() -> None:
+        engine = create_async_engine(settings.database_url)
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    "TRUNCATE TABLE organizations, locations, location_types, "
+                    "job_grades, employment_types, employment_statuses, shifts, "
+                    "store_types, users CASCADE"
+                )
+            )
+        await engine.dispose()
+
+    asyncio.run(_create())
+    yield
+    asyncio.run(_truncate())
+
+
+@pytest.fixture
+def client() -> Generator[TestClient]:
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+async def _create_user(*, email: str, password: str) -> User:
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await UserRepository(session).create(
+            email=email,
+            password_hash=hash_password(password),
+            full_name="Test User",
+            is_active=True,
+        )
+        await session.commit()
+        session.expunge(user)
+    await engine.dispose()
+    return user
+
+
+@pytest.fixture
+def user() -> User:
+    return asyncio.run(_create_user(email="member@example.com", password="member-pass"))
+
+
+@pytest.fixture
+def user_headers(client: TestClient, user: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "member@example.com", "password": "member-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def other() -> User:
+    """An authenticated user who does not own the visit/survey under test."""
+    return asyncio.run(_create_user(email="other@example.com", password="other-pass"))
+
+
+@pytest.fixture
+def other_headers(client: TestClient, other: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "other@example.com", "password": "other-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def admin_user() -> User:
+    """Store/StoreType are `RequireRole("admin")`-gated, distinct from
+    Visit/Survey's own Owner Only policy -- this user only exists to create
+    the `Store` prerequisite fixture."""
+    return asyncio.run(_create_user(email="admin@example.com", password="admin-pass"))
+
+
+async def _seed_admin(user_id: uuid.UUID) -> None:
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+@pytest.fixture
+def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
+    asyncio.run(_seed_admin(admin_user.id))
+
+    response = client.post(
+        "/auth/login", json={"email": "admin@example.com", "password": "admin-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _create_employee(
+    client: TestClient,
+    headers: dict[str, str],
+    *,
+    employee_number: str = "EMP-1",
+    email: str = "ada@example.com",
+    first_name: str = "Ada",
+    last_name: str = "Lovelace",
+    full_name: str = "Ada Lovelace",
+    user_id: str | None = None,
+) -> dict:
+    suffix = uuid.uuid4().hex[:8]
+    organization = client.post("/organizations", json={"name": f"Acme Corp {suffix}"}).json()
+    department = client.post(
+        "/departments",
+        json={
+            "name": "Engineering",
+            "code": f"ENG-{suffix}",
+            "organization_id": organization["id"],
+        },
+        headers=headers,
+    ).json()
+    position = client.post(
+        "/positions",
+        json={
+            "name": "Engineer",
+            "code": f"POS-{suffix}",
+            "organization_id": organization["id"],
+            "department_id": department["id"],
+        },
+        headers=headers,
+    ).json()
+    team = client.post(
+        "/teams",
+        json={
+            "name": "Backend",
+            "code": f"TEAM-{suffix}",
+            "organization_id": organization["id"],
+            "department_id": department["id"],
+        },
+        headers=headers,
+    ).json()
+    location_type = client.post(
+        "/location-types", json={"name": "Office", "code": f"OFFICE-{suffix}"}, headers=headers
+    ).json()
+    location = client.post(
+        "/locations",
+        json={"name": "HQ", "code": f"HQ-{suffix}", "location_type_id": location_type["id"]},
+        headers=headers,
+    ).json()
+    job_grade = client.post(
+        "/hr/job-grades",
+        json={"name": "Engineer I", "code": f"L1-{suffix}", "level": int(suffix[:4], 16) + 1},
+        headers=headers,
+    ).json()
+    employment_type = client.post(
+        "/hr/employment-types", json={"name": "Full-Time", "code": f"FT-{suffix}"}, headers=headers
+    ).json()
+    employment_status = client.post(
+        "/hr/employment-statuses",
+        json={"name": "Active", "code": f"ACTIVE-{suffix}"},
+        headers=headers,
+    ).json()
+    shift = client.post(
+        "/hr/shifts",
+        json={
+            "code": f"DAY-{suffix}",
+            "name": "Day Shift",
+            "start_time": "09:00:00",
+            "end_time": "17:00:00",
+        },
+        headers=headers,
+    ).json()
+
+    payload: dict = {
+        "employee_number": employee_number,
+        "first_name": first_name,
+        "last_name": last_name,
+        "full_name": full_name,
+        "email": email,
+        "organization_id": organization["id"],
+        "department_id": department["id"],
+        "position_id": position["id"],
+        "team_id": team["id"],
+        "location_id": location["id"],
+        "job_grade_id": job_grade["id"],
+        "employment_type_id": employment_type["id"],
+        "employment_status_id": employment_status["id"],
+        "shift_id": shift["id"],
+        "hire_date": "2024-01-15",
+        "employment_status": "active",
+    }
+    if user_id is not None:
+        payload["user_id"] = user_id
+
+    response = client.post("/hr/employees", json=payload, headers=headers)
+    assert response.status_code == 201
+    return response.json()
+
+
+def _create_store(client: TestClient, headers: dict[str, str]) -> dict:
+    suffix = uuid.uuid4().hex[:8]
+    organization = client.post("/organizations", json={"name": f"Store Org {suffix}"}).json()
+    store_type = client.post(
+        "/store-types", json={"code": f"MT-{suffix}", "name": "Modern Trade"}, headers=headers
+    ).json()
+    response = client.post(
+        "/stores",
+        json={
+            "code": f"ST-{suffix}",
+            "name": "Indomaret Sudirman",
+            "organization_id": organization["id"],
+            "store_type_id": store_type["id"],
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def _create_visit(
+    client: TestClient, headers: dict[str, str], employee_id: str, store_id: str
+) -> dict:
+    response = client.post(
+        "/visits",
+        json={"employee_id": employee_id, "store_id": store_id, "visited_at": DEFAULT_VISITED_AT},
+        headers=headers,
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def _survey_payload(visit_id: str, **overrides) -> dict:
+    payload = {
+        "visit_id": visit_id,
+        "display_compliant": True,
+        "stock_available": True,
+        "posm_available": True,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _create_survey(client: TestClient, headers: dict[str, str], visit_id: str, **overrides) -> dict:
+    response = client.post("/surveys", json=_survey_payload(visit_id, **overrides), headers=headers)
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_create_survey_requires_authentication(client: TestClient):
+    response = client.post("/surveys", json=_survey_payload(str(uuid.uuid4())))
+    assert response.status_code == 401
+
+
+def test_list_surveys_requires_authentication(client: TestClient):
+    assert client.get("/surveys").status_code == 401
+
+
+def test_get_survey_requires_authentication(client: TestClient):
+    assert client.get(f"/surveys/{uuid.uuid4()}").status_code == 401
+
+
+def test_update_survey_requires_authentication(client: TestClient):
+    response = client.put(f"/surveys/{uuid.uuid4()}", json={"stock_available": False})
+    assert response.status_code == 401
+
+
+def test_delete_survey_requires_authentication(client: TestClient):
+    assert client.delete(f"/surveys/{uuid.uuid4()}").status_code == 401
+
+
+def test_create_survey(
+    client: TestClient, user: User, user_headers: dict[str, str], admin_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+
+    body = _create_survey(client, user_headers, visit["id"])
+
+    assert body["visit_id"] == visit["id"]
+    assert body["display_compliant"] is True
+    assert body["stock_available"] is True
+    assert body["posm_available"] is True
+    uuid.UUID(body["id"])
+
+
+def test_create_survey_rejects_missing_visit(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
+    response = client.post(
+        "/surveys", json=_survey_payload(str(uuid.uuid4())), headers=user_headers
+    )
+
+    assert response.status_code == 404
+
+
+def test_create_survey_rejects_duplicate_visit(
+    client: TestClient, user: User, user_headers: dict[str, str], admin_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    _create_survey(client, user_headers, visit["id"])
+
+    response = client.post("/surveys", json=_survey_payload(visit["id"]), headers=user_headers)
+
+    assert response.status_code == 409
+
+
+def test_create_survey_forbidden_for_non_owner(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+
+    response = client.post("/surveys", json=_survey_payload(visit["id"]), headers=other_headers)
+
+    assert response.status_code == 403
+
+
+def test_get_survey(
+    client: TestClient, user: User, user_headers: dict[str, str], admin_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    created = _create_survey(client, user_headers, visit["id"])
+
+    response = client.get(f"/surveys/{created['id']}", headers=user_headers)
+
+    assert response.status_code == 200
+    assert response.json()["id"] == created["id"]
+
+
+def test_get_survey_not_found(client: TestClient, user: User, user_headers: dict[str, str]):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
+    response = client.get(f"/surveys/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 404
+
+
+def test_get_survey_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    created = _create_survey(client, user_headers, visit["id"])
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.get(f"/surveys/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403
+
+
+def test_get_survey_by_visit(
+    client: TestClient, user: User, user_headers: dict[str, str], admin_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    created = _create_survey(client, user_headers, visit["id"])
+
+    response = client.get(f"/surveys/by-visit/{visit['id']}", headers=user_headers)
+
+    assert response.status_code == 200
+    assert response.json()["id"] == created["id"]
+
+
+def test_list_surveys_returns_only_owned(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    other_visit = _create_visit(client, other_headers, other_employee["id"], store["id"])
+    _create_survey(client, user_headers, visit["id"])
+    _create_survey(client, other_headers, other_visit["id"])
+
+    response = client.get("/surveys", headers=user_headers)
+
+    assert response.status_code == 200
+    assert {item["visit_id"] for item in response.json()} == {visit["id"]}
+
+
+def test_list_surveys_paginated_returns_only_owned(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    other_visit = _create_visit(client, other_headers, other_employee["id"], store["id"])
+    _create_survey(client, user_headers, visit["id"])
+    _create_survey(client, other_headers, other_visit["id"])
+
+    response = client.get("/surveys/paginated", headers=user_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["visit_id"] == visit["id"]
+
+
+def test_update_survey(
+    client: TestClient, user: User, user_headers: dict[str, str], admin_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    created = _create_survey(client, user_headers, visit["id"])
+
+    response = client.put(
+        f"/surveys/{created['id']}", json={"stock_available": False}, headers=user_headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["stock_available"] is False
+    assert response.json()["display_compliant"] is True
+
+
+def test_update_survey_not_found(client: TestClient, user: User, user_headers: dict[str, str]):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
+    response = client.put(
+        f"/surveys/{uuid.uuid4()}", json={"stock_available": False}, headers=user_headers
+    )
+
+    assert response.status_code == 404
+
+
+def test_update_survey_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    created = _create_survey(client, user_headers, visit["id"])
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.put(
+        f"/surveys/{created['id']}", json={"stock_available": False}, headers=other_headers
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_survey(
+    client: TestClient, user: User, user_headers: dict[str, str], admin_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    created = _create_survey(client, user_headers, visit["id"])
+
+    response = client.delete(f"/surveys/{created['id']}", headers=user_headers)
+
+    assert response.status_code == 204
+    assert client.get(f"/surveys/{created['id']}", headers=user_headers).status_code == 404
+
+
+def test_delete_survey_not_found(client: TestClient, user: User, user_headers: dict[str, str]):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
+    response = client.delete(f"/surveys/{uuid.uuid4()}", headers=user_headers)
+    assert response.status_code == 404
+
+
+def test_delete_survey_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    created = _create_survey(client, user_headers, visit["id"])
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.delete(f"/surveys/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403
+
+
+def test_survey_authorization_follows_current_visit_owner(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+    admin_headers: dict[str, str],
+):
+    """If the parent Visit's `employee_id` is reassigned, Survey
+    authorization must follow the new owner."""
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    other_employee = _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+    store = _create_store(client, admin_headers)
+    visit = _create_visit(client, user_headers, employee["id"], store["id"])
+    created = _create_survey(client, user_headers, visit["id"])
+
+    reassign = client.put(
+        f"/visits/{visit['id']}",
+        json={"employee_id": other_employee["id"]},
+        headers=user_headers,
+    )
+    assert reassign.status_code == 200
+
+    assert client.get(f"/surveys/{created['id']}", headers=other_headers).status_code == 200
+    assert client.get(f"/surveys/{created['id']}", headers=user_headers).status_code == 403
