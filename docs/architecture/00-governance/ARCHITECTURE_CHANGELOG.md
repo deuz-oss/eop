@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — Store Iteration 1 (Customer & Store) Completed
+
+**Reference:**
+
+- PR #80
+- `docs/architecture/capabilities/store/iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Store
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Brought Roadmap Phase 3's "Customer"/"Store"/"Outlet"/"Modern Trade"/"General Trade"/"Store Classification"/"Geolocation" items into implementation as a single `Store` aggregate — discovery established that Customer and Store are the same real-world entity in this product's domain language, not two separate aggregates (MVP Scope names only "Store"; "Product Boundaries" places account/billing/pipeline concepts in ERP/CRM, both explicitly out of platform scope). `Store` (`code`, `name`, `organization_id`, `store_type_id`, `address`, `latitude`/`longitude`, `description`) + `StoreType` (free-form trade-channel lookup mirroring `LocationType`, covering Modern Trade/General Trade/Store Classification collectively — not a fixed enum). Flat CRUD, no lifecycle. `RequireRole("admin")` reused unmodified, mirrors `PayrollRun`/`JobRequisition`/`PerformanceReview`'s identical rationale (no natural owner-employee field). No relationship to `HrEmployee`, `Location`, or any Territory/Region/Area concept — that boundary against the separately-gated Organization Hierarchy capability (TD-003/Phase 6) is explicitly held open, not resolved, pending a future Territory-focused discovery.
+
+---
+
 # 2026-08-09 — Attendance/Leave Deduction Wired to Work Schedule
 
 **Reference:**
