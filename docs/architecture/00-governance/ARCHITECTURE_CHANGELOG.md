@@ -30,6 +30,28 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — Attendance/Leave Deduction Wired to Work Schedule
+
+**Reference:**
+
+- PR #78
+
+**Capability:**
+
+Payroll Calculation (Advanced)
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Resolved the integration gap `AttendanceLeaveDeductionCalculator`'s own docstring had named since Advanced Payroll: the calculator previously always returned `None` because `ReconciliationService`'s `absent` classification had no concept of an employee's scheduled work days. Now, a day is deductible only when both hold: `ReconciliationService.get_range` classifies it `absent`, and the employee's `WorkSchedule` effective on that date (via `WorkScheduleService.get_by_employee`, unmodified) marks the corresponding weekday as worked. `holiday`/`leave` days remain never deductible; an employee with no applicable `WorkSchedule` row is simply not deductible for that day (mirrors `OvertimeCalculator`/`StatutoryTaxCalculator`'s existing "no applicable data → no line item" convention, not a fail-loud error). Implements D5 Option (a) exactly as already accepted — no new business rule. `WorkScheduleService`/`ReconciliationService` remain unmodified and are read-only from Payroll's side; no schema or migration change; no API change.
+
+---
+
 # 2026-08-09 — Performance Iteration 2 (Review Lifecycle) Completed
 
 **Reference:**
@@ -256,7 +278,7 @@ Implemented
 
 ## Summary
 
-Pay-period cadence, configurable statutory/tax deduction (`PayrollStatutoryParameter`), overtime calculation, and daily/hourly rate resolution implemented, layered onto the base-salary Payroll Calculation capability. Attendance/leave deduction was deliberately scoped out as a no-op pending Work Schedule's existence (now resolved as its own capability, but not yet wired into payroll calculation — a separate, still-open integration decision).
+Pay-period cadence, configurable statutory/tax deduction (`PayrollStatutoryParameter`), overtime calculation, and daily/hourly rate resolution implemented, layered onto the base-salary Payroll Calculation capability. Attendance/leave deduction was deliberately scoped out as a no-op pending Work Schedule's existence — see the 2026-08-09 "Attendance/Leave Deduction Wired to Work Schedule" entry below for the completed integration.
 
 ---
 

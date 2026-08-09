@@ -687,7 +687,7 @@ Implemented
 
 ## Purpose
 
-Pay-period cadence, statutory/tax deduction, overtime, and rate-resolution calculation, layered onto the base Payroll (Run + Calculation) capability.
+Pay-period cadence, statutory/tax deduction, overtime, attendance/leave deduction, and rate-resolution calculation, layered onto the base Payroll (Run + Calculation) capability. Attendance/leave deduction (`AttendanceLeaveDeductionCalculator`) reads `ReconciliationService`/`WorkScheduleService` read-only — a day is deductible only when classified `absent` and scheduled per the employee's effective `WorkSchedule`.
 
 ---
 
