@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — Performance Iteration 2 (Review Lifecycle) Completed
+
+**Reference:**
+
+- PR #76
+- `docs/architecture/capabilities/performance/iteration-2-business-decision-package.md` (Approved)
+
+**Capability:**
+
+Performance
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+CPO/CTO approved D1 (Option B: admin-only `draft → finalized` lifecycle for `PerformanceReview` — no employee acknowledgement, manager/self/peer review, calibration, approval hierarchy, notifications, or generic workflow engine). Implemented as `PerformanceReviewStatus` (`core/performance.py`, mirrors `ApplicationStatus`'s exact enum/transition-table pattern) and a fixed transition table enforced by a new `PerformanceReviewService.finalize` method, exposed via `POST /hr/performance-reviews/{id}/finalize`, reusing the existing `RequireRole("admin")` authorization unmodified. `PerformanceReviewCreate`/`PerformanceReviewUpdate` do not accept `status` — every new review starts `draft`; the only way to reach `finalized` is `finalize`. `finalized` is terminal: re-finalizing is rejected, not a no-op. Finalized reviews additionally reject substantive field changes (`employee_id`, `review_period_start`/`end`, `notes`) via ordinary `update()`, raising a new `PerformanceReviewFinalizedError` (409). Rating scales, competency frameworks, employee acknowledgement, manager/peer/self-review semantics, and organization scoping remain out of scope and undecided.
+
+---
+
 # 2026-08-09 — Performance Iteration 1 (Performance Review) Completed
 
 **Reference:**

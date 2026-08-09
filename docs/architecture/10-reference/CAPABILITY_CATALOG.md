@@ -781,19 +781,23 @@ Implemented
 
 ## Purpose
 
-`PerformanceReview`: minimal, flat CRUD record (`employee_id`, `review_period_start`/`review_period_end`, `notes`), no status/lifecycle of its own, no effective dating (discrete historical event, not evolving current state), no uniqueness constraint (multiple reviews per employee permitted). Mirrors the same "CRUD shell first" precedent as `PayrollRun`/`JobRequisition`/`Interview`/`Offer`. Rating scales, competency frameworks, review workflow, manager/peer/self-review semantics, approval hierarchy, calibration, goal weighting, and review cadence remain undecided — none required for Iteration 1.
+`PerformanceReview`: minimal, flat CRUD record (`employee_id`, `review_period_start`/`review_period_end`, `notes`), no effective dating (discrete historical event, not evolving current state), no uniqueness constraint (multiple reviews per employee permitted). Mirrors the same "CRUD shell first" precedent as `PayrollRun`/`JobRequisition`/`Interview`/`Offer`.
+
+Owns a minimal lifecycle (Iteration 2, Approved, D1 Option B): `draft → finalized`, admin-only, forward-only, `finalized` terminal, no reopening, no re-finalizing. `status` is not accepted by `PerformanceReviewCreate`/`PerformanceReviewUpdate` — only the dedicated `finalize` transition can set it. Finalized reviews reject substantive field changes via ordinary update.
+
+Rating scales, competency frameworks, employee acknowledgement, manager/peer/self-review semantics, approval hierarchy, calibration, goal weighting, review cadence, and notifications remain undecided — none required so far.
 
 ---
 
 ## Authorization
 
-Role Based (`RequireRole("admin")`) — admin-only for all `PerformanceReview` routes. Same mechanism and rationale as `PayrollRun`/Recruitment: no new authorization framework introduced.
+Role Based (`RequireRole("admin")`) — admin-only for all `PerformanceReview` routes, including `finalize`. Same mechanism and rationale as `PayrollRun`/Recruitment: no new authorization framework introduced.
 
 ---
 
 ## Governing Decision
 
-CPO/CTO product decision (superseded `docs/product/02_PRODUCT_SCOPE.md`'s prior HRIS exclusion for "Performance Review" — distinct from the already-in-scope §7 "Performance Management" field/sales KPIs), `docs/architecture/capabilities/performance/iteration-1-scope-and-implementation-plan.md`
+CPO/CTO product decision (superseded `docs/product/02_PRODUCT_SCOPE.md`'s prior HRIS exclusion for "Performance Review" — distinct from the already-in-scope §7 "Performance Management" field/sales KPIs), `docs/architecture/capabilities/performance/iteration-1-scope-and-implementation-plan.md`, `iteration-2-business-decision-package.md` (Approved)
 
 ---
 
