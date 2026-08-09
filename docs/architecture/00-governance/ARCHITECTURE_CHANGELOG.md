@@ -30,6 +30,28 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — Recruitment Iteration 3 (Interview + Offer) Completed
+
+**Reference:**
+
+- PR #72
+
+**Capability:**
+
+Recruitment
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Added `Interview` and `Offer`: minimal, flat CRUD records linked to `Application` by FK (`ON DELETE RESTRICT`), no uniqueness constraint (multiple per `Application` permitted). Neither carries a status/lifecycle of its own and neither is coupled to `ApplicationService.transition` in any way — `Application` alone owns the recruitment lifecycle (Iteration 2). `Interview` carries no `type`/`interviewer`/`location` field; `Offer` deliberately carries no compensation/monetary field (never silently derived from Payroll `Compensation`). `RequireRole("admin")` reused unmodified from Recruitment Authorization. Interview/offer lifecycle, acceptance/expiry semantics, and any Application-transition integration remain out of scope and undecided.
+
+---
+
 # 2026-08-09 — Recruitment Iteration 2 (Application Lifecycle) Completed
 
 **Reference:**
