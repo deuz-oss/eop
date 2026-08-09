@@ -80,6 +80,7 @@ Business Capability
 | Recruitment | Implemented | `JobRequisition`/`Candidate`/`Application` (lifecycle) + `Interview`/`Offer` (flat records), `RequireRole("admin")` auth |
 | Performance | Implemented | `PerformanceReview` minimal flat CRUD record, `RequireRole("admin")` auth |
 | Store | Implemented | `Store`/`StoreType` master data (Customer & Store unified), `RequireRole("admin")` auth |
+| Visit | Implemented | Field employee store visits, Owner Only auth (`VisitAuthorizationEvaluator`) |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -764,6 +765,24 @@ Still open, not resolved by any iteration so far: rating scales, competency fram
 No relationship to `HrEmployee`, `Location`, or Territory/Region/Area. The Territory/Region/Area vs. Organization Hierarchy (TD-003/Phase 6) naming-collision boundary is explicitly held open, not resolved by this capability.
 
 **Authorization:** Role Based (`RequireRole("admin")`), same mechanism as `PayrollRun`/Recruitment/Performance. Admin-only for all `Store`/`StoreType` routes; non-admin authenticated users get 403.
+
+---
+
+## Visit
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/visit/iteration-1-scope-and-implementation-plan.md`
+
+`Visit` (Iteration 1): a field employee's visit to a `Store`, per Roadmap Phase 4 "Field Operations". Fields: `employee_id`, `store_id`, `visited_at`, `notes`. Flat CRUD, no lifecycle/status field.
+
+No Mission reference — resolved from evidence as independent, ad-hoc visits (every product document naming both `Visit` and `Mission` treats them as parallel concepts, never nested; `Mission Planning` groups with `Territory Assignment` in Product Scope §5, a further reason not to couple them). No GPS coordinates, no photo/selfie evidence, no check-in/check-out timestamps — all explicitly deferred, no field added in Iteration 1.
+
+Explicitly distinct from the existing HR `AttendanceEvent`/`ReconciliationService` capability (shift clock-in/out feeding Payroll's attendance deduction) despite the shared word "Attendance" in product scope — neither reused nor modified. Field Execution's own "Attendance" concept (grouped in Product Scope §6 with Check In/Check Out/GPS Validation/Selfie Verification) remains a separate, unscoped future item.
+
+No relationship to `Location`, Territory/Region/Area, or Organization Hierarchy.
+
+**Authorization:** Owner Only, via a dedicated `VisitAuthorizationEvaluator` mirroring `AttendanceAuthorizationEvaluator`'s exact shape — reuse of the established per-capability Owner Only evaluator convention (`resource.employee_id == context.employee_context.employee.id`), not new authorization infrastructure.
 
 ---
 
