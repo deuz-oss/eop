@@ -77,6 +77,7 @@ Business Capability
 | Payroll Calculation (Advanced) | Implemented | Tax/formula engine, overtime, rate resolution |
 | Shift Assignment | Closed — Subsumed by Work Schedule | No separate implementation; resolved by `WorkSchedule` |
 | Work Schedule | Implemented | Employee-scoped, effective-dated weekly working-day pattern |
+| Recruitment (Iteration 1) | Implemented | `JobRequisition`/`Candidate`/`Application`, structure only, `RequireRole("admin")` auth |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -713,6 +714,18 @@ No separate implementation exists. Work Schedule's `WorkSchedule` aggregate alre
 **Related:** `docs/architecture/capabilities/work-schedule/iteration-1-implementation-plan.md`
 
 Employee-scoped, effective-dated weekly working-day pattern (`WorkSchedule`), referencing `Shift`, with `corrects_id` correction lineage — mirrors Compensation's effective-dating/correction shape.
+
+---
+
+## Recruitment (Iteration 1)
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/recruitment/iteration-1-scope-and-implementation-plan.md`
+
+`JobRequisition` (open positions), `Candidate` (people applying, not `HrEmployee`s), `Application` (peer-association linking the two, mirrors `Assignment`). CPO/CTO product decision, superseding Recruitment's prior HRIS exclusion in `docs/product/02_PRODUCT_SCOPE.md`. Structure only: no pipeline/stage model, no interview/offer process, no candidate self-service, no candidate-to-employee conversion — each remains a genuinely open decision, not resolved by this iteration.
+
+**Authorization:** Role Based (`RequireRole("admin")`), CPO/CTO decision — see `docs/architecture/capabilities/recruitment/authorization-decision.md`. Admin-only for all Recruitment routes; non-admin authenticated users get 403.
 
 ---
 

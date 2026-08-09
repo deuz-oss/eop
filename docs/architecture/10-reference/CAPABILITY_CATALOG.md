@@ -57,6 +57,7 @@ Detailed implementation remains in the individual capability documents.
 | Payroll Calculation (Advanced) | Implemented | Payroll | — (capability decision only) |
 | Shift Assignment | Closed — Subsumed by Work Schedule | HR | — |
 | Work Schedule | Implemented | HR | — (capability decision only) |
+| Recruitment (Iteration 1) | Implemented | HR | — (CPO/CTO product decision) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -739,6 +740,34 @@ Employee-scoped, effective-dated weekly working-day pattern plus the `Shift` wor
 
 ---
 
+# Recruitment (Iteration 1)
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`JobRequisition` (open positions, master-data-shaped), `Candidate` (people applying, not `HrEmployee`s), `Application` (peer-association linking the two, mirrors `Assignment`). Structure only — no pipeline/stage state machine, no interview/offer process, no candidate self-service, no candidate-to-employee conversion.
+
+---
+
+## Authorization
+
+Role Based (`RequireRole("admin")`) — admin-only for all `JobRequisition`/`Candidate`/`Application` routes. Same mechanism and rationale as `PayrollRun` (`payroll-authorization/decision.md` Addendum): none of the three entities carries an `employee_id`-shaped owner field, so Owner Only does not apply, and no new authorization framework was introduced. See `docs/architecture/capabilities/recruitment/authorization-decision.md`.
+
+---
+
+## Governing Decision
+
+CPO/CTO product decision (superseded `docs/product/02_PRODUCT_SCOPE.md`'s prior HRIS exclusion), `docs/architecture/capabilities/recruitment/iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -911,6 +940,7 @@ Business Capabilities
 | Payroll Calculation (Advanced) | ✓ | ✓ | ✓ | Implemented |
 | Shift Assignment | ✓ | ✓ | — | Closed — Subsumed by Work Schedule |
 | Work Schedule | ✓ | ✓ | ✓ | Implemented |
+| Recruitment (Iteration 1) | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |

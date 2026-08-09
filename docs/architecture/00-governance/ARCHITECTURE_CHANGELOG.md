@@ -30,6 +30,56 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — Recruitment Authorization Decided
+
+**Reference:**
+
+- `docs/architecture/capabilities/recruitment/authorization-decision.md`
+
+**Capability:**
+
+Recruitment
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Closed the gap left by Recruitment Iteration 1 (`CurrentUser`-only access to `JobRequisition`/`Candidate`/`Application`, including `Candidate` PII). CPO/CTO decision: Role Based (`RequireRole("admin")`), reusing `PayrollRun`'s own existing authorization mechanism unmodified — no new evaluator, permission model, policy engine, or role introduced. Recruitment pipeline/stage, hiring workflow, candidate conversion, and other Iteration 2 capabilities remain deferred, unaffected by this decision.
+
+---
+
+# 2026-08-09 — Recruitment (Iteration 1) Completed
+
+**Reference:**
+
+- PR #69
+- `docs/architecture/capabilities/recruitment/iteration-1-scope-and-implementation-plan.md`
+- `docs/product/02_PRODUCT_SCOPE.md` (Recruitment removed from HRIS exclusion list)
+
+**Capability:**
+
+Recruitment
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+CPO/CTO product decision brought Recruitment into scope, superseding its prior "Out of Scope — HRIS" listing (the same exclusion list Payroll Processing was in before Payroll was built). No prior governance chain existed; scope and implementation-level decisions were made directly from repository precedent in a single document rather than a full six-phase governance cycle.
+
+Implemented: `JobRequisition` (open positions, mirrors `Shift`'s master-data shape), `Candidate` (people applying, explicitly not `HrEmployee`s), `Application` (peer-association linking the two, mirrors `Assignment`, `RESTRICT` delete rules). `CurrentUser`-only authorization — none of the three entities has a natural employee-owner field.
+
+**Explicitly not decided by this iteration** (structure only): recruitment pipeline/stage semantics, interview scheduling, offer management, candidate self-service, candidate-to-employee conversion, dedicated Recruitment Authorization, organization scoping. Each remains open, requiring a separate CPO/CTO/governance decision before any Iteration 2 work begins.
+
+---
+
 # 2026-08-09 — EmployeeContext HTTP Exception Mapping Resolved
 
 **Reference:**
