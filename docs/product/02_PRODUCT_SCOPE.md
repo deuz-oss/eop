@@ -190,19 +190,25 @@ The following capabilities are intentionally excluded from EOP.
 
 ## HRIS
 
-- Performance Review
 - Learning Management
 - Employee Benefits
 
 Exception:
 EOP may integrate with HR systems.
 
-Note: Payroll Processing and Recruitment were originally listed here but
-have since been explicitly brought into scope by CPO/CTO product decision
-(see `docs/architecture/00-governance/ARCHITECTURE_CHANGELOG.md` and, for
+Note: Payroll Processing, Recruitment, and Performance Review were
+originally listed here but have since been explicitly brought into scope
+by CPO/CTO product decision (see
+`docs/architecture/00-governance/ARCHITECTURE_CHANGELOG.md` and, for
 Recruitment specifically, `docs/architecture/capabilities/recruitment/
-iteration-1-scope-and-implementation-plan.md` §0). This list is not
-re-audited for other stale entries as part of that decision.
+iteration-1-scope-and-implementation-plan.md` §0; for Performance
+Review, `docs/architecture/capabilities/performance/
+iteration-1-scope-and-implementation-plan.md` §0). "Performance Review"
+here refers specifically to individual HR employee reviews, distinct
+from the already-in-scope "Performance Management" (§7 above, field/
+sales operational KPIs) -- the two are unrelated concepts that happen to
+share a word. This list is not re-audited for other stale entries as
+part of that decision.
 
 ---
 

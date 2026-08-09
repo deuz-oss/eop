@@ -28,6 +28,7 @@ from eop_api.models.payroll_run import PayrollRun
 from eop_api.models.payroll_statutory_parameter import PayrollStatutoryParameter
 from eop_api.models.payslip import Payslip
 from eop_api.models.payslip_line_item import PayslipLineItem
+from eop_api.models.performance_review import PerformanceReview
 from eop_api.models.position import Position
 from eop_api.models.project import Project
 from eop_api.models.role import Role
@@ -70,6 +71,7 @@ __all__ = [
     "PayrollStatutoryParameter",
     "Payslip",
     "PayslipLineItem",
+    "PerformanceReview",
     "Position",
     "Project",
     "Role",
