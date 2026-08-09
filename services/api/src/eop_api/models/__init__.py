@@ -37,6 +37,7 @@ from eop_api.models.shift import Shift
 from eop_api.models.store import Store
 from eop_api.models.store_type import StoreType
 from eop_api.models.survey import Survey
+from eop_api.models.target import Target
 from eop_api.models.task import Task
 from eop_api.models.team import Team
 from eop_api.models.timesheet import Timesheet
@@ -85,6 +86,7 @@ __all__ = [
     "Store",
     "StoreType",
     "Survey",
+    "Target",
     "Task",
     "Team",
     "Timesheet",

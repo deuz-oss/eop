@@ -47,6 +47,7 @@ from eop_api.api.shifts import router as shifts_router
 from eop_api.api.store_types import router as store_types_router
 from eop_api.api.stores import router as stores_router
 from eop_api.api.surveys import router as surveys_router
+from eop_api.api.targets import router as targets_router
 from eop_api.api.tasks import router as tasks_router
 from eop_api.api.teams import router as teams_router
 from eop_api.api.timesheets import router as timesheets_router
@@ -146,6 +147,7 @@ app.include_router(stores_router, responses=PROBLEM_RESPONSES)
 app.include_router(visits_router, responses=PROBLEM_RESPONSES)
 app.include_router(surveys_router, responses=PROBLEM_RESPONSES)
 app.include_router(kpis_router, responses=PROBLEM_RESPONSES)
+app.include_router(targets_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
