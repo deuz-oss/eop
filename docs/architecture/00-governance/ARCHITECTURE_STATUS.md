@@ -740,11 +740,13 @@ Still open, not resolved by any iteration so far: candidate self-service, candid
 
 **Status:** Implemented
 
-**Related:** `docs/architecture/capabilities/performance/iteration-1-scope-and-implementation-plan.md`
+**Related:** `docs/architecture/capabilities/performance/iteration-1-scope-and-implementation-plan.md`, `iteration-2-business-decision-package.md` (Approved)
 
-`PerformanceReview` (Iteration 1): minimal, flat CRUD record (`employee_id`, `review_period_start`/`review_period_end`, `notes`). No status/lifecycle, no effective dating, no uniqueness constraint — mirrors the `PayrollRun`/`Interview`/`Offer` "CRUD shell first" precedent. CPO/CTO product decision, superseding Performance Review's prior HRIS exclusion in `docs/product/02_PRODUCT_SCOPE.md` (distinct from the already-in-scope §7 "Performance Management" field/sales KPIs, which this capability does not touch).
+`PerformanceReview` (Iteration 1): minimal, flat CRUD record (`employee_id`, `review_period_start`/`review_period_end`, `notes`). No effective dating, no uniqueness constraint — mirrors the `PayrollRun`/`Interview`/`Offer` "CRUD shell first" precedent. CPO/CTO product decision, superseding Performance Review's prior HRIS exclusion in `docs/product/02_PRODUCT_SCOPE.md` (distinct from the already-in-scope §7 "Performance Management" field/sales KPIs, which this capability does not touch).
 
-Still open, not resolved by Iteration 1: rating scales, competency frameworks, review workflow, manager/peer/self-review semantics, approval hierarchy, calibration, goal weighting, review cadence, employee-manager relationships, organization scoping.
+`PerformanceReview` owns a minimal lifecycle (Iteration 2, Approved, D1 Option B): `draft → finalized`, admin-only transition, forward-only, terminal state not reopenable, no re-finalizing. `status` is never accepted by `PerformanceReviewCreate`/`PerformanceReviewUpdate` — the only way to reach `finalized` is the dedicated `finalize` transition. Finalized reviews reject substantive field changes via ordinary update.
+
+Still open, not resolved by any iteration so far: rating scales, competency frameworks, employee acknowledgement, manager/peer/self-review semantics, approval hierarchy, calibration, goal weighting, review cadence, employee-manager relationships, organization scoping, notifications.
 
 **Authorization:** Role Based (`RequireRole("admin")`), same mechanism as `PayrollRun`/Recruitment. Admin-only for all `PerformanceReview` routes; non-admin authenticated users get 403.
 
