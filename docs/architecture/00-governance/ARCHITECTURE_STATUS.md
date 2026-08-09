@@ -78,6 +78,7 @@ Business Capability
 | Shift Assignment | Closed — Subsumed by Work Schedule | No separate implementation; resolved by `WorkSchedule` |
 | Work Schedule | Implemented | Employee-scoped, effective-dated weekly working-day pattern |
 | Recruitment | Implemented | `JobRequisition`/`Candidate`/`Application` (lifecycle) + `Interview`/`Offer` (flat records), `RequireRole("admin")` auth |
+| Performance | Implemented | `PerformanceReview` minimal flat CRUD record, `RequireRole("admin")` auth |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -732,6 +733,20 @@ Employee-scoped, effective-dated weekly working-day pattern (`WorkSchedule`), re
 Still open, not resolved by any iteration so far: candidate self-service, candidate-to-employee conversion, interview/offer acceptance-or-expiry semantics, organization scoping.
 
 **Authorization:** Role Based (`RequireRole("admin")`), CPO/CTO decision — see `docs/architecture/capabilities/recruitment/authorization-decision.md`. Admin-only for all Recruitment routes (`JobRequisition`/`Candidate`/`Application`/`Interview`/`Offer`); non-admin authenticated users get 403.
+
+---
+
+## Performance
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/performance/iteration-1-scope-and-implementation-plan.md`
+
+`PerformanceReview` (Iteration 1): minimal, flat CRUD record (`employee_id`, `review_period_start`/`review_period_end`, `notes`). No status/lifecycle, no effective dating, no uniqueness constraint — mirrors the `PayrollRun`/`Interview`/`Offer` "CRUD shell first" precedent. CPO/CTO product decision, superseding Performance Review's prior HRIS exclusion in `docs/product/02_PRODUCT_SCOPE.md` (distinct from the already-in-scope §7 "Performance Management" field/sales KPIs, which this capability does not touch).
+
+Still open, not resolved by Iteration 1: rating scales, competency frameworks, review workflow, manager/peer/self-review semantics, approval hierarchy, calibration, goal weighting, review cadence, employee-manager relationships, organization scoping.
+
+**Authorization:** Role Based (`RequireRole("admin")`), same mechanism as `PayrollRun`/Recruitment. Admin-only for all `PerformanceReview` routes; non-admin authenticated users get 403.
 
 ---
 

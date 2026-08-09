@@ -30,6 +30,28 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — Performance Iteration 1 (Performance Review) Completed
+
+**Reference:**
+
+- PR #74
+
+**Capability:**
+
+Performance
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Brought Performance Review into product scope, superseding its prior HRIS exclusion in `docs/product/02_PRODUCT_SCOPE.md` using the same CPO/CTO precedent applied to Recruitment (distinct from the already-in-scope §7 "Performance Management" field/sales KPIs — unrelated concepts sharing a word). Added `PerformanceReview`: minimal, flat CRUD record (`employee_id` FK `ON DELETE RESTRICT`, `review_period_start`/`review_period_end`, `notes`), no status/lifecycle, no effective dating, no uniqueness constraint (multiple reviews per employee permitted) — mirrors the `PayrollRun`/`Interview`/`Offer` "CRUD shell first" precedent. Only validation is a basic period sanity check (`review_period_end >= review_period_start`). `RequireRole("admin")` reused unmodified as `RequirePerformanceAdmin`. Rating scales, competency frameworks, review workflow, manager/peer/self-review semantics, approval hierarchy, calibration, goal weighting, review cadence, employee-manager relationships, and organization scoping all remain undecided and out of scope.
+
+---
+
 # 2026-08-09 — Recruitment Iteration 3 (Interview + Offer) Completed
 
 **Reference:**
