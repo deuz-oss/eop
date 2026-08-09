@@ -74,9 +74,9 @@ Business Capability
 | Compensation | Implemented | Effective-dated employee compensation history |
 | Payroll (Run + Calculation) | Implemented | Payroll run lifecycle and base-salary payroll calculation |
 | Payslip | Implemented | Structural payslip record (create/get/list) |
-| Payroll Calculation (Advanced) | Blocked | Tax/formula engine — pending business decisions |
-| Shift Assignment | Blocked | Pending business decisions (see capability decision doc) |
-| Work Schedule | Blocked | Pending business decisions (see capability decision doc) |
+| Payroll Calculation (Advanced) | Implemented | Tax/formula engine, overtime, rate resolution |
+| Shift Assignment | Closed — Subsumed by Work Schedule | No separate implementation; resolved by `WorkSchedule` |
+| Work Schedule | Implemented | Employee-scoped, effective-dated weekly working-day pattern |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -135,7 +135,9 @@ Current consumers include:
 
 ## Known Limitation
 
-EmployeeContext exceptions do not yet have centralized HTTP mappings.
+Resolved. EmployeeContext exceptions now have centralized HTTP mappings
+(`EmployeeContextNotFoundError` -> 403, `MultipleEmployeeContextError` -> 409),
+implemented in `dependencies/employee_context.py`.
 
 Tracked in:
 
@@ -684,39 +686,33 @@ Direct Manager
 
 ---
 
-# Blocked — Pending Business Decision
-
-The following capabilities have completed architecture governance work but implementation remains genuinely blocked on unresolved business/product decisions (not architecture). No business rules have been invented to unblock them.
-
----
-
 ## Payroll Calculation (Advanced)
 
-**Status:** Blocked
+**Status:** Implemented
 
-**Related:** `docs/architecture/capabilities/payroll-calculation/decision.md`
+**Related:** `docs/architecture/capabilities/payroll-calculation/decision.md`, `payroll-calculation/iteration-1-implementation-plan.md`
 
-Requires business/product decisions this repository does not evidence: pay-period cadence, tax/statutory formula, and execution mechanism (request- vs. event/job-driven). Distinct from the already-implemented base-salary Payroll Calculation above.
+Pay-period cadence, statutory/tax formula (configurable via `PayrollStatutoryParameter`), overtime calculation, and rate resolution, layered onto the base-salary Payroll Calculation above. Attendance/leave deduction remains a deliberate no-op pending a separate future integration decision (unrelated to this capability's own scope).
 
 ---
 
 ## Shift Assignment
 
-**Status:** Blocked
+**Status:** Closed — Subsumed by Work Schedule
 
-**Related:** `docs/architecture/capabilities/shift-assignment/implementation-plan.md` §12
+**Related:** `docs/architecture/capabilities/shift-assignment/final-governance-summary.md`
 
-11 of 13 open items are genuine business gaps (effective-dating necessity, dedicated lifecycle, LeaveRequest hour-consumption interaction, naming). The remaining 2 (relationship shape, delete rule) are architecture-only and could be resolved without new business input, but do not by themselves unblock implementation while the business gaps remain open.
+No separate implementation exists. Work Schedule's `WorkSchedule` aggregate already is, field for field, the effective-dated employee↔shift relationship this capability investigated; a separate entity would have duplicated it.
 
 ---
 
 ## Work Schedule
 
-**Status:** Blocked
+**Status:** Implemented
 
-**Related:** `docs/architecture/capabilities/work-schedule/implementation-plan.md` §12
+**Related:** `docs/architecture/capabilities/work-schedule/iteration-1-implementation-plan.md`
 
-15 blocking unknowns, predominantly business/repository gaps (recurring-schedule identity, overlap validation, historical lookup) with no corresponding evidence anywhere in the repository.
+Employee-scoped, effective-dated weekly working-day pattern (`WorkSchedule`), referencing `Shift`, with `corrects_id` correction lineage — mirrors Compensation's effective-dating/correction shape.
 
 ---
 
@@ -726,7 +722,7 @@ Current tracked debt:
 
 | ID | Title | Status |
 |---|---|---|
-| TD-001 | EmployeeContext HTTP Exception Mapping | Open |
+| TD-001 | EmployeeContext HTTP Exception Mapping | Resolved |
 | TD-002 | Approval Authorization Concurrency Protection | Open |
 | TD-003 | Employee Manager Hierarchy Limitation | Open |
 | TD-004 | Permission and Policy Model Not Implemented | Open |
@@ -772,13 +768,7 @@ All implemented architecture capabilities must have:
 
 ## Identity Context Mapping
 
-Risk:
-
-EmployeeContext failures may produce generic HTTP errors.
-
-Owner:
-
-Identity Context.
+Resolved (TD-001) — EmployeeContext failures now map to 403/409, not generic errors.
 
 ---
 
