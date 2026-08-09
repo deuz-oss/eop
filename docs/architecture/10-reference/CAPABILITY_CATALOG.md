@@ -60,6 +60,7 @@ Detailed implementation remains in the individual capability documents.
 | Recruitment | Implemented | HR | — (CPO/CTO product decision) |
 | Performance | Implemented | HR | — (CPO/CTO product decision) |
 | Store | Implemented | Organization Management & Master Data | — (capability decision only) |
+| Visit | Implemented | Field Operations | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -832,6 +833,36 @@ Role Based (`RequireRole("admin")`) — admin-only for all `Store`/`StoreType` r
 
 ---
 
+# Visit
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`Visit`: a field employee's visit to a `Store`, per Roadmap Phase 4 "Field Operations". Fields: `employee_id`, `store_id`, `visited_at`, `notes`. Flat CRUD, no lifecycle/status field, no Mission reference (evidence-resolved as independent, ad-hoc visits — every product document naming both treats them as parallel concepts, never nested), no GPS/photo/check-in-out (all explicitly deferred, no field added). Explicitly distinct from `AttendanceEvent` (HR shift clock-in/out feeding Payroll) despite the shared word "Attendance" in product scope — neither reused nor modified.
+
+No relationship to `HrEmployee` beyond the owning FK, no `Location`, no Territory/Region/Area, no Organization Hierarchy.
+
+---
+
+## Authorization
+
+Owner Only — `resource.employee_id == context.employee_context.employee.id`, via a dedicated `VisitAuthorizationEvaluator` mirroring `AttendanceAuthorizationEvaluator`'s exact shape (confirmed reuse of the established per-capability Owner Only evaluator convention, not new authorization infrastructure).
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/visit/iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1007,6 +1038,7 @@ Business Capabilities
 | Recruitment | ✓ | ✓ | ✓ | Implemented |
 | Performance | ✓ | ✓ | ✓ | Implemented |
 | Store | ✓ | ✓ | ✓ | Implemented |
+| Visit | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |

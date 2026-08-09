@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — Visit Iteration 1 (Field Employee Store Visits) Completed
+
+**Reference:**
+
+- PR #82
+- `docs/architecture/capabilities/visit/iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Visit
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Brought Roadmap Phase 4's "Visit" item into implementation as a minimal aggregate: `employee_id`, `store_id`, `visited_at`, `notes`, flat CRUD, no lifecycle. Discovery resolved no `Mission` reference is required — every product document naming both `Visit` and `Mission` treats them as parallel, independent concepts, never nested, and `Mission Planning`'s grouping with `Territory Assignment` (Product Scope §5) further argued against coupling them. GPS coordinates, photo/selfie evidence, and check-in/check-out timestamps are all explicitly deferred, with no field added in Iteration 1. Authorization is Owner Only via a new `VisitAuthorizationEvaluator`, mirroring `AttendanceAuthorizationEvaluator`'s exact shape — confirmed by CPO/CTO as reuse of the established per-capability Owner Only evaluator convention, not new authorization infrastructure. Explicitly distinct from the existing HR `AttendanceEvent`/`ReconciliationService` capability despite the shared word "Attendance" in product scope — neither reused nor modified; Field Execution's own "Attendance" concept remains a separate, unscoped future item. No relationship to `Location`, Territory/Region/Area, or Organization Hierarchy.
+
+---
+
 # 2026-08-09 — Store Iteration 1 (Customer & Store) Completed
 
 **Reference:**
