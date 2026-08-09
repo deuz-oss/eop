@@ -30,6 +30,28 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — Recruitment Iteration 2 (Application Lifecycle) Completed
+
+**Reference:**
+
+- `docs/architecture/capabilities/recruitment/iteration-2-business-decision-package.md` (Approved)
+
+**Capability:**
+
+Recruitment
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+CPO/CTO approved D1 (Application stage/transition model: Standard Funnel — `applied → screening → interviewing → offered → hired`, `rejected`/`withdrawn` from any non-terminal stage, forward-only, terminal states not reopenable) and D2 (`JobRequisition` closure never cascades to `Application`). Implemented as `ApplicationStatus` (`core/recruitment.py`, mirrors `PayrollRunStatus`'s exact enum/column pattern) and a fixed transition table enforced by a new `ApplicationService.transition` method, exposed via `POST /recruitment/applications/{id}/transition`, reusing the existing `RequireRole("admin")` authorization unmodified. `ApplicationCreate`/`ApplicationUpdate` no longer accept `status` — every new `Application` starts `APPLIED`; all subsequent moves go through `transition` only. No cascading logic was added to `JobRequisitionService`. Interview scheduling, offer management, candidate self-service, candidate-to-employee conversion, and organization scoping remain out of scope and undecided.
+
+---
+
 # 2026-08-09 — Recruitment Authorization Decided
 
 **Reference:**

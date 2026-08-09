@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import (
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
+from eop_api.core.recruitment import ApplicationStatus
 from eop_api.db.base import Base
 from eop_api.repositories.application import ApplicationRepository
 from eop_api.repositories.candidate import CandidateRepository
@@ -91,7 +92,7 @@ async def test_create_and_get(
     application = await repo.create(
         candidate_id=candidate_id,
         job_requisition_id=job_requisition_id,
-        status="applied",
+        status=ApplicationStatus.APPLIED,
         applied_date=date(2026, 1, 1),
     )
 
@@ -100,7 +101,7 @@ async def test_create_and_get(
     assert fetched is not None
     assert fetched.candidate_id == candidate_id
     assert fetched.job_requisition_id == job_requisition_id
-    assert fetched.status == "applied"
+    assert fetched.status == ApplicationStatus.APPLIED
 
 
 async def test_get_missing_returns_none(repo: ApplicationRepository):
@@ -113,7 +114,7 @@ async def test_get_by_candidate_and_requisition(
     application = await repo.create(
         candidate_id=candidate_id,
         job_requisition_id=job_requisition_id,
-        status="applied",
+        status=ApplicationStatus.APPLIED,
         applied_date=date(2026, 1, 1),
     )
 
@@ -130,14 +131,14 @@ async def test_update_existing(
     application = await repo.create(
         candidate_id=candidate_id,
         job_requisition_id=job_requisition_id,
-        status="applied",
+        status=ApplicationStatus.APPLIED,
         applied_date=date(2026, 1, 1),
     )
 
-    updated = await repo.update(application.id, status="interviewing")
+    updated = await repo.update(application.id, status=ApplicationStatus.INTERVIEWING)
 
     assert updated is not None
-    assert updated.status == "interviewing"
+    assert updated.status == ApplicationStatus.INTERVIEWING
 
 
 async def test_delete_existing(
@@ -146,7 +147,7 @@ async def test_delete_existing(
     application = await repo.create(
         candidate_id=candidate_id,
         job_requisition_id=job_requisition_id,
-        status="applied",
+        status=ApplicationStatus.APPLIED,
         applied_date=date(2026, 1, 1),
     )
 
