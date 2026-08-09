@@ -7,10 +7,12 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from eop_api.api.allowances import router as allowances_router
+from eop_api.api.applications import router as applications_router
 from eop_api.api.assignments import router as assignments_router
 from eop_api.api.attendance_events import router as attendance_events_router
 from eop_api.api.audit_logs import router as audit_logs_router
 from eop_api.api.auth import router as auth_router
+from eop_api.api.candidates import router as candidates_router
 from eop_api.api.compensation import router as compensation_router
 from eop_api.api.dashboard import router as dashboard_router
 from eop_api.api.deductions import router as deductions_router
@@ -23,6 +25,7 @@ from eop_api.api.health import router as health_router
 from eop_api.api.holidays import router as holidays_router
 from eop_api.api.hr_employees import router as hr_employees_router
 from eop_api.api.job_grades import router as job_grades_router
+from eop_api.api.job_requisitions import router as job_requisitions_router
 from eop_api.api.leave_balances import router as leave_balances_router
 from eop_api.api.leave_requests import router as leave_requests_router
 from eop_api.api.location_types import router as location_types_router
@@ -120,6 +123,9 @@ app.include_router(timesheets_router, responses=PROBLEM_RESPONSES)
 app.include_router(reconciliation_router, responses=PROBLEM_RESPONSES)
 app.include_router(assignments_router, responses=PROBLEM_RESPONSES)
 app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
+app.include_router(job_requisitions_router, responses=PROBLEM_RESPONSES)
+app.include_router(candidates_router, responses=PROBLEM_RESPONSES)
+app.include_router(applications_router, responses=PROBLEM_RESPONSES)
 app.include_router(roles_router, responses=PROBLEM_RESPONSES)
 app.include_router(dashboard_router, responses=PROBLEM_RESPONSES)
 app.include_router(audit_logs_router, responses=PROBLEM_RESPONSES)

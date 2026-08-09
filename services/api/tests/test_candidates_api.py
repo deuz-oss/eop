@@ -1,0 +1,221 @@
+import asyncio
+import uuid
+from collections.abc import Generator
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
+from eop_api.core.config import settings
+from eop_api.core.security import hash_password
+from eop_api.db.base import Base
+from eop_api.main import app
+from eop_api.models.user import User
+from eop_api.repositories.user import UserRepository
+
+
+@pytest.fixture(autouse=True)
+def _tables() -> Generator[None]:
+    async def _create() -> None:
+        engine = create_async_engine(settings.database_url)
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        await engine.dispose()
+
+    async def _truncate() -> None:
+        engine = create_async_engine(settings.database_url)
+        async with engine.begin() as conn:
+            await conn.execute(text("TRUNCATE TABLE candidates, users CASCADE"))
+        await engine.dispose()
+
+    asyncio.run(_create())
+    yield
+    asyncio.run(_truncate())
+
+
+@pytest.fixture
+def client() -> Generator[TestClient]:
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+async def _create_user(*, email: str, password: str) -> User:
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await UserRepository(session).create(
+            email=email,
+            password_hash=hash_password(password),
+            full_name="Test User",
+            is_active=True,
+        )
+        await session.commit()
+        session.expunge(user)
+    await engine.dispose()
+    return user
+
+
+@pytest.fixture
+def user() -> User:
+    return asyncio.run(_create_user(email="member@example.com", password="member-pass"))
+
+
+@pytest.fixture
+def user_headers(client: TestClient, user: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "member@example.com", "password": "member-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _create_candidate(
+    client: TestClient, headers: dict[str, str], *, email: str = "ada@example.com", **overrides
+) -> dict:
+    body = {
+        "first_name": "Ada",
+        "last_name": "Lovelace",
+        "full_name": "Ada Lovelace",
+        "email": email,
+        **overrides,
+    }
+    response = client.post("/recruitment/candidates", json=body, headers=headers)
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_create_candidate_requires_authentication(client: TestClient):
+    response = client.post(
+        "/recruitment/candidates",
+        json={
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "full_name": "Ada Lovelace",
+            "email": "ada@example.com",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_create_candidate(client: TestClient, user_headers: dict[str, str]):
+    body = _create_candidate(client, user_headers)
+
+    assert body["full_name"] == "Ada Lovelace"
+    assert body["email"] == "ada@example.com"
+    assert body["phone"] is None
+    uuid.UUID(body["id"])
+
+
+def test_create_candidate_rejects_duplicate_email(client: TestClient, user_headers: dict[str, str]):
+    _create_candidate(client, user_headers, email="ada@example.com")
+
+    response = client.post(
+        "/recruitment/candidates",
+        json={
+            "first_name": "Ada",
+            "last_name": "Two",
+            "full_name": "Ada Two",
+            "email": "ada@example.com",
+        },
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
+
+
+def test_create_candidate_rejects_blank_name(client: TestClient, user_headers: dict[str, str]):
+    response = client.post(
+        "/recruitment/candidates",
+        json={
+            "first_name": "",
+            "last_name": "Lovelace",
+            "full_name": "Ada Lovelace",
+            "email": "ada@example.com",
+        },
+        headers=user_headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_get_candidate(client: TestClient, user_headers: dict[str, str]):
+    created = _create_candidate(client, user_headers)
+
+    response = client.get(f"/recruitment/candidates/{created['id']}", headers=user_headers)
+
+    assert response.status_code == 200
+    assert response.json()["full_name"] == "Ada Lovelace"
+
+
+def test_get_candidate_not_found(client: TestClient, user_headers: dict[str, str]):
+    response = client.get(f"/recruitment/candidates/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 404
+
+
+def test_list_candidates(client: TestClient, user_headers: dict[str, str]):
+    _create_candidate(client, user_headers, email="ada@example.com")
+    _create_candidate(client, user_headers, email="alan@example.com", full_name="Alan Turing")
+
+    response = client.get("/recruitment/candidates", headers=user_headers)
+
+    assert response.status_code == 200
+    names = {item["full_name"] for item in response.json()}
+    assert {"Ada Lovelace", "Alan Turing"}.issubset(names)
+
+
+def test_list_candidates_paginated(client: TestClient, user_headers: dict[str, str]):
+    for i in range(3):
+        _create_candidate(client, user_headers, email=f"c{i}@example.com", full_name=f"C {i}")
+
+    response = client.get("/recruitment/candidates/paginated", headers=user_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["offset"] == 0
+    assert body["limit"] == 50
+    assert body["total"] == 3
+
+
+def test_update_candidate(client: TestClient, user_headers: dict[str, str]):
+    created = _create_candidate(client, user_headers)
+
+    response = client.put(
+        f"/recruitment/candidates/{created['id']}",
+        json={"full_name": "After"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["full_name"] == "After"
+
+
+def test_update_candidate_not_found(client: TestClient, user_headers: dict[str, str]):
+    response = client.put(
+        f"/recruitment/candidates/{uuid.uuid4()}",
+        json={"full_name": "After"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_delete_candidate(client: TestClient, user_headers: dict[str, str]):
+    created = _create_candidate(client, user_headers)
+
+    response = client.delete(f"/recruitment/candidates/{created['id']}", headers=user_headers)
+
+    assert response.status_code == 204
+    assert (
+        client.get(f"/recruitment/candidates/{created['id']}", headers=user_headers).status_code
+        == 404
+    )
+
+
+def test_delete_candidate_not_found(client: TestClient, user_headers: dict[str, str]):
+    response = client.delete(f"/recruitment/candidates/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 404
