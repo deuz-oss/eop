@@ -13,7 +13,11 @@ from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
+
+# Recruitment Authorization: Role Based (`RequireRole("admin")`), mirroring
+# `test_payroll_runs_api.py`'s exact fixture/test pattern.
 
 
 @pytest.fixture(autouse=True)
@@ -58,12 +62,44 @@ async def _create_user(*, email: str, password: str) -> User:
 
 
 @pytest.fixture
-def user() -> User:
+def admin_user() -> User:
+    return asyncio.run(_create_user(email="admin@example.com", password="admin-pass"))
+
+
+async def _seed_admin(user_id: uuid.UUID) -> None:
+    """Grants the `admin` role directly at the DB layer, mirroring
+    `test_payroll_runs_api.py`'s `_seed_admin`."""
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+@pytest.fixture
+def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
+    asyncio.run(_seed_admin(admin_user.id))
+
+    response = client.post(
+        "/auth/login", json={"email": "admin@example.com", "password": "admin-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def member_user() -> User:
+    """An authenticated user without the `admin` role."""
     return asyncio.run(_create_user(email="member@example.com", password="member-pass"))
 
 
 @pytest.fixture
-def user_headers(client: TestClient, user: User) -> dict[str, str]:
+def member_headers(client: TestClient, member_user: User) -> dict[str, str]:
     response = client.post(
         "/auth/login", json={"email": "member@example.com", "password": "member-pass"}
     )
@@ -159,12 +195,89 @@ def test_create_application_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_create_application(client: TestClient, user_headers: dict[str, str]):
-    candidate_id = _create_candidate(client, user_headers)
-    job_requisition_id = _create_job_requisition(client, user_headers)
+def test_list_applications_requires_authentication(client: TestClient):
+    response = client.get("/recruitment/applications")
+
+    assert response.status_code == 401
+
+
+def test_get_application_requires_authentication(client: TestClient):
+    response = client.get(f"/recruitment/applications/{uuid.uuid4()}")
+
+    assert response.status_code == 401
+
+
+def test_update_application_requires_authentication(client: TestClient):
+    response = client.put(
+        f"/recruitment/applications/{uuid.uuid4()}", json={"status": "interviewing"}
+    )
+
+    assert response.status_code == 401
+
+
+def test_delete_application_requires_authentication(client: TestClient):
+    response = client.delete(f"/recruitment/applications/{uuid.uuid4()}")
+
+    assert response.status_code == 401
+
+
+def test_create_application_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
+    response = client.post(
+        "/recruitment/applications",
+        json={
+            "candidate_id": str(uuid.uuid4()),
+            "job_requisition_id": str(uuid.uuid4()),
+            "status": "applied",
+            "applied_date": "2026-01-01",
+        },
+        headers=member_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_list_applications_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
+    response = client.get("/recruitment/applications", headers=member_headers)
+
+    assert response.status_code == 403
+
+
+def test_list_applications_paginated_rejects_non_admin(
+    client: TestClient, member_headers: dict[str, str]
+):
+    response = client.get("/recruitment/applications/paginated", headers=member_headers)
+
+    assert response.status_code == 403
+
+
+def test_get_application_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
+    response = client.get(f"/recruitment/applications/{uuid.uuid4()}", headers=member_headers)
+
+    assert response.status_code == 403
+
+
+def test_update_application_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
+    response = client.put(
+        f"/recruitment/applications/{uuid.uuid4()}",
+        json={"status": "interviewing"},
+        headers=member_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_application_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
+    response = client.delete(f"/recruitment/applications/{uuid.uuid4()}", headers=member_headers)
+
+    assert response.status_code == 403
+
+
+def test_create_application(client: TestClient, admin_headers: dict[str, str]):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
 
     body = _create_application(
-        client, user_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
     )
 
     assert body["candidate_id"] == candidate_id
@@ -174,9 +287,9 @@ def test_create_application(client: TestClient, user_headers: dict[str, str]):
 
 
 def test_create_application_rejects_missing_candidate(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    job_requisition_id = _create_job_requisition(client, user_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
 
     response = client.post(
         "/recruitment/applications",
@@ -186,17 +299,17 @@ def test_create_application_rejects_missing_candidate(
             "status": "applied",
             "applied_date": "2026-01-01",
         },
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 404
 
 
-def test_create_application_rejects_duplicate(client: TestClient, user_headers: dict[str, str]):
-    candidate_id = _create_candidate(client, user_headers)
-    job_requisition_id = _create_job_requisition(client, user_headers)
+def test_create_application_rejects_duplicate(client: TestClient, admin_headers: dict[str, str]):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
     _create_application(
-        client, user_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
     )
 
     response = client.post(
@@ -207,88 +320,88 @@ def test_create_application_rejects_duplicate(client: TestClient, user_headers: 
             "status": "applied",
             "applied_date": "2026-01-02",
         },
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 409
 
 
-def test_get_application(client: TestClient, user_headers: dict[str, str]):
-    candidate_id = _create_candidate(client, user_headers)
-    job_requisition_id = _create_job_requisition(client, user_headers)
+def test_get_application(client: TestClient, admin_headers: dict[str, str]):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
     created = _create_application(
-        client, user_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
     )
 
-    response = client.get(f"/recruitment/applications/{created['id']}", headers=user_headers)
+    response = client.get(f"/recruitment/applications/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json()["id"] == created["id"]
 
 
-def test_get_application_not_found(client: TestClient, user_headers: dict[str, str]):
-    response = client.get(f"/recruitment/applications/{uuid.uuid4()}", headers=user_headers)
+def test_get_application_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.get(f"/recruitment/applications/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
 
 
-def test_list_applications_paginated(client: TestClient, user_headers: dict[str, str]):
-    candidate_id = _create_candidate(client, user_headers)
-    job_requisition_id = _create_job_requisition(client, user_headers)
+def test_list_applications_paginated(client: TestClient, admin_headers: dict[str, str]):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
     _create_application(
-        client, user_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
     )
 
-    response = client.get("/recruitment/applications/paginated", headers=user_headers)
+    response = client.get("/recruitment/applications/paginated", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json()["total"] == 1
 
 
-def test_update_application(client: TestClient, user_headers: dict[str, str]):
-    candidate_id = _create_candidate(client, user_headers)
-    job_requisition_id = _create_job_requisition(client, user_headers)
+def test_update_application(client: TestClient, admin_headers: dict[str, str]):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
     created = _create_application(
-        client, user_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
     )
 
     response = client.put(
         f"/recruitment/applications/{created['id']}",
         json={"status": "interviewing"},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 200
     assert response.json()["status"] == "interviewing"
 
 
-def test_update_application_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_update_application_not_found(client: TestClient, admin_headers: dict[str, str]):
     response = client.put(
         f"/recruitment/applications/{uuid.uuid4()}",
         json={"status": "interviewing"},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 404
 
 
-def test_delete_application(client: TestClient, user_headers: dict[str, str]):
-    candidate_id = _create_candidate(client, user_headers)
-    job_requisition_id = _create_job_requisition(client, user_headers)
+def test_delete_application(client: TestClient, admin_headers: dict[str, str]):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
     created = _create_application(
-        client, user_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
     )
 
-    response = client.delete(f"/recruitment/applications/{created['id']}", headers=user_headers)
+    response = client.delete(f"/recruitment/applications/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 204
     assert (
-        client.get(f"/recruitment/applications/{created['id']}", headers=user_headers).status_code
+        client.get(f"/recruitment/applications/{created['id']}", headers=admin_headers).status_code
         == 404
     )
 
 
-def test_delete_application_not_found(client: TestClient, user_headers: dict[str, str]):
-    response = client.delete(f"/recruitment/applications/{uuid.uuid4()}", headers=user_headers)
+def test_delete_application_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.delete(f"/recruitment/applications/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404

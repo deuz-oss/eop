@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.job_requisition import (
     JobRequisitionCreate,
@@ -29,10 +30,18 @@ def get_job_requisition_service() -> JobRequisitionService:
 
 JobRequisitionServiceDep = Annotated[JobRequisitionService, Depends(get_job_requisition_service)]
 
+# Recruitment Authorization Policy: Role Based (`RequireRole("admin")`), not
+# Owner Only -- none of JobRequisition/Candidate/Application carries an
+# `employee_id`-shaped owner field (`iteration-1-scope-and-implementation-
+# plan.md` §2), the same structural reason `PayrollRun` uses this mechanism
+# (`api/payroll_runs.py`). Reuses the same `"admin"` role/mechanism, no new
+# authorization framework introduced.
+RequireRecruitmentAdmin = Annotated[CurrentUser, Depends(RequireRole("admin"))]
+
 
 @router.post("", response_model=JobRequisitionResponse, status_code=status.HTTP_201_CREATED)
 async def create_job_requisition(
-    data: JobRequisitionCreate, service: JobRequisitionServiceDep, _: CurrentUser
+    data: JobRequisitionCreate, service: JobRequisitionServiceDep, _: RequireRecruitmentAdmin
 ) -> JobRequisitionResponse:
     try:
         job_requisition = await service.create(data)
@@ -57,7 +66,7 @@ async def create_job_requisition(
 
 @router.get("", response_model=list[JobRequisitionResponse])
 async def list_job_requisitions(
-    service: JobRequisitionServiceDep, _: CurrentUser
+    service: JobRequisitionServiceDep, _: RequireRecruitmentAdmin
 ) -> list[JobRequisitionResponse]:
     job_requisitions = await service.list()
     return [JobRequisitionResponse.model_validate(item) for item in job_requisitions]
@@ -68,7 +77,7 @@ async def list_job_requisitions_paginated(
     service: JobRequisitionServiceDep,
     pagination: Pagination,
     search: Search,
-    _: CurrentUser,
+    _: RequireRecruitmentAdmin,
 ) -> Page[JobRequisitionResponse]:
     page = await service.list_paginated(pagination, search)
     return Page(
@@ -81,7 +90,7 @@ async def list_job_requisitions_paginated(
 
 @router.get("/{job_requisition_id}", response_model=JobRequisitionResponse)
 async def get_job_requisition(
-    job_requisition_id: uuid.UUID, service: JobRequisitionServiceDep, _: CurrentUser
+    job_requisition_id: uuid.UUID, service: JobRequisitionServiceDep, _: RequireRecruitmentAdmin
 ) -> JobRequisitionResponse:
     job_requisition = await service.get(job_requisition_id)
     if job_requisition is None:
@@ -96,7 +105,7 @@ async def update_job_requisition(
     job_requisition_id: uuid.UUID,
     data: JobRequisitionUpdate,
     service: JobRequisitionServiceDep,
-    _: CurrentUser,
+    _: RequireRecruitmentAdmin,
 ) -> JobRequisitionResponse:
     try:
         job_requisition = await service.update(job_requisition_id, data)
@@ -125,7 +134,7 @@ async def update_job_requisition(
 
 @router.delete("/{job_requisition_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job_requisition(
-    job_requisition_id: uuid.UUID, service: JobRequisitionServiceDep, _: CurrentUser
+    job_requisition_id: uuid.UUID, service: JobRequisitionServiceDep, _: RequireRecruitmentAdmin
 ) -> None:
     deleted = await service.delete(job_requisition_id)
     if not deleted:

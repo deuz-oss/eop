@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.candidate import CandidateCreate, CandidateResponse, CandidateUpdate
 from eop_api.schemas.pagination import Page
@@ -19,10 +20,16 @@ def get_candidate_service() -> CandidateService:
 
 CandidateServiceDep = Annotated[CandidateService, Depends(get_candidate_service)]
 
+# Recruitment Authorization Policy: Role Based (`RequireRole("admin")`) --
+# see `api/job_requisitions.py`'s identical rationale. `Candidate` carries
+# PII (name/email/phone) and no employee-owner field, so admin-only access
+# is the narrowest reuse of existing repository precedent.
+RequireRecruitmentAdmin = Annotated[CurrentUser, Depends(RequireRole("admin"))]
+
 
 @router.post("", response_model=CandidateResponse, status_code=status.HTTP_201_CREATED)
 async def create_candidate(
-    data: CandidateCreate, service: CandidateServiceDep, _: CurrentUser
+    data: CandidateCreate, service: CandidateServiceDep, _: RequireRecruitmentAdmin
 ) -> CandidateResponse:
     try:
         candidate = await service.create(data)
@@ -34,7 +41,9 @@ async def create_candidate(
 
 
 @router.get("", response_model=list[CandidateResponse])
-async def list_candidates(service: CandidateServiceDep, _: CurrentUser) -> list[CandidateResponse]:
+async def list_candidates(
+    service: CandidateServiceDep, _: RequireRecruitmentAdmin
+) -> list[CandidateResponse]:
     candidates = await service.list()
     return [CandidateResponse.model_validate(item) for item in candidates]
 
@@ -44,7 +53,7 @@ async def list_candidates_paginated(
     service: CandidateServiceDep,
     pagination: Pagination,
     search: Search,
-    _: CurrentUser,
+    _: RequireRecruitmentAdmin,
 ) -> Page[CandidateResponse]:
     page = await service.list_paginated(pagination, search)
     return Page(
@@ -57,7 +66,7 @@ async def list_candidates_paginated(
 
 @router.get("/{candidate_id}", response_model=CandidateResponse)
 async def get_candidate(
-    candidate_id: uuid.UUID, service: CandidateServiceDep, _: CurrentUser
+    candidate_id: uuid.UUID, service: CandidateServiceDep, _: RequireRecruitmentAdmin
 ) -> CandidateResponse:
     candidate = await service.get(candidate_id)
     if candidate is None:
@@ -70,7 +79,7 @@ async def update_candidate(
     candidate_id: uuid.UUID,
     data: CandidateUpdate,
     service: CandidateServiceDep,
-    _: CurrentUser,
+    _: RequireRecruitmentAdmin,
 ) -> CandidateResponse:
     try:
         candidate = await service.update(candidate_id, data)
@@ -85,7 +94,7 @@ async def update_candidate(
 
 @router.delete("/{candidate_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_candidate(
-    candidate_id: uuid.UUID, service: CandidateServiceDep, _: CurrentUser
+    candidate_id: uuid.UUID, service: CandidateServiceDep, _: RequireRecruitmentAdmin
 ) -> None:
     deleted = await service.delete(candidate_id)
     if not deleted:

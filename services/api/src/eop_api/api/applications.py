@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
 from eop_api.schemas.pagination import Page
@@ -24,10 +25,14 @@ def get_application_service() -> ApplicationService:
 
 ApplicationServiceDep = Annotated[ApplicationService, Depends(get_application_service)]
 
+# Recruitment Authorization Policy: Role Based (`RequireRole("admin")`) --
+# see `api/job_requisitions.py`'s identical rationale.
+RequireRecruitmentAdmin = Annotated[CurrentUser, Depends(RequireRole("admin"))]
+
 
 @router.post("", response_model=ApplicationResponse, status_code=status.HTTP_201_CREATED)
 async def create_application(
-    data: ApplicationCreate, service: ApplicationServiceDep, _: CurrentUser
+    data: ApplicationCreate, service: ApplicationServiceDep, _: RequireRecruitmentAdmin
 ) -> ApplicationResponse:
     try:
         application = await service.create(data)
@@ -49,7 +54,7 @@ async def create_application(
 
 @router.get("", response_model=list[ApplicationResponse])
 async def list_applications(
-    service: ApplicationServiceDep, _: CurrentUser
+    service: ApplicationServiceDep, _: RequireRecruitmentAdmin
 ) -> list[ApplicationResponse]:
     applications = await service.list()
     return [ApplicationResponse.model_validate(item) for item in applications]
@@ -60,7 +65,7 @@ async def list_applications_paginated(
     service: ApplicationServiceDep,
     pagination: Pagination,
     search: Search,
-    _: CurrentUser,
+    _: RequireRecruitmentAdmin,
 ) -> Page[ApplicationResponse]:
     page = await service.list_paginated(pagination, search)
     return Page(
@@ -73,7 +78,7 @@ async def list_applications_paginated(
 
 @router.get("/{application_id}", response_model=ApplicationResponse)
 async def get_application(
-    application_id: uuid.UUID, service: ApplicationServiceDep, _: CurrentUser
+    application_id: uuid.UUID, service: ApplicationServiceDep, _: RequireRecruitmentAdmin
 ) -> ApplicationResponse:
     application = await service.get(application_id)
     if application is None:
@@ -86,7 +91,7 @@ async def update_application(
     application_id: uuid.UUID,
     data: ApplicationUpdate,
     service: ApplicationServiceDep,
-    _: CurrentUser,
+    _: RequireRecruitmentAdmin,
 ) -> ApplicationResponse:
     try:
         application = await service.update(application_id, data)
@@ -110,7 +115,7 @@ async def update_application(
 
 @router.delete("/{application_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_application(
-    application_id: uuid.UUID, service: ApplicationServiceDep, _: CurrentUser
+    application_id: uuid.UUID, service: ApplicationServiceDep, _: RequireRecruitmentAdmin
 ) -> None:
     deleted = await service.delete(application_id)
     if not deleted:
