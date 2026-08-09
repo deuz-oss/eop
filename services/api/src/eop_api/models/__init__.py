@@ -17,6 +17,7 @@ from eop_api.models.hr_employee import HrEmployee
 from eop_api.models.interview import Interview
 from eop_api.models.job_grade import JobGrade
 from eop_api.models.job_requisition import JobRequisition
+from eop_api.models.kpi import Kpi
 from eop_api.models.leave_balance import LeaveBalance
 from eop_api.models.leave_request import LeaveRequest
 from eop_api.models.location import Location
@@ -64,6 +65,7 @@ __all__ = [
     "Interview",
     "JobGrade",
     "JobRequisition",
+    "Kpi",
     "LeaveBalance",
     "LeaveRequest",
     "Location",

@@ -27,6 +27,7 @@ from eop_api.api.hr_employees import router as hr_employees_router
 from eop_api.api.interviews import router as interviews_router
 from eop_api.api.job_grades import router as job_grades_router
 from eop_api.api.job_requisitions import router as job_requisitions_router
+from eop_api.api.kpis import router as kpis_router
 from eop_api.api.leave_balances import router as leave_balances_router
 from eop_api.api.leave_requests import router as leave_requests_router
 from eop_api.api.location_types import router as location_types_router
@@ -144,6 +145,7 @@ app.include_router(store_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(stores_router, responses=PROBLEM_RESPONSES)
 app.include_router(visits_router, responses=PROBLEM_RESPONSES)
 app.include_router(surveys_router, responses=PROBLEM_RESPONSES)
+app.include_router(kpis_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
