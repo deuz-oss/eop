@@ -81,6 +81,7 @@ Business Capability
 | Performance | Implemented | `PerformanceReview` minimal flat CRUD record, `RequireRole("admin")` auth |
 | Store | Implemented | `Store`/`StoreType` master data (Customer & Store unified), `RequireRole("admin")` auth |
 | Visit | Implemented | Field employee store visits, Owner Only auth (`VisitAuthorizationEvaluator`) |
+| Target | Implemented | Employee-scoped monthly `Kpi` goal (`kpi_id`, `employee_id`, `period_year`, `period_month`, `goal_value`), `RequireRole("admin")` auth |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -783,6 +784,22 @@ Explicitly distinct from the existing HR `AttendanceEvent`/`ReconciliationServic
 No relationship to `Location`, Territory/Region/Area, or Organization Hierarchy.
 
 **Authorization:** Owner Only, via a dedicated `VisitAuthorizationEvaluator` mirroring `AttendanceAuthorizationEvaluator`'s exact shape — reuse of the established per-capability Owner Only evaluator convention (`resource.employee_id == context.employee_context.employee.id`), not new authorization infrastructure.
+
+---
+
+## Target
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/performance/target-iteration-1-scope-and-implementation-plan.md`
+
+`Target` (Iteration 1): an employee-scoped goal for one `Kpi`, for one calendar month — the definition/assignment layer in Roadmap Phase 5's `KPI → Target → Achievement → Dashboard → Reporting` sequence. `Kpi` (already implemented) is the definition; `Target` is the employee-scoped monthly goal assignment against a `Kpi`; `Achievement` (measured/actual value), `Dashboard`, and `Reporting` remain future, unimplemented capabilities. Fields: `kpi_id`, `employee_id`, `period_year`, `period_month`, `goal_value` (`Numeric(18, 6)`, unit read from `Kpi.unit`, never duplicated). Flat CRUD, no lifecycle.
+
+Ownership scope resolved to Employee by CPO/CTO product decision, not Store/Organization/Territory/Region/Area — `employee_id` is Target's business-scope assignment field, not an Organization Hierarchy relationship, and introduces no new dependency on the separately-gated Organization Hierarchy capability (TD-003/Phase 6). At most one `Target` per `(employee_id, kpi_id, period_year, period_month)`, enforced at the database level via a composite `UniqueConstraint`.
+
+No `Achievement`, actual/measured value, achievement percentage, scoring, calculation/formula engine, `Dashboard`, `Reporting`, team/organization/store/territory-scoped targets, approval, or workflow — Target Iteration 1 is the definition/assignment layer only.
+
+**Authorization:** Role Based (`RequireRole("admin")`) — a `Target` is assigned to an employee by an administrator, not self-authored by the employee. `employee_id` is Target's business scope, not its authorization boundary — no Owner Only evaluator exists for this entity, a deliberate distinction from `Visit`/`Survey`/`Compensation`. Same mechanism as `Kpi`/`Store`/`PayrollRun`/Recruitment/Performance.
 
 ---
 

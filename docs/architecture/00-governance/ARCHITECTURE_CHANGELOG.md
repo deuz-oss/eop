@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-09 — Target Iteration 1 (Employee-Scoped KPI Goal) Completed
+
+**Reference:**
+
+- PR #86
+- `docs/architecture/capabilities/performance/target-iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Target
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Brought Roadmap Phase 5's "Target" item into implementation: an employee-scoped goal for one `Kpi`, for one calendar month (`kpi_id`, `employee_id`, `period_year`, `period_month`, `goal_value`), flat CRUD, no lifecycle. This is the definition/assignment layer in the `KPI → Target → Achievement → Dashboard → Reporting` sequence — `Kpi` (already implemented, Iteration 1) is the indicator definition; `Target` is the employee-scoped monthly goal assignment against it; `Achievement` (the measured/actual value), `Dashboard`, and `Reporting` remain future, unimplemented capabilities, not pre-committed to any schema, ownership, or calculation model by this change. Ownership scope resolved to Employee by CPO/CTO product decision — Store, Organization, and Territory/Region/Area were evaluated and not required for Iteration 1; `employee_id` is a business-scope assignment field, not an Organization Hierarchy relationship, introducing no new dependency on the separately-gated Organization Hierarchy capability (TD-003/Phase 6). At most one `Target` per `(employee_id, kpi_id, period_year, period_month)`, enforced at the database level. Authorization is Role Based (`RequireRole("admin")`, reused unmodified) — a `Target` is assigned by an administrator, not self-authored by the employee, so `employee_id` is business scope only, not an authorization boundary; no Owner Only evaluator was introduced, a deliberate distinction from `Visit`/`Survey`/`Compensation`.
+
+---
+
 # 2026-08-09 — Visit Iteration 1 (Field Employee Store Visits) Completed
 
 **Reference:**

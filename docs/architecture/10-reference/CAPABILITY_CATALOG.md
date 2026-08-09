@@ -61,6 +61,7 @@ Detailed implementation remains in the individual capability documents.
 | Performance | Implemented | HR | — (CPO/CTO product decision) |
 | Store | Implemented | Organization Management & Master Data | — (capability decision only) |
 | Visit | Implemented | Field Operations | — (capability decision only) |
+| Target | Implemented | Performance Management | — (CPO/CTO product decision) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -863,6 +864,38 @@ Owner Only — `resource.employee_id == context.employee_context.employee.id`, v
 
 ---
 
+# Target
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`Target`: an employee-scoped goal for one `Kpi`, for one calendar month — the definition/assignment layer in Roadmap Phase 5's `KPI → Target → Achievement → Dashboard → Reporting` sequence, sitting directly after the already-implemented `Kpi` (definition-only reference data) and before the not-yet-built `Achievement` (future capability, measured/actual value). Fields: `kpi_id`, `employee_id`, `period_year`, `period_month`, `goal_value`. Flat CRUD, no lifecycle.
+
+Ownership scope resolved to Employee by CPO/CTO product decision — Store, Organization, and Territory/Region/Area were evaluated and not required for Iteration 1; `employee_id` is a business-scope assignment field, not an Organization Hierarchy relationship, and introduces no new dependency on the separately-gated Organization Hierarchy capability (TD-003/Phase 6). At most one `Target` per `(employee_id, kpi_id, period_year, period_month)`, enforced at the database level.
+
+This is the Target layer only. No `Achievement` (actual/measured value, achievement percentage, scoring), no `Dashboard`, no `Reporting`, no calculation or formula engine, no team/organization/store/territory-scoped targets, no approval or workflow.
+
+---
+
+## Authorization
+
+Role Based (`RequireRole("admin")`) — a `Target` is assigned to an employee by an administrator, not self-authored by the employee. `employee_id` is Target's business scope, not its authorization boundary — no Owner Only evaluator exists for this entity, a deliberate distinction from `Visit`/`Survey`/`Compensation`. Same mechanism as `Kpi`/`Store`/`PayrollRun`, no new authorization framework introduced.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/performance/target-iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1039,6 +1072,7 @@ Business Capabilities
 | Performance | ✓ | ✓ | ✓ | Implemented |
 | Store | ✓ | ✓ | ✓ | Implemented |
 | Visit | ✓ | ✓ | ✓ | Implemented |
+| Target | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
