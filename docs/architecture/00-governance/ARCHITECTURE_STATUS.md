@@ -77,7 +77,7 @@ Business Capability
 | Payroll Calculation (Advanced) | Implemented | Tax/formula engine, overtime, rate resolution |
 | Shift Assignment | Closed — Subsumed by Work Schedule | No separate implementation; resolved by `WorkSchedule` |
 | Work Schedule | Implemented | Employee-scoped, effective-dated weekly working-day pattern |
-| Recruitment (Iteration 1) | Implemented | `JobRequisition`/`Candidate`/`Application`, structure only, `RequireRole("admin")` auth |
+| Recruitment | Implemented | `JobRequisition`/`Candidate`/`Application` (lifecycle) + `Interview`/`Offer` (flat records), `RequireRole("admin")` auth |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -717,15 +717,21 @@ Employee-scoped, effective-dated weekly working-day pattern (`WorkSchedule`), re
 
 ---
 
-## Recruitment (Iteration 1)
+## Recruitment
 
 **Status:** Implemented
 
-**Related:** `docs/architecture/capabilities/recruitment/iteration-1-scope-and-implementation-plan.md`
+**Related:** `docs/architecture/capabilities/recruitment/iteration-1-scope-and-implementation-plan.md`, `iteration-2-business-decision-package.md` (Approved), `authorization-decision.md`
 
-`JobRequisition` (open positions), `Candidate` (people applying, not `HrEmployee`s), `Application` (peer-association linking the two, mirrors `Assignment`). CPO/CTO product decision, superseding Recruitment's prior HRIS exclusion in `docs/product/02_PRODUCT_SCOPE.md`. Structure only: no pipeline/stage model, no interview/offer process, no candidate self-service, no candidate-to-employee conversion — each remains a genuinely open decision, not resolved by this iteration.
+`JobRequisition` (open positions), `Candidate` (people applying, not `HrEmployee`s), `Application` (peer-association linking the two, mirrors `Assignment`). CPO/CTO product decision, superseding Recruitment's prior HRIS exclusion in `docs/product/02_PRODUCT_SCOPE.md`.
 
-**Authorization:** Role Based (`RequireRole("admin")`), CPO/CTO decision — see `docs/architecture/capabilities/recruitment/authorization-decision.md`. Admin-only for all Recruitment routes; non-admin authenticated users get 403.
+`Application` owns the recruitment lifecycle (Iteration 2, Approved): `applied → screening → interviewing → offered → hired`, with `rejected`/`withdrawn` reachable from any non-terminal stage, forward-only, terminal states not reopenable. `JobRequisition` closure never cascades to `Application`.
+
+`Interview`/`Offer` (Iteration 3): minimal, flat CRUD records linked to `Application` by FK, no status/lifecycle of their own, no coupling to `Application`'s transitions, no compensation terms on `Offer`.
+
+Still open, not resolved by any iteration so far: candidate self-service, candidate-to-employee conversion, interview/offer acceptance-or-expiry semantics, organization scoping.
+
+**Authorization:** Role Based (`RequireRole("admin")`), CPO/CTO decision — see `docs/architecture/capabilities/recruitment/authorization-decision.md`. Admin-only for all Recruitment routes (`JobRequisition`/`Candidate`/`Application`/`Interview`/`Offer`); non-admin authenticated users get 403.
 
 ---
 

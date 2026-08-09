@@ -57,7 +57,7 @@ Detailed implementation remains in the individual capability documents.
 | Payroll Calculation (Advanced) | Implemented | Payroll | — (capability decision only) |
 | Shift Assignment | Closed — Subsumed by Work Schedule | HR | — |
 | Work Schedule | Implemented | HR | — (capability decision only) |
-| Recruitment (Iteration 1) | Implemented | HR | — (CPO/CTO product decision) |
+| Recruitment | Implemented | HR | — (CPO/CTO product decision) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -740,7 +740,7 @@ Employee-scoped, effective-dated weekly working-day pattern plus the `Shift` wor
 
 ---
 
-# Recruitment (Iteration 1)
+# Recruitment
 
 **Status**
 
@@ -752,13 +752,13 @@ Implemented
 
 ## Purpose
 
-`JobRequisition` (open positions, master-data-shaped), `Candidate` (people applying, not `HrEmployee`s), `Application` (peer-association linking the two, mirrors `Assignment`). Structure only — no pipeline/stage state machine, no interview/offer process, no candidate self-service, no candidate-to-employee conversion.
+`JobRequisition` (open positions, master-data-shaped), `Candidate` (people applying, not `HrEmployee`s), `Application` (peer-association linking the two, mirrors `Assignment`, owns the recruitment lifecycle — Iteration 2: `applied → screening → interviewing → offered → hired`, with `rejected`/`withdrawn` reachable from any non-terminal stage, forward-only, no reopening). `Interview`/`Offer` (Iteration 3): minimal, flat CRUD records linked to `Application`, no status/lifecycle of their own, no coupling to `Application`'s transitions. No candidate self-service, no candidate-to-employee conversion, no interview/offer acceptance-or-expiry semantics, no organization scoping — each remains a genuinely open decision, not resolved by any iteration so far.
 
 ---
 
 ## Authorization
 
-Role Based (`RequireRole("admin")`) — admin-only for all `JobRequisition`/`Candidate`/`Application` routes. Same mechanism and rationale as `PayrollRun` (`payroll-authorization/decision.md` Addendum): none of the three entities carries an `employee_id`-shaped owner field, so Owner Only does not apply, and no new authorization framework was introduced. See `docs/architecture/capabilities/recruitment/authorization-decision.md`.
+Role Based (`RequireRole("admin")`) — admin-only for all `JobRequisition`/`Candidate`/`Application`/`Interview`/`Offer` routes. Same mechanism and rationale as `PayrollRun` (`payroll-authorization/decision.md` Addendum): none of the five entities carries an `employee_id`-shaped owner field, so Owner Only does not apply, and no new authorization framework was introduced. See `docs/architecture/capabilities/recruitment/authorization-decision.md`.
 
 ---
 
@@ -940,7 +940,7 @@ Business Capabilities
 | Payroll Calculation (Advanced) | ✓ | ✓ | ✓ | Implemented |
 | Shift Assignment | ✓ | ✓ | — | Closed — Subsumed by Work Schedule |
 | Work Schedule | ✓ | ✓ | ✓ | Implemented |
-| Recruitment (Iteration 1) | ✓ | ✓ | ✓ | Implemented |
+| Recruitment | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
