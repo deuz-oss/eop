@@ -16,6 +16,8 @@ from eop_api.schemas.performance_review import (
 from eop_api.services.performance_review import (
     EmployeeNotFoundError,
     InvalidPerformanceReviewPeriodError,
+    InvalidPerformanceReviewTransitionError,
+    PerformanceReviewFinalizedError,
     PerformanceReviewService,
 )
 
@@ -110,6 +112,8 @@ async def update_performance_review(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
+    except PerformanceReviewFinalizedError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if review is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Performance review not found"
@@ -126,3 +130,25 @@ async def delete_performance_review(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Performance review not found"
         )
+
+
+@router.post("/{review_id}/finalize", response_model=PerformanceReviewResponse)
+async def finalize_performance_review(
+    review_id: uuid.UUID, service: PerformanceReviewServiceDep, _: RequirePerformanceAdmin
+) -> PerformanceReviewResponse:
+    """Moves `review_id` from `draft` to `finalized`, per the approved
+    lifecycle (`docs/architecture/capabilities/performance/
+    iteration-2-business-decision-package.md`, D1). Mirrors
+    `api/applications.py`'s `transition_application` exception-mapping
+    pattern: an invalid transition maps to 409, the project's standard
+    conflict response.
+    """
+    try:
+        review = await service.finalize(review_id)
+    except InvalidPerformanceReviewTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if review is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Performance review not found"
+        )
+    return PerformanceReviewResponse.model_validate(review)

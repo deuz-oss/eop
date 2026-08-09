@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
+from eop_api.core.performance import PerformanceReviewStatus
 from eop_api.db.base import Base
 from eop_api.repositories.department import DepartmentRepository
 from eop_api.repositories.employment_status import EmploymentStatusRepository
@@ -24,6 +25,8 @@ from eop_api.schemas.performance_review import PerformanceReviewCreate, Performa
 from eop_api.services.performance_review import (
     EmployeeNotFoundError,
     InvalidPerformanceReviewPeriodError,
+    InvalidPerformanceReviewTransitionError,
+    PerformanceReviewFinalizedError,
     PerformanceReviewService,
 )
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
@@ -142,6 +145,14 @@ async def test_create_and_get(service: PerformanceReviewService, employee_id: uu
     assert fetched.employee_id == employee_id
 
 
+async def test_create_always_starts_draft(
+    service: PerformanceReviewService, employee_id: uuid.UUID
+):
+    review = await service.create(_create(employee_id))
+
+    assert review.status == PerformanceReviewStatus.DRAFT
+
+
 async def test_create_rejects_missing_employee(service: PerformanceReviewService):
     with pytest.raises(EmployeeNotFoundError):
         await service.create(_create(uuid.uuid4()))
@@ -219,3 +230,39 @@ async def test_delete_existing(service: PerformanceReviewService, employee_id: u
 
 async def test_delete_missing_returns_false(service: PerformanceReviewService):
     assert await service.delete(uuid.uuid4()) is False
+
+
+# --- Lifecycle (Iteration 2 D1, Approved: Option B, draft -> finalized) ---
+
+
+async def test_finalize_draft_succeeds(service: PerformanceReviewService, employee_id: uuid.UUID):
+    review = await service.create(_create(employee_id))
+
+    finalized = await service.finalize(review.id)
+
+    assert finalized is not None
+    assert finalized.status == PerformanceReviewStatus.FINALIZED
+
+
+async def test_finalize_missing_returns_none(service: PerformanceReviewService):
+    assert await service.finalize(uuid.uuid4()) is None
+
+
+async def test_finalize_rejects_already_finalized(
+    service: PerformanceReviewService, employee_id: uuid.UUID
+):
+    review = await service.create(_create(employee_id))
+    await service.finalize(review.id)
+
+    with pytest.raises(InvalidPerformanceReviewTransitionError):
+        await service.finalize(review.id)
+
+
+async def test_update_finalized_rejects_substantive_change(
+    service: PerformanceReviewService, employee_id: uuid.UUID
+):
+    review = await service.create(_create(employee_id))
+    await service.finalize(review.id)
+
+    with pytest.raises(PerformanceReviewFinalizedError):
+        await service.update(review.id, PerformanceReviewUpdate(notes="Changed after finalize"))

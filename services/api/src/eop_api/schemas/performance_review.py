@@ -3,6 +3,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from eop_api.core.performance import PerformanceReviewStatus
+
 
 class PerformanceReviewCreate(BaseModel):
     employee_id: uuid.UUID
@@ -26,5 +28,6 @@ class PerformanceReviewResponse(BaseModel):
     review_period_start: date
     review_period_end: date
     notes: str | None
+    status: PerformanceReviewStatus
     created_at: datetime
     updated_at: datetime
