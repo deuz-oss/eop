@@ -382,3 +382,75 @@ def test_delete_review(client: TestClient, admin_headers: dict[str, str]):
 def test_delete_review_not_found(client: TestClient, admin_headers: dict[str, str]):
     response = client.delete(f"/hr/performance-reviews/{uuid.uuid4()}", headers=admin_headers)
     assert response.status_code == 404
+
+
+# --- Lifecycle (Iteration 2 D1, Approved: Option B, draft -> finalized) ---
+
+
+def test_create_review_starts_draft(client: TestClient, admin_headers: dict[str, str]):
+    employee_id = _create_employee(client, admin_headers)
+
+    body = _create_review(client, admin_headers, employee_id=employee_id)
+
+    assert body["status"] == "draft"
+
+
+def test_finalize_review_requires_authentication(client: TestClient):
+    response = client.post(f"/hr/performance-reviews/{uuid.uuid4()}/finalize")
+    assert response.status_code == 401
+
+
+def test_finalize_review_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
+    response = client.post(
+        f"/hr/performance-reviews/{uuid.uuid4()}/finalize", headers=member_headers
+    )
+    assert response.status_code == 403
+
+
+def test_finalize_review(client: TestClient, admin_headers: dict[str, str]):
+    employee_id = _create_employee(client, admin_headers)
+    created = _create_review(client, admin_headers, employee_id=employee_id)
+
+    response = client.post(
+        f"/hr/performance-reviews/{created['id']}/finalize", headers=admin_headers
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "finalized"
+
+
+def test_finalize_review_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.post(
+        f"/hr/performance-reviews/{uuid.uuid4()}/finalize", headers=admin_headers
+    )
+    assert response.status_code == 404
+
+
+def test_finalize_review_rejects_already_finalized(
+    client: TestClient, admin_headers: dict[str, str]
+):
+    employee_id = _create_employee(client, admin_headers)
+    created = _create_review(client, admin_headers, employee_id=employee_id)
+    client.post(f"/hr/performance-reviews/{created['id']}/finalize", headers=admin_headers)
+
+    response = client.post(
+        f"/hr/performance-reviews/{created['id']}/finalize", headers=admin_headers
+    )
+
+    assert response.status_code == 409
+
+
+def test_update_finalized_review_rejects_substantive_change(
+    client: TestClient, admin_headers: dict[str, str]
+):
+    employee_id = _create_employee(client, admin_headers)
+    created = _create_review(client, admin_headers, employee_id=employee_id)
+    client.post(f"/hr/performance-reviews/{created['id']}/finalize", headers=admin_headers)
+
+    response = client.put(
+        f"/hr/performance-reviews/{created['id']}",
+        json={"notes": "Changed after finalize"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409
