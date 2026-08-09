@@ -58,6 +58,7 @@ Detailed implementation remains in the individual capability documents.
 | Shift Assignment | Closed — Subsumed by Work Schedule | HR | — |
 | Work Schedule | Implemented | HR | — (capability decision only) |
 | Recruitment | Implemented | HR | — (CPO/CTO product decision) |
+| Performance | Implemented | HR | — (CPO/CTO product decision) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -768,6 +769,34 @@ CPO/CTO product decision (superseded `docs/product/02_PRODUCT_SCOPE.md`'s prior 
 
 ---
 
+# Performance
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`PerformanceReview`: minimal, flat CRUD record (`employee_id`, `review_period_start`/`review_period_end`, `notes`), no status/lifecycle of its own, no effective dating (discrete historical event, not evolving current state), no uniqueness constraint (multiple reviews per employee permitted). Mirrors the same "CRUD shell first" precedent as `PayrollRun`/`JobRequisition`/`Interview`/`Offer`. Rating scales, competency frameworks, review workflow, manager/peer/self-review semantics, approval hierarchy, calibration, goal weighting, and review cadence remain undecided — none required for Iteration 1.
+
+---
+
+## Authorization
+
+Role Based (`RequireRole("admin")`) — admin-only for all `PerformanceReview` routes. Same mechanism and rationale as `PayrollRun`/Recruitment: no new authorization framework introduced.
+
+---
+
+## Governing Decision
+
+CPO/CTO product decision (superseded `docs/product/02_PRODUCT_SCOPE.md`'s prior HRIS exclusion for "Performance Review" — distinct from the already-in-scope §7 "Performance Management" field/sales KPIs), `docs/architecture/capabilities/performance/iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -941,6 +970,7 @@ Business Capabilities
 | Shift Assignment | ✓ | ✓ | — | Closed — Subsumed by Work Schedule |
 | Work Schedule | ✓ | ✓ | ✓ | Implemented |
 | Recruitment | ✓ | ✓ | ✓ | Implemented |
+| Performance | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
