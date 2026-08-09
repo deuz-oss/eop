@@ -7,12 +7,18 @@ from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
-from eop_api.schemas.application import ApplicationCreate, ApplicationResponse, ApplicationUpdate
+from eop_api.schemas.application import (
+    ApplicationCreate,
+    ApplicationResponse,
+    ApplicationTransitionRequest,
+    ApplicationUpdate,
+)
 from eop_api.schemas.pagination import Page
 from eop_api.services.application import (
     ApplicationService,
     CandidateNotFoundError,
     DuplicateApplicationError,
+    InvalidApplicationTransitionError,
     JobRequisitionNotFoundError,
 )
 
@@ -120,3 +126,25 @@ async def delete_application(
     deleted = await service.delete(application_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+
+
+@router.post("/{application_id}/transition", response_model=ApplicationResponse)
+async def transition_application(
+    application_id: uuid.UUID,
+    data: ApplicationTransitionRequest,
+    service: ApplicationServiceDep,
+    _: RequireRecruitmentAdmin,
+) -> ApplicationResponse:
+    """Moves `application_id` to `data.status`, per the approved lifecycle
+    (`docs/architecture/capabilities/recruitment/
+    iteration-2-business-decision-package.md`, D1). Mirrors `api/payroll_runs
+    .py`'s `process_payroll_run` exception-mapping pattern: an invalid
+    transition maps to 409, the project's standard conflict response.
+    """
+    try:
+        application = await service.transition(application_id, data.status)
+    except InvalidApplicationTransitionError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    if application is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Application not found")
+    return ApplicationResponse.model_validate(application)

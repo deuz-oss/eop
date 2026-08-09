@@ -172,7 +172,6 @@ def _create_application(
     body = {
         "candidate_id": candidate_id,
         "job_requisition_id": job_requisition_id,
-        "status": "applied",
         "applied_date": "2026-01-01",
         **overrides,
     }
@@ -187,7 +186,6 @@ def test_create_application_requires_authentication(client: TestClient):
         json={
             "candidate_id": str(uuid.uuid4()),
             "job_requisition_id": str(uuid.uuid4()),
-            "status": "applied",
             "applied_date": "2026-01-01",
         },
     )
@@ -209,7 +207,7 @@ def test_get_application_requires_authentication(client: TestClient):
 
 def test_update_application_requires_authentication(client: TestClient):
     response = client.put(
-        f"/recruitment/applications/{uuid.uuid4()}", json={"status": "interviewing"}
+        f"/recruitment/applications/{uuid.uuid4()}", json={"applied_date": "2026-02-01"}
     )
 
     assert response.status_code == 401
@@ -221,13 +219,20 @@ def test_delete_application_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
+def test_transition_application_requires_authentication(client: TestClient):
+    response = client.post(
+        f"/recruitment/applications/{uuid.uuid4()}/transition", json={"status": "screening"}
+    )
+
+    assert response.status_code == 401
+
+
 def test_create_application_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
     response = client.post(
         "/recruitment/applications",
         json={
             "candidate_id": str(uuid.uuid4()),
             "job_requisition_id": str(uuid.uuid4()),
-            "status": "applied",
             "applied_date": "2026-01-01",
         },
         headers=member_headers,
@@ -259,7 +264,7 @@ def test_get_application_rejects_non_admin(client: TestClient, member_headers: d
 def test_update_application_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
     response = client.put(
         f"/recruitment/applications/{uuid.uuid4()}",
-        json={"status": "interviewing"},
+        json={"applied_date": "2026-02-01"},
         headers=member_headers,
     )
 
@@ -268,6 +273,18 @@ def test_update_application_rejects_non_admin(client: TestClient, member_headers
 
 def test_delete_application_rejects_non_admin(client: TestClient, member_headers: dict[str, str]):
     response = client.delete(f"/recruitment/applications/{uuid.uuid4()}", headers=member_headers)
+
+    assert response.status_code == 403
+
+
+def test_transition_application_rejects_non_admin(
+    client: TestClient, member_headers: dict[str, str]
+):
+    response = client.post(
+        f"/recruitment/applications/{uuid.uuid4()}/transition",
+        json={"status": "screening"},
+        headers=member_headers,
+    )
 
     assert response.status_code == 403
 
@@ -296,7 +313,6 @@ def test_create_application_rejects_missing_candidate(
         json={
             "candidate_id": str(uuid.uuid4()),
             "job_requisition_id": job_requisition_id,
-            "status": "applied",
             "applied_date": "2026-01-01",
         },
         headers=admin_headers,
@@ -317,7 +333,6 @@ def test_create_application_rejects_duplicate(client: TestClient, admin_headers:
         json={
             "candidate_id": candidate_id,
             "job_requisition_id": job_requisition_id,
-            "status": "applied",
             "applied_date": "2026-01-02",
         },
         headers=admin_headers,
@@ -367,18 +382,38 @@ def test_update_application(client: TestClient, admin_headers: dict[str, str]):
 
     response = client.put(
         f"/recruitment/applications/{created['id']}",
-        json={"status": "interviewing"},
+        json={"applied_date": "2026-02-01"},
         headers=admin_headers,
     )
 
     assert response.status_code == 200
-    assert response.json()["status"] == "interviewing"
+    assert response.json()["applied_date"] == "2026-02-01"
+
+
+def test_update_application_ignores_status_field(client: TestClient, admin_headers: dict[str, str]):
+    """`ApplicationUpdate` carries no `status` field (D1) -- lifecycle
+    changes go through `/transition` only. A `status` key in a PUT body is
+    silently ignored, not applied and not rejected."""
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
+    created = _create_application(
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+    )
+
+    response = client.put(
+        f"/recruitment/applications/{created['id']}",
+        json={"status": "hired"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "applied"
 
 
 def test_update_application_not_found(client: TestClient, admin_headers: dict[str, str]):
     response = client.put(
         f"/recruitment/applications/{uuid.uuid4()}",
-        json={"status": "interviewing"},
+        json={"applied_date": "2026-02-01"},
         headers=admin_headers,
     )
 
@@ -405,3 +440,111 @@ def test_delete_application_not_found(client: TestClient, admin_headers: dict[st
     response = client.delete(f"/recruitment/applications/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
+
+
+# --- Lifecycle transitions (D1, Approved: Standard Funnel) ---
+
+
+def test_transition_application(client: TestClient, admin_headers: dict[str, str]):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
+    created = _create_application(
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+    )
+
+    response = client.post(
+        f"/recruitment/applications/{created['id']}/transition",
+        json={"status": "screening"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "screening"
+
+
+def test_transition_application_full_path_to_hired(
+    client: TestClient, admin_headers: dict[str, str]
+):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
+    created = _create_application(
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+    )
+
+    for target in ("screening", "interviewing", "offered", "hired"):
+        response = client.post(
+            f"/recruitment/applications/{created['id']}/transition",
+            json={"status": target},
+            headers=admin_headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == target
+
+
+def test_transition_application_rejects_skipping_a_stage(
+    client: TestClient, admin_headers: dict[str, str]
+):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
+    created = _create_application(
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+    )
+
+    response = client.post(
+        f"/recruitment/applications/{created['id']}/transition",
+        json={"status": "interviewing"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409
+
+
+def test_transition_application_rejects_leaving_terminal_state(
+    client: TestClient, admin_headers: dict[str, str]
+):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
+    created = _create_application(
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+    )
+    client.post(
+        f"/recruitment/applications/{created['id']}/transition",
+        json={"status": "rejected"},
+        headers=admin_headers,
+    )
+
+    response = client.post(
+        f"/recruitment/applications/{created['id']}/transition",
+        json={"status": "applied"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 409
+
+
+def test_transition_application_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.post(
+        f"/recruitment/applications/{uuid.uuid4()}/transition",
+        json={"status": "screening"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_transition_application_rejects_invalid_status_value(
+    client: TestClient, admin_headers: dict[str, str]
+):
+    candidate_id = _create_candidate(client, admin_headers)
+    job_requisition_id = _create_job_requisition(client, admin_headers)
+    created = _create_application(
+        client, admin_headers, candidate_id=candidate_id, job_requisition_id=job_requisition_id
+    )
+
+    response = client.post(
+        f"/recruitment/applications/{created['id']}/transition",
+        json={"status": "not-a-real-stage"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 422
