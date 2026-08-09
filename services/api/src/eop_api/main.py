@@ -48,6 +48,7 @@ from eop_api.api.stores import router as stores_router
 from eop_api.api.tasks import router as tasks_router
 from eop_api.api.teams import router as teams_router
 from eop_api.api.timesheets import router as timesheets_router
+from eop_api.api.visits import router as visits_router
 from eop_api.api.work_schedules import router as work_schedules_router
 from eop_api.core.config import settings
 from eop_api.core.logging import configure_logging
@@ -140,6 +141,7 @@ app.include_router(audit_logs_router, responses=PROBLEM_RESPONSES)
 app.include_router(files_router, responses=PROBLEM_RESPONSES)
 app.include_router(store_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(stores_router, responses=PROBLEM_RESPONSES)
+app.include_router(visits_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
