@@ -14,12 +14,14 @@ from eop_api.models.employment_type import EmploymentType
 from eop_api.models.file_object import FileObject
 from eop_api.models.holiday import Holiday
 from eop_api.models.hr_employee import HrEmployee
+from eop_api.models.interview import Interview
 from eop_api.models.job_grade import JobGrade
 from eop_api.models.job_requisition import JobRequisition
 from eop_api.models.leave_balance import LeaveBalance
 from eop_api.models.leave_request import LeaveRequest
 from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
+from eop_api.models.offer import Offer
 from eop_api.models.organization import Organization
 from eop_api.models.overtime_request import OvertimeRequest
 from eop_api.models.payroll_run import PayrollRun
@@ -54,12 +56,14 @@ __all__ = [
     "FileObject",
     "Holiday",
     "HrEmployee",
+    "Interview",
     "JobGrade",
     "JobRequisition",
     "LeaveBalance",
     "LeaveRequest",
     "Location",
     "LocationType",
+    "Offer",
     "Organization",
     "OvertimeRequest",
     "PayrollRun",

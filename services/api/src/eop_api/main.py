@@ -24,12 +24,14 @@ from eop_api.api.files import router as files_router
 from eop_api.api.health import router as health_router
 from eop_api.api.holidays import router as holidays_router
 from eop_api.api.hr_employees import router as hr_employees_router
+from eop_api.api.interviews import router as interviews_router
 from eop_api.api.job_grades import router as job_grades_router
 from eop_api.api.job_requisitions import router as job_requisitions_router
 from eop_api.api.leave_balances import router as leave_balances_router
 from eop_api.api.leave_requests import router as leave_requests_router
 from eop_api.api.location_types import router as location_types_router
 from eop_api.api.locations import router as locations_router
+from eop_api.api.offers import router as offers_router
 from eop_api.api.organizations import router as organizations_router
 from eop_api.api.overtime_requests import router as overtime_requests_router
 from eop_api.api.payroll_calculation import router as payroll_calculation_router
@@ -126,6 +128,8 @@ app.include_router(tasks_router, responses=PROBLEM_RESPONSES)
 app.include_router(job_requisitions_router, responses=PROBLEM_RESPONSES)
 app.include_router(candidates_router, responses=PROBLEM_RESPONSES)
 app.include_router(applications_router, responses=PROBLEM_RESPONSES)
+app.include_router(interviews_router, responses=PROBLEM_RESPONSES)
+app.include_router(offers_router, responses=PROBLEM_RESPONSES)
 app.include_router(roles_router, responses=PROBLEM_RESPONSES)
 app.include_router(dashboard_router, responses=PROBLEM_RESPONSES)
 app.include_router(audit_logs_router, responses=PROBLEM_RESPONSES)
