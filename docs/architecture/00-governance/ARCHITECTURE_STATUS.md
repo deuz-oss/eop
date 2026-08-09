@@ -694,7 +694,7 @@ Direct Manager
 
 **Related:** `docs/architecture/capabilities/payroll-calculation/decision.md`, `payroll-calculation/iteration-1-implementation-plan.md`
 
-Pay-period cadence, statutory/tax formula (configurable via `PayrollStatutoryParameter`), overtime calculation, and rate resolution, layered onto the base-salary Payroll Calculation above. Attendance/leave deduction remains a deliberate no-op pending a separate future integration decision (unrelated to this capability's own scope).
+Pay-period cadence, statutory/tax formula (configurable via `PayrollStatutoryParameter`), overtime calculation, and rate resolution, layered onto the base-salary Payroll Calculation above. Attendance/leave deduction (`AttendanceLeaveDeductionCalculator`) is implemented: a day is deductible only when `ReconciliationService` classifies it `absent` and the employee's effective `WorkSchedule` marks that weekday as worked (D5 Option (a), unchanged) — resolves the integration gap this capability previously deferred pending Work Schedule's existence.
 
 ---
 
