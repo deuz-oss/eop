@@ -1,7 +1,9 @@
 from eop_api.models.allowance import Allowance
+from eop_api.models.application import Application
 from eop_api.models.assignment import Assignment
 from eop_api.models.attendance_event import AttendanceEvent
 from eop_api.models.audit_log import AuditLog
+from eop_api.models.candidate import Candidate
 from eop_api.models.compensation import Compensation
 from eop_api.models.deduction import Deduction
 from eop_api.models.deduction_type import DeductionType
@@ -13,6 +15,7 @@ from eop_api.models.file_object import FileObject
 from eop_api.models.holiday import Holiday
 from eop_api.models.hr_employee import HrEmployee
 from eop_api.models.job_grade import JobGrade
+from eop_api.models.job_requisition import JobRequisition
 from eop_api.models.leave_balance import LeaveBalance
 from eop_api.models.leave_request import LeaveRequest
 from eop_api.models.location import Location
@@ -36,9 +39,11 @@ from eop_api.models.work_schedule import WorkSchedule
 
 __all__ = [
     "Allowance",
+    "Application",
     "Assignment",
     "AttendanceEvent",
     "AuditLog",
+    "Candidate",
     "Compensation",
     "Deduction",
     "DeductionType",
@@ -50,6 +55,7 @@ __all__ = [
     "Holiday",
     "HrEmployee",
     "JobGrade",
+    "JobRequisition",
     "LeaveBalance",
     "LeaveRequest",
     "Location",
