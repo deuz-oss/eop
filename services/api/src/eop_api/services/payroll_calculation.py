@@ -27,6 +27,7 @@ from eop_api.services.payroll_run import PayrollRunService
 from eop_api.services.payroll_statutory_parameter import PayrollStatutoryParameterService
 from eop_api.services.payslip import PayrollRunNotFoundError, PayslipService
 from eop_api.services.reconciliation import ReconciliationService
+from eop_api.services.work_schedule import WorkScheduleService
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
 
 
@@ -141,7 +142,9 @@ class PayrollCalculationService:
         self._attendance_leave_deduction_calculator = (
             attendance_leave_deduction_calculator
             or AttendanceLeaveDeductionCalculator(
-                self._rate_resolver, ReconciliationService(uow_factory)
+                self._rate_resolver,
+                ReconciliationService(uow_factory),
+                WorkScheduleService(uow_factory),
             )
         )
         self._statutory_tax_calculator = statutory_tax_calculator or StatutoryTaxCalculator(
