@@ -245,7 +245,7 @@ PR-052
 ## Status
 
 ```
-In Progress
+Completed
 ```
 
 ---
@@ -331,12 +331,14 @@ PR-056
 
 ## Remaining Capability Authorizations
 
-| Capability                | Status  |
-| ------------------------- | ------- |
-| Attendance Authorization  | Planned |
-| Payroll Authorization     | Planned |
-| Recruitment Authorization | Planned |
-| Performance Authorization | Planned |
+None remaining — table retained for historical reference only.
+
+| Capability                | Status         | Note |
+| ------------------------- | -------------- | ---- |
+| Attendance Authorization  | ✅ Implemented | Owner Only, `docs/architecture/capabilities/attendance-authorization/decision.md`, consumes Authorization Foundation directly (`AttendanceAuthorizationEvaluator`) |
+| Payroll Authorization     | ✅ Implemented | Role Based (`RequireRole("admin")`), `docs/architecture/capabilities/payroll-authorization/decision.md` |
+| Recruitment Authorization | ✅ Implemented | Role Based (`RequireRole("admin")`), folded into the Recruitment capability decision — `docs/architecture/capabilities/recruitment/authorization-decision.md` |
+| Performance Authorization | ✅ Implemented | Role Based (`RequireRole("admin")`), folded into the Performance capability decision — `docs/architecture/capabilities/performance/iteration-1-scope-and-implementation-plan.md` |
 
 ---
 
@@ -430,8 +432,10 @@ Future ADRs required.
 | Authorization Foundation | ✅ Implemented |
 | Approval Authorization   | ✅ Implemented |
 | Leave Authorization      | ✅ Implemented |
-| Attendance Authorization | Planned        |
-| Payroll Authorization    | Planned        |
+| Attendance Authorization | ✅ Implemented |
+| Payroll Authorization    | ✅ Implemented |
+| Recruitment              | ✅ Implemented |
+| Performance              | ✅ Implemented |
 | Permission Model         | Deferred       |
 | Policy Engine            | Deferred       |
 | Delegated Approval       | Deferred       |
