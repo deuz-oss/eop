@@ -59,6 +59,7 @@ Detailed implementation remains in the individual capability documents.
 | Work Schedule | Implemented | HR | — (capability decision only) |
 | Recruitment | Implemented | HR | — (CPO/CTO product decision) |
 | Performance | Implemented | HR | — (CPO/CTO product decision) |
+| Store | Implemented | Organization Management & Master Data | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -801,6 +802,36 @@ CPO/CTO product decision (superseded `docs/product/02_PRODUCT_SCOPE.md`'s prior 
 
 ---
 
+# Store
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`Store`: single aggregate fulfilling the Roadmap Phase 3 "Customer"/"Store"/"Outlet"/"Modern Trade"/"General Trade"/"Store Classification"/"Geolocation" items — Customer and Store are the same real-world entity in this product's domain language, not two separate aggregates (evidence: `docs/product/02_PRODUCT_SCOPE.md` MVP Scope names only "Store"; "Product Boundaries" places account/billing/pipeline concepts in ERP/CRM, both out of scope). `code`/`name`/`organization_id`/`store_type_id`/`address`/`latitude`/`longitude`/`description`, flat CRUD, no lifecycle. `StoreType` is a free-form trade-channel lookup (mirrors `LocationType` exactly) covering Modern Trade/General Trade/Store Classification collectively — not a fixed enum, since no closed value set is named anywhere in product scope.
+
+No relationship to `HrEmployee`, `Location`, or any Territory/Region/Area concept — that boundary is explicitly held open, not resolved, pending a future Territory-focused discovery (`docs/architecture/capabilities/store/iteration-1-scope-and-implementation-plan.md` §6).
+
+---
+
+## Authorization
+
+Role Based (`RequireRole("admin")`) — admin-only for all `Store`/`StoreType` routes. Same mechanism and rationale as `PayrollRun`/`JobRequisition`/`PerformanceReview`: no natural owner-employee field, no new authorization framework introduced.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/store/iteration-1-scope-and-implementation-plan.md` (Discovery + Implementation, per Roadmap Phase 3 / Product Scope §4 "Customer & Store")
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -975,6 +1006,7 @@ Business Capabilities
 | Work Schedule | ✓ | ✓ | ✓ | Implemented |
 | Recruitment | ✓ | ✓ | ✓ | Implemented |
 | Performance | ✓ | ✓ | ✓ | Implemented |
+| Store | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |

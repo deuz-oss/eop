@@ -79,6 +79,7 @@ Business Capability
 | Work Schedule | Implemented | Employee-scoped, effective-dated weekly working-day pattern |
 | Recruitment | Implemented | `JobRequisition`/`Candidate`/`Application` (lifecycle) + `Interview`/`Offer` (flat records), `RequireRole("admin")` auth |
 | Performance | Implemented | `PerformanceReview` minimal flat CRUD record, `RequireRole("admin")` auth |
+| Store | Implemented | `Store`/`StoreType` master data (Customer & Store unified), `RequireRole("admin")` auth |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -749,6 +750,20 @@ Still open, not resolved by any iteration so far: candidate self-service, candid
 Still open, not resolved by any iteration so far: rating scales, competency frameworks, employee acknowledgement, manager/peer/self-review semantics, approval hierarchy, calibration, goal weighting, review cadence, employee-manager relationships, organization scoping, notifications.
 
 **Authorization:** Role Based (`RequireRole("admin")`), same mechanism as `PayrollRun`/Recruitment. Admin-only for all `PerformanceReview` routes; non-admin authenticated users get 403.
+
+---
+
+## Store
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/store/iteration-1-scope-and-implementation-plan.md`
+
+`Store` (Iteration 1): single aggregate fulfilling Roadmap Phase 3's "Customer"/"Store"/"Outlet"/"Modern Trade"/"General Trade"/"Store Classification"/"Geolocation" items — Customer and Store resolved as the same entity, not two, per product evidence (MVP Scope names only "Store"; "Product Boundaries" places account/billing concepts in ERP/CRM, out of scope). Fields: `code`/`name`/`organization_id`/`store_type_id`/`address`/`latitude`/`longitude`/`description`. `StoreType` is a free-form trade-channel lookup mirroring `LocationType`, covering Modern Trade/General Trade/Store Classification collectively. Flat CRUD, no lifecycle.
+
+No relationship to `HrEmployee`, `Location`, or Territory/Region/Area. The Territory/Region/Area vs. Organization Hierarchy (TD-003/Phase 6) naming-collision boundary is explicitly held open, not resolved by this capability.
+
+**Authorization:** Role Based (`RequireRole("admin")`), same mechanism as `PayrollRun`/Recruitment/Performance. Admin-only for all `Store`/`StoreType` routes; non-admin authenticated users get 403.
 
 ---
 
