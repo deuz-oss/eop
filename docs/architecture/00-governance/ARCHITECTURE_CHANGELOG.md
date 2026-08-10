@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-10 — Dashboard Iteration 1 (Performance Management Summary Counts) Completed
+
+**Reference:**
+
+- PR #90
+- `docs/architecture/capabilities/dashboard/iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Dashboard (Performance Management)
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Brought Roadmap Phase 5's "Dashboard" item into implementation as Performance Management Dashboard Iteration 1: a read-only summary of `Kpi`/`Target`/`Achievement` row counts, organization-wide, at `GET /performance/dashboard` (response: `kpi_count`, `target_count`, `achievement_count`). This is the counts layer in the `KPI → Target → Achievement → Dashboard → Reporting` sequence — `Achievement` (already implemented, Iteration 1) is the actual-value layer; `Reporting` remains a future, unimplemented capability, not pre-committed to any schema or behavior by this change. No repository of its own: reads directly via `KpiRepository`/`TargetRepository`/`AchievementRepository`'s existing `BaseRepository.count()`. Deliberately distinct from the pre-existing, unrelated `GET /dashboard` endpoint (Phase 1/2 generic `Organization`/`Project`/`Employee`/`Assignment`/`Task` scaffold) — that endpoint is not part of Phase 5 and was not modified. Scope is organization-wide counts only: no ratios, percentages, or "on track"/"achieved" scoring, and no Territory/Region/Area or Organization Hierarchy scoping. Authorization is `CurrentUser` (any authenticated user), no `RequireRole("admin")` gate — mirroring the pre-existing `/dashboard` endpoint's own precedent for aggregate-count endpoints, not a new authorization mechanism.
+
+---
+
 # 2026-08-10 — Achievement Iteration 1 (Manual Actual Value Against Target) Completed
 
 **Reference:**

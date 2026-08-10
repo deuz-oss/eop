@@ -63,6 +63,7 @@ Detailed implementation remains in the individual capability documents.
 | Visit | Implemented | Field Operations | — (capability decision only) |
 | Target | Implemented | Performance Management | — (CPO/CTO product decision) |
 | Achievement | Implemented | Performance Management | — (CPO/CTO product decision) |
+| Dashboard (Performance Management) | Implemented | Performance Management | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -929,6 +930,38 @@ Role Based (`RequireRole("admin")`) — an `Achievement` is manually recorded by
 
 ---
 
+# Dashboard (Performance Management)
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Performance Management Dashboard Iteration 1: a read-only summary of `Kpi`/`Target`/`Achievement` row counts, organization-wide — the counts layer in Roadmap Phase 5's `KPI → Target → Achievement → Dashboard → Reporting` sequence, sitting directly after `Achievement` and before the not-yet-built `Reporting`. Route: `GET /performance/dashboard`. Response: `kpi_count`, `target_count`, `achievement_count`. No repository of its own — reads directly via `KpiRepository`/`TargetRepository`/`AchievementRepository`'s existing `BaseRepository.count()`.
+
+Deliberately distinct from the pre-existing, unrelated `GET /dashboard` endpoint (Phase 1/2 generic `Organization`/`Project`/`Employee`/`Assignment`/`Task` scaffold) — that endpoint is not part of Phase 5 and was not modified by this capability.
+
+No ratios, percentages, or "on track"/"achieved" scoring of any kind — counts only. No Territory/Region/Area or Organization Hierarchy scoping — organization-wide only.
+
+---
+
+## Authorization
+
+`CurrentUser` (any authenticated user) — no `RequireRole("admin")` gate. Mirrors the pre-existing `/dashboard` endpoint's own precedent for aggregate-count endpoints; not a new authorization mechanism.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/dashboard/iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1107,6 +1140,7 @@ Business Capabilities
 | Visit | ✓ | ✓ | ✓ | Implemented |
 | Target | ✓ | ✓ | ✓ | Implemented |
 | Achievement | ✓ | ✓ | ✓ | Implemented |
+| Dashboard (Performance Management) | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
