@@ -83,6 +83,7 @@ Business Capability
 | Visit | Implemented | Field employee store visits, Owner Only auth (`VisitAuthorizationEvaluator`) |
 | Target | Implemented | Employee-scoped monthly `Kpi` goal (`kpi_id`, `employee_id`, `period_year`, `period_month`, `goal_value`), `RequireRole("admin")` auth |
 | Achievement | Implemented | Manually entered actual value against exactly one `Target` (`target_id`, `actual_value`), `RequireRole("admin")` auth |
+| Dashboard (Performance Management) | Implemented | Organization-wide `Kpi`/`Target`/`Achievement` counts at `GET /performance/dashboard`, `CurrentUser` auth (not admin-only), distinct from the pre-existing generic `/dashboard` |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -815,6 +816,20 @@ No `Achievement`, actual/measured value, achievement percentage, scoring, calcul
 No `employee_id`/`kpi_id`/`period_year`/`period_month` on `Achievement` itself — all read through `Achievement.target`. No automatic calculation, Visit/Survey aggregation, Attendance/Payroll integration, KPI formula engine, achievement percentage, or scoring — Achievement Iteration 1 is manual entry only; computed/derived Achievement is explicitly deferred to a future capability/decision.
 
 **Authorization:** Role Based (`RequireRole("admin")`) — an `Achievement` is manually recorded by an administrator, mirroring exactly how an administrator manually assigns the `Target` goal. `Target.employee_id` remains business scope only, never an authorization boundary. Same mechanism as `Kpi`/`Target`/`Store`/`PayrollRun`/Recruitment/Performance.
+
+---
+
+## Dashboard (Performance Management)
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/dashboard/iteration-1-scope-and-implementation-plan.md`
+
+Performance Management Dashboard (Iteration 1): a read-only summary of `Kpi`/`Target`/`Achievement` row counts, organization-wide — the counts layer in Roadmap Phase 5's `KPI → Target → Achievement → Dashboard → Reporting` sequence. `Achievement` (already implemented) is the actual-value layer; this Dashboard is a counts summary over `Kpi`/`Target`/`Achievement`; `Reporting` remains a future, unimplemented capability. Route: `GET /performance/dashboard`. Response: `kpi_count`, `target_count`, `achievement_count`. No repository of its own — reads directly via `KpiRepository`/`TargetRepository`/`AchievementRepository`'s existing `BaseRepository.count()`.
+
+Deliberately distinct from the pre-existing, unrelated `GET /dashboard` endpoint (Phase 1/2 generic `Organization`/`Project`/`Employee`/`Assignment`/`Task` scaffold, not part of Phase 5) — that endpoint was not modified. No ratios, percentages, or scoring — counts only. No Territory/Region/Area or Organization Hierarchy scoping — organization-wide only.
+
+**Authorization:** `CurrentUser` (any authenticated user) — no `RequireRole("admin")` gate, mirroring the pre-existing `/dashboard` endpoint's own precedent for aggregate-count endpoints; not a new authorization mechanism.
 
 ---
 
