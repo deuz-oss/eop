@@ -23,6 +23,7 @@ from eop_api.models.leave_balance import LeaveBalance
 from eop_api.models.leave_request import LeaveRequest
 from eop_api.models.location import Location
 from eop_api.models.location_type import LocationType
+from eop_api.models.mission import Mission
 from eop_api.models.offer import Offer
 from eop_api.models.organization import Organization
 from eop_api.models.overtime_request import OvertimeRequest
@@ -73,6 +74,7 @@ __all__ = [
     "LeaveRequest",
     "Location",
     "LocationType",
+    "Mission",
     "Offer",
     "Organization",
     "OvertimeRequest",
