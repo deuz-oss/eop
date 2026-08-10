@@ -33,6 +33,7 @@ from eop_api.api.leave_balances import router as leave_balances_router
 from eop_api.api.leave_requests import router as leave_requests_router
 from eop_api.api.location_types import router as location_types_router
 from eop_api.api.locations import router as locations_router
+from eop_api.api.missions import router as missions_router
 from eop_api.api.offers import router as offers_router
 from eop_api.api.organizations import router as organizations_router
 from eop_api.api.overtime_requests import router as overtime_requests_router
@@ -154,6 +155,7 @@ app.include_router(targets_router, responses=PROBLEM_RESPONSES)
 app.include_router(achievements_router, responses=PROBLEM_RESPONSES)
 app.include_router(performance_dashboard_router, responses=PROBLEM_RESPONSES)
 app.include_router(reporting_router, responses=PROBLEM_RESPONSES)
+app.include_router(missions_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
