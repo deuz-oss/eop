@@ -62,6 +62,7 @@ Detailed implementation remains in the individual capability documents.
 | Store | Implemented | Organization Management & Master Data | — (capability decision only) |
 | Visit | Implemented | Field Operations | — (capability decision only) |
 | Target | Implemented | Performance Management | — (CPO/CTO product decision) |
+| Achievement | Implemented | Performance Management | — (CPO/CTO product decision) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -896,6 +897,38 @@ Role Based (`RequireRole("admin")`) — a `Target` is assigned to an employee by
 
 ---
 
+# Achievement
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`Achievement`: the manually recorded actual value against exactly one `Target` — the actual-value layer in Roadmap Phase 5's `KPI → Target → Achievement → Dashboard → Reporting` sequence, sitting directly after `Target` (employee-scoped monthly goal) and before the not-yet-built `Dashboard`/`Reporting`. Fields: `target_id`, `actual_value`. Flat CRUD, no lifecycle.
+
+`target_id` is the sole relationship (`ON DELETE RESTRICT`) — `employee_id`/`kpi_id`/`period_year`/`period_month` are not duplicated on `Achievement`; they are read through `Achievement.target`. At most one `Achievement` per `Target`, enforced at the database level via a unique `target_id`.
+
+`actual_value` (`Numeric(18, 6)`, mirrors `Target.goal_value`'s precedent exactly) is entered manually by an administrator — no automatic calculation, Visit/Survey aggregation, Attendance/Payroll integration, or KPI formula engine. Computed/derived Achievement is explicitly deferred to a future capability/decision.
+
+---
+
+## Authorization
+
+Role Based (`RequireRole("admin")`) — an `Achievement` is manually recorded by an administrator, mirroring exactly how an administrator manually assigns the `Target` goal. `Target.employee_id` remains business scope only, never an authorization boundary — no `AchievementAuthorizationEvaluator` exists. Same mechanism as `Kpi`/`Target`/`Store`, no new authorization framework introduced.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/performance/achievement-iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1073,6 +1106,7 @@ Business Capabilities
 | Store | ✓ | ✓ | ✓ | Implemented |
 | Visit | ✓ | ✓ | ✓ | Implemented |
 | Target | ✓ | ✓ | ✓ | Implemented |
+| Achievement | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |

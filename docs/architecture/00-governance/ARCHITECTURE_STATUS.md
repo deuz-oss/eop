@@ -82,6 +82,7 @@ Business Capability
 | Store | Implemented | `Store`/`StoreType` master data (Customer & Store unified), `RequireRole("admin")` auth |
 | Visit | Implemented | Field employee store visits, Owner Only auth (`VisitAuthorizationEvaluator`) |
 | Target | Implemented | Employee-scoped monthly `Kpi` goal (`kpi_id`, `employee_id`, `period_year`, `period_month`, `goal_value`), `RequireRole("admin")` auth |
+| Achievement | Implemented | Manually entered actual value against exactly one `Target` (`target_id`, `actual_value`), `RequireRole("admin")` auth |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -800,6 +801,20 @@ Ownership scope resolved to Employee by CPO/CTO product decision, not Store/Orga
 No `Achievement`, actual/measured value, achievement percentage, scoring, calculation/formula engine, `Dashboard`, `Reporting`, team/organization/store/territory-scoped targets, approval, or workflow — Target Iteration 1 is the definition/assignment layer only.
 
 **Authorization:** Role Based (`RequireRole("admin")`) — a `Target` is assigned to an employee by an administrator, not self-authored by the employee. `employee_id` is Target's business scope, not its authorization boundary — no Owner Only evaluator exists for this entity, a deliberate distinction from `Visit`/`Survey`/`Compensation`. Same mechanism as `Kpi`/`Store`/`PayrollRun`/Recruitment/Performance.
+
+---
+
+## Achievement
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/performance/achievement-iteration-1-scope-and-implementation-plan.md`
+
+`Achievement` (Iteration 1): the manually recorded actual value against exactly one `Target` — the actual-value layer in Roadmap Phase 5's `KPI → Target → Achievement → Dashboard → Reporting` sequence. `Target` (already implemented) is the employee-scoped monthly goal; `Achievement` is the manually entered actual result against it; `Dashboard` and `Reporting` remain future, unimplemented capabilities. Fields: `target_id` (`ON DELETE RESTRICT`, unique — at most one `Achievement` per `Target`, enforced at the database level), `actual_value` (`Numeric(18, 6)`, mirrors `Target.goal_value`'s precedent exactly). Flat CRUD, no lifecycle.
+
+No `employee_id`/`kpi_id`/`period_year`/`period_month` on `Achievement` itself — all read through `Achievement.target`. No automatic calculation, Visit/Survey aggregation, Attendance/Payroll integration, KPI formula engine, achievement percentage, or scoring — Achievement Iteration 1 is manual entry only; computed/derived Achievement is explicitly deferred to a future capability/decision.
+
+**Authorization:** Role Based (`RequireRole("admin")`) — an `Achievement` is manually recorded by an administrator, mirroring exactly how an administrator manually assigns the `Target` goal. `Target.employee_id` remains business scope only, never an authorization boundary. Same mechanism as `Kpi`/`Target`/`Store`/`PayrollRun`/Recruitment/Performance.
 
 ---
 
