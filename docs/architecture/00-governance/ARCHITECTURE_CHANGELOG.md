@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-11 — Mission Iteration 1 (Single-Store Employee Assignment) Completed
+
+**Reference:**
+
+- PR #95
+- `docs/architecture/capabilities/mission/mission-iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Mission
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Brought Roadmap Phase 4's "Mission" item into implementation as a standalone planning/assignment record: one employee assigned to one store on one date (`employee_id`, `store_id`, `scheduled_date`). Both foreign keys (`employee_id` → `HrEmployee`, `store_id` → `Store`) are `ON DELETE RESTRICT`. No uniqueness constraint — mirrors `Visit`'s own precedent exactly, since duplicate assignments for the same employee/store/date are not contradictory the way a conflicting `Target` goal value would be. Flat CRUD, no lifecycle/status field. Supports plain list and paginated endpoints, filterable by `employee_id`, `store_id`, and `scheduled_date`. Authorization is Role Based (`RequireRole("admin")`, reused unmodified) — a Mission is assigned by an administrator ("Mission assignment" is an Area Manager action), not self-authored by the assigned employee; no new evaluator or role introduced. Mission is the *plan*, `Visit` is the *executed* record — Mission does not modify or become a parent of `Visit`, and no structural or FK link exists between them, re-confirming (not reversing) Visit's own prior finding. Route Planning remains a separate, unimplemented capability and is not a dependency. No Territory/Region/Area dependency. No GPS, photo, selfie, or completion-tracking behavior.
+
+---
+
 # 2026-08-10 — Productivity Closed (Covered by KPI / Target / Achievement)
 
 **Reference:**
