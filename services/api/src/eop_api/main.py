@@ -39,6 +39,7 @@ from eop_api.api.overtime_requests import router as overtime_requests_router
 from eop_api.api.payroll_calculation import router as payroll_calculation_router
 from eop_api.api.payroll_runs import router as payroll_runs_router
 from eop_api.api.payslips import router as payslips_router
+from eop_api.api.performance_dashboard import router as performance_dashboard_router
 from eop_api.api.performance_reviews import router as performance_reviews_router
 from eop_api.api.positions import router as positions_router
 from eop_api.api.projects import router as projects_router
@@ -150,6 +151,7 @@ app.include_router(surveys_router, responses=PROBLEM_RESPONSES)
 app.include_router(kpis_router, responses=PROBLEM_RESPONSES)
 app.include_router(targets_router, responses=PROBLEM_RESPONSES)
 app.include_router(achievements_router, responses=PROBLEM_RESPONSES)
+app.include_router(performance_dashboard_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
