@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-11 — POSM Audit Iteration 1 Completed
+
+**Reference:**
+
+- PR #99
+- `docs/architecture/capabilities/posm-audit/posm-audit-iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+POSM Audit
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Implemented `PosmAudit` as a repeatable Visit child aggregate: a point-of-sale materials (POSM) observation recorded against a `Visit`, fields `visit_id` (`ON DELETE RESTRICT`), `posm_type`, `condition`, `notes`. `visit_id` is non-unique — many `PosmAudit` records may reference the same `Visit`, the same cardinality as `CompetitorActivity` (the deliberate opposite of `Survey`'s one-per-Visit shape); no duplicate-rejection logic, since repeated observations for the same Visit are expected and permitted. Authorization is Owner Only, evaluated against the resolved parent `Visit` through the existing `VisitAuthorizationEvaluator`, reused completely unmodified — no new evaluator class, the same child-of-Owner-Only-parent pattern already established by `Survey` and `CompetitorActivity`. It intentionally has no POSM master data — `posm_type`/`condition` are free-text `String(255)`, no taxonomy table, no new POSM/Product/SKU entity. No direct Store/HrEmployee relationship — that context is obtained transitively through `Visit`. `condition` is observation text only, not a workflow status. Flat CRUD at `/posm-audits`, mirroring the established flat-route precedent for repeatable children-of-a-parent (no nested-resource URL pattern exists elsewhere in the codebase), with `visit_id` filtering available through the paginated endpoint. Iteration 1 excludes GPS, photo/selfie, `FileObject`/attachments, scoring, approval workflow, Product/SKU master data, Territory/Region/Area, Route Planning, Mission relationship, analytics, AI, automatic calculation, integration, and reporting; no dedicated POSM timestamp — relies on inherited entity timestamps and `Visit` context. This governance reconciliation is documentation-only and does not change production behavior.
+
+---
+
 # 2026-08-11 — Competitor Activity Iteration 1 Completed
 
 **Reference:**
