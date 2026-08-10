@@ -44,6 +44,7 @@ from eop_api.api.performance_reviews import router as performance_reviews_router
 from eop_api.api.positions import router as positions_router
 from eop_api.api.projects import router as projects_router
 from eop_api.api.reconciliation import router as reconciliation_router
+from eop_api.api.reporting import router as reporting_router
 from eop_api.api.roles import router as roles_router
 from eop_api.api.shifts import router as shifts_router
 from eop_api.api.store_types import router as store_types_router
@@ -152,6 +153,7 @@ app.include_router(kpis_router, responses=PROBLEM_RESPONSES)
 app.include_router(targets_router, responses=PROBLEM_RESPONSES)
 app.include_router(achievements_router, responses=PROBLEM_RESPONSES)
 app.include_router(performance_dashboard_router, responses=PROBLEM_RESPONSES)
+app.include_router(reporting_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
