@@ -34,6 +34,7 @@ from eop_api.models.payslip import Payslip
 from eop_api.models.payslip_line_item import PayslipLineItem
 from eop_api.models.performance_review import PerformanceReview
 from eop_api.models.position import Position
+from eop_api.models.posm_audit import PosmAudit
 from eop_api.models.project import Project
 from eop_api.models.role import Role
 from eop_api.models.shift import Shift
@@ -86,6 +87,7 @@ __all__ = [
     "PayslipLineItem",
     "PerformanceReview",
     "Position",
+    "PosmAudit",
     "Project",
     "Role",
     "Shift",
