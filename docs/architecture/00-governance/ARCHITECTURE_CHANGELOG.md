@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-10 — Reporting Iteration 1 (Achievement-Anchored Operational Report) Completed
+
+**Reference:**
+
+- PR #92
+- `docs/architecture/capabilities/performance/reporting-iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Reporting (Performance Management)
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Brought Roadmap Phase 5's "Reporting" item into implementation — the last item in the `KPI → Target → Achievement → Dashboard → Reporting` sequence: a read-only operational report at `GET /performance/reporting`, one row per existing `Achievement`, resolved through `Target` to `Kpi` and `HrEmployee` (relationship: `Achievement → Target → Kpi + HrEmployee`). `Target` rows with no recorded `Achievement` do not appear. Response includes human-readable KPI (`kpi_code`, `kpi_name`) and employee (`employee_number`, `employee_full_name`) information alongside `period_year`, `period_month`, `goal_value`, `actual_value`. Pagination is mandatory, with no unbounded plain-list endpoint; filterable by `employee_id`, `kpi_id`, `period_year`, `period_month` — the same dimensions `Target`/`Achievement` already expose. `ReportingRepository` is not tied to a single model, mirroring `DashboardRepository`'s established precedent for cross-aggregate, read-only queries. No CSV/PDF/export, no scheduled reports or email delivery, no persisted report definitions/templates/history, no report builder, no calculation/formula engine, no scoring or achievement percentage, no Territory/Region/Area or Organization Hierarchy scoping. Distinct and separate from the Phase 7 "Reporting Platform" (enterprise infrastructure, deferred, its own future ADR gate) — untouched by this capability. Authorization is Role Based (`RequireRole("admin")`, reused unmodified) — this endpoint exposes row-level, per-employee performance data, the same exposure category as `Kpi`/`Target`/`Achievement`'s own list/get endpoints, not Dashboard's aggregate-counts-only `CurrentUser` exposure.
+
+---
+
 # 2026-08-10 — Dashboard Iteration 1 (Performance Management Summary Counts) Completed
 
 **Reference:**
