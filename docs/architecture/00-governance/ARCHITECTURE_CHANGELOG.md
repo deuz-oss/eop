@@ -30,6 +30,28 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-10 — Productivity Closed (Covered by KPI / Target / Achievement)
+
+**Reference:**
+
+- `docs/product/02_PRODUCT_SCOPE.md` §7 (Performance Management)
+
+**Capability:**
+
+Productivity
+
+**Status:**
+
+Closed — Covered by KPI / Target / Achievement
+
+---
+
+## Summary
+
+Following targeted Phase 6→next-phase discovery, `Productivity` (`02_PRODUCT_SCOPE.md` §7, listed alongside the already-implemented `KPI`/`Target`/`Achievement`) was found to have no defined metric, formula, or data source anywhere in product evidence — a genuine content gap, escalated rather than invented. CPO/CTO decision: `Productivity` is not a separate capability or aggregate. An organization that wants to measure Productivity represents it as an ordinary `Kpi` definition and uses the already-implemented `Target`/`Achievement` capabilities exactly as for any other KPI — `Kpi` as the definition, `Target` as the employee-scoped monthly goal, `Achievement` as the manually entered actual value. No `Productivity` model, repository, service, API, migration, or dedicated tests were built or are planned under this name. No calculation engine and no automatic aggregation from `Visit`/`Survey`/`Attendance` or any other source were introduced — Achievement Iteration 1's manual-entry-only boundary (`achievement-iteration-1-scope-and-implementation-plan.md` §3 D3) is unchanged. No new dependency on Territory/Region/Area or Organization Hierarchy.
+
+---
+
 # 2026-08-10 — Reporting Iteration 1 (Achievement-Anchored Operational Report) Completed
 
 **Reference:**

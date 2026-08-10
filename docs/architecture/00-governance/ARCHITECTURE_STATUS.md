@@ -85,6 +85,7 @@ Business Capability
 | Achievement | Implemented | Manually entered actual value against exactly one `Target` (`target_id`, `actual_value`), `RequireRole("admin")` auth |
 | Dashboard (Performance Management) | Implemented | Organization-wide `Kpi`/`Target`/`Achievement` counts at `GET /performance/dashboard`, `CurrentUser` auth (not admin-only), distinct from the pre-existing generic `/dashboard` |
 | Reporting (Performance Management) | Implemented | Read-only operational report, one row per `Achievement` (`Achievement → Target → Kpi + HrEmployee`) at `GET /performance/reporting`, mandatory pagination, `RequireRole("admin")` auth |
+| Productivity | Closed — Covered by KPI / Target / Achievement | Not a separate capability; represented as an ordinary `Kpi` using existing `Target`/`Achievement` |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -845,6 +846,16 @@ Reporting (Iteration 1): a read-only operational report, one row per existing `A
 No repository of its own tied to a single model — `ReportingRepository` is a hand-written cross-aggregate join, mirroring `DashboardRepository`'s established not-tied-to-one-model precedent. No CSV/PDF/export, no scheduled reports or email delivery, no persisted report definitions/templates/history, no report builder, no calculation/formula engine, no scoring or achievement percentage, no Territory/Region/Area or Organization Hierarchy scoping. Distinct and separate from the Phase 7 "Reporting Platform" (enterprise infrastructure, deferred, its own future ADR gate) — untouched by this capability.
 
 **Authorization:** Role Based (`RequireRole("admin")`) — this endpoint exposes row-level, per-employee performance data, organization-wide, not scoped to the caller, the same exposure category as `Kpi`/`Target`/`Achievement`'s own list/get endpoints. Same mechanism, no new authorization framework introduced.
+
+---
+
+## Productivity
+
+**Status:** Closed — Covered by KPI / Target / Achievement
+
+**Related:** `docs/product/02_PRODUCT_SCOPE.md` §7 (Performance Management)
+
+CPO/CTO decision: `Productivity` is not a separate capability or aggregate. An organization that wants to measure Productivity represents it as an ordinary `Kpi` definition and uses the already-implemented `Target`/`Achievement` capabilities exactly as for any other KPI. No `Productivity` model, repository, service, API, migration, or dedicated tests exist or are planned under this name. No calculation engine and no automatic aggregation from `Visit`/`Survey`/`Attendance` or any other source were introduced — Achievement Iteration 1's manual-entry-only boundary is unchanged. No new dependency on Territory/Region/Area or Organization Hierarchy.
 
 ---
 

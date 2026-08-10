@@ -65,6 +65,7 @@ Detailed implementation remains in the individual capability documents.
 | Achievement | Implemented | Performance Management | — (CPO/CTO product decision) |
 | Dashboard (Performance Management) | Implemented | Performance Management | — (capability decision only) |
 | Reporting (Performance Management) | Implemented | Performance Management | — (capability decision only) |
+| Productivity | Closed — Covered by KPI / Target / Achievement | Performance Management | — (CPO/CTO product decision) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -995,6 +996,28 @@ Role Based (`RequireRole("admin")`) — this endpoint exposes row-level, per-emp
 
 ---
 
+# Productivity
+
+**Status**
+
+```
+Closed — Covered by KPI / Target / Achievement
+```
+
+---
+
+## Reason
+
+CPO/CTO decision: `Productivity` (`docs/product/02_PRODUCT_SCOPE.md` §7, "Performance Management") is not a separate capability or aggregate. An organization that wants to measure Productivity represents it as an ordinary `Kpi` definition and uses the already-implemented `Target`/`Achievement` capabilities exactly as for any other KPI — `Kpi` as the definition, `Target` as the employee-scoped monthly goal, `Achievement` as the manually entered actual value. No `Productivity` model, repository, service, API, migration, or dedicated tests exist or are planned under this name. No calculation engine and no automatic aggregation from `Visit`/`Survey`/`Attendance` or any other source were introduced — Achievement Iteration 1's manual-entry-only boundary is unchanged. No new dependency on Territory/Region/Area or Organization Hierarchy.
+
+---
+
+## Governing Decision
+
+`docs/product/02_PRODUCT_SCOPE.md` §7 (Performance Management) — CPO/CTO product decision closing this item without a dedicated capability decision document, since no new capability exists to document.
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1175,6 +1198,7 @@ Business Capabilities
 | Achievement | ✓ | ✓ | ✓ | Implemented |
 | Dashboard (Performance Management) | ✓ | ✓ | ✓ | Implemented |
 | Reporting (Performance Management) | ✓ | ✓ | ✓ | Implemented |
+| Productivity | ✓ | ✓ | — | Closed — Covered by KPI / Target / Achievement |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
