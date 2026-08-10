@@ -86,6 +86,7 @@ Business Capability
 | Dashboard (Performance Management) | Implemented | Organization-wide `Kpi`/`Target`/`Achievement` counts at `GET /performance/dashboard`, `CurrentUser` auth (not admin-only), distinct from the pre-existing generic `/dashboard` |
 | Reporting (Performance Management) | Implemented | Read-only operational report, one row per `Achievement` (`Achievement → Target → Kpi + HrEmployee`) at `GET /performance/reporting`, mandatory pagination, `RequireRole("admin")` auth |
 | Productivity | Closed — Covered by KPI / Target / Achievement | Not a separate capability; represented as an ordinary `Kpi` using existing `Target`/`Achievement` |
+| Mission | Implemented | Employee-to-store planning/assignment record (`employee_id`, `store_id`, `scheduled_date`), `RequireRole("admin")` auth |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -856,6 +857,20 @@ No repository of its own tied to a single model — `ReportingRepository` is a h
 **Related:** `docs/product/02_PRODUCT_SCOPE.md` §7 (Performance Management)
 
 CPO/CTO decision: `Productivity` is not a separate capability or aggregate. An organization that wants to measure Productivity represents it as an ordinary `Kpi` definition and uses the already-implemented `Target`/`Achievement` capabilities exactly as for any other KPI. No `Productivity` model, repository, service, API, migration, or dedicated tests exist or are planned under this name. No calculation engine and no automatic aggregation from `Visit`/`Survey`/`Attendance` or any other source were introduced — Achievement Iteration 1's manual-entry-only boundary is unchanged. No new dependency on Territory/Region/Area or Organization Hierarchy.
+
+---
+
+## Mission
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/mission/mission-iteration-1-scope-and-implementation-plan.md`
+
+Mission (Iteration 1): a standalone planning/assignment record — one employee assigned to one store on one date, per Roadmap Phase 4 "Field Operations" / Product Scope §5 "Planning" (Mission Planning). Fields: `employee_id` (references `HrEmployee`), `store_id` (references `Store`), `scheduled_date`. Both foreign keys are `ON DELETE RESTRICT`. No uniqueness constraint — mirrors `Visit`'s own precedent exactly. Flat CRUD, no lifecycle/status field. Supports plain list and paginated endpoints, filterable by `employee_id`, `store_id`, and `scheduled_date`.
+
+Mission is the *plan* (assigned in advance by an administrator); `Visit` is the *executed* record of a field employee actually being at a store. Mission does not modify or become a parent of `Visit` — no structural or FK link between them. Route Planning remains a separate, unimplemented capability and is not a dependency. No Territory/Region/Area dependency. No GPS, photo, selfie, or completion-tracking behavior.
+
+**Authorization:** Role Based (`RequireRole("admin")`) — a Mission is assigned by an administrator, not self-authored by the assigned employee. `employee_id` is Mission's business scope, not its authorization boundary — no Owner Only evaluator exists for this entity. Same mechanism as `Kpi`/`Target`/`Achievement`/`Store`.
 
 ---
 

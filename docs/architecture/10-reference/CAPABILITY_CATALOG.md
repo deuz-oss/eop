@@ -66,6 +66,7 @@ Detailed implementation remains in the individual capability documents.
 | Dashboard (Performance Management) | Implemented | Performance Management | — (capability decision only) |
 | Reporting (Performance Management) | Implemented | Performance Management | — (capability decision only) |
 | Productivity | Closed — Covered by KPI / Target / Achievement | Performance Management | — (CPO/CTO product decision) |
+| Mission | Implemented | Field Operations | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -1018,6 +1019,42 @@ CPO/CTO decision: `Productivity` (`docs/product/02_PRODUCT_SCOPE.md` §7, "Perfo
 
 ---
 
+# Mission
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`Mission`: a standalone planning/assignment record — one employee assigned to one store on one date, per Roadmap Phase 4 "Field Operations" / Product Scope §5 "Planning" (Mission Planning). Fields: `employee_id` (references `HrEmployee`), `store_id` (references `Store`), `scheduled_date`. Both foreign keys are `ON DELETE RESTRICT`. No uniqueness constraint — mirrors `Visit`'s own precedent exactly (duplicate assignments for the same employee/store/date are expected and permitted, not prevented). Flat CRUD, no lifecycle/status field.
+
+Mission is the *plan* (assigned in advance by an administrator); `Visit` is the *executed* record of a field employee actually being at a store. Mission does not modify or become a parent of `Visit` — no structural or FK link between them. Route Planning remains a separate, unimplemented capability and is not a dependency. No Territory/Region/Area dependency. No GPS, photo, selfie, or completion-tracking behavior.
+
+---
+
+## Authorization
+
+Role Based (`RequireRole("admin")`) — a Mission is assigned by an administrator ("Mission assignment" is an Area Manager action), not self-authored by the assigned employee. `employee_id` is Mission's business scope, not its authorization boundary — no Owner Only evaluator exists for this entity. Same mechanism as `Kpi`/`Target`/`Achievement`/`Store`, no new authorization framework introduced.
+
+---
+
+## API
+
+Supports plain list and paginated endpoints. Filterable by `employee_id`, `store_id`, and `scheduled_date`.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/mission/mission-iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1199,6 +1236,7 @@ Business Capabilities
 | Dashboard (Performance Management) | ✓ | ✓ | ✓ | Implemented |
 | Reporting (Performance Management) | ✓ | ✓ | ✓ | Implemented |
 | Productivity | ✓ | ✓ | — | Closed — Covered by KPI / Target / Achievement |
+| Mission | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
