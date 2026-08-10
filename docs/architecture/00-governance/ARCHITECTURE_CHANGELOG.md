@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-10 — Achievement Iteration 1 (Manual Actual Value Against Target) Completed
+
+**Reference:**
+
+- PR #88
+- `docs/architecture/capabilities/performance/achievement-iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Achievement
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Brought Roadmap Phase 5's "Achievement" item into implementation: the manually recorded actual value against exactly one `Target` (`target_id`, `ON DELETE RESTRICT`, unique — at most one `Achievement` per `Target`, enforced at the database level; `actual_value`, `Numeric(18, 6)`, mirroring `Target.goal_value`'s precedent), flat CRUD, no lifecycle. This is the actual-value layer in the `KPI → Target → Achievement → Dashboard → Reporting` sequence — `Target` (already implemented, Iteration 1) is the employee-scoped monthly goal; `Achievement` is the manually entered actual result against it; `Dashboard` and `Reporting` remain future, unimplemented capabilities, not pre-committed to any schema or behavior by this change. No `employee_id`/`kpi_id`/`period_year`/`period_month` on `Achievement` itself — all inherited through `Achievement.target`, avoiding duplication of Target's own identity. CPO/CTO decision resolved Achievement as manual-entry only: no automatic calculation, Visit/Survey aggregation, Attendance/Payroll integration, or KPI formula engine — computed/derived Achievement is explicitly deferred to a future capability/decision. Authorization is Role Based (`RequireRole("admin")`, reused unmodified) — an Achievement is manually recorded by an administrator, mirroring exactly how an administrator manually assigns the Target goal; no new authorization evaluator introduced.
+
+---
+
 # 2026-08-09 — Target Iteration 1 (Employee-Scoped KPI Goal) Completed
 
 **Reference:**
