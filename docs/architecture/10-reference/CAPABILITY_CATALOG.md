@@ -64,6 +64,7 @@ Detailed implementation remains in the individual capability documents.
 | Target | Implemented | Performance Management | — (CPO/CTO product decision) |
 | Achievement | Implemented | Performance Management | — (CPO/CTO product decision) |
 | Dashboard (Performance Management) | Implemented | Performance Management | — (capability decision only) |
+| Reporting (Performance Management) | Implemented | Performance Management | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -962,6 +963,38 @@ No ratios, percentages, or "on track"/"achieved" scoring of any kind — counts 
 
 ---
 
+# Reporting (Performance Management)
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+Reporting Iteration 1: a read-only operational report, one row per existing `Achievement`, resolved through `Target` to `Kpi` and `HrEmployee` — the last item in Roadmap Phase 5's `KPI → Target → Achievement → Dashboard → Reporting` sequence. Relationship: `Achievement → Target → Kpi + HrEmployee`. Route: `GET /performance/reporting`. Response includes human-readable KPI (`kpi_code`, `kpi_name`) and employee (`employee_number`, `employee_full_name`) information alongside `period_year`, `period_month`, `goal_value`, `actual_value`. Pagination is mandatory — no unbounded plain-list endpoint. Filterable by `employee_id`, `kpi_id`, `period_year`, `period_month`.
+
+`Target` rows with no recorded `Achievement` do not appear. No repository of its own tied to a single model — `ReportingRepository` is a hand-written cross-aggregate join, mirroring `DashboardRepository`'s established not-tied-to-one-model precedent.
+
+No CSV/PDF/export, no scheduled reports or email delivery, no persisted report definitions/templates/history, no report builder, no calculation/formula engine, no scoring or achievement percentage, no Territory/Region/Area or Organization Hierarchy scoping. Distinct and separate from the Phase 7 "Reporting Platform" (enterprise infrastructure, deferred, its own future ADR gate) — untouched by this capability.
+
+---
+
+## Authorization
+
+Role Based (`RequireRole("admin")`) — this endpoint exposes row-level, per-employee performance data, organization-wide, not scoped to the caller, the same exposure category as `Kpi`/`Target`/`Achievement`'s own list/get endpoints. Same mechanism, no new authorization framework introduced.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/performance/reporting-iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1141,6 +1174,7 @@ Business Capabilities
 | Target | ✓ | ✓ | ✓ | Implemented |
 | Achievement | ✓ | ✓ | ✓ | Implemented |
 | Dashboard (Performance Management) | ✓ | ✓ | ✓ | Implemented |
+| Reporting (Performance Management) | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |

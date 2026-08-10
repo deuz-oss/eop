@@ -84,6 +84,7 @@ Business Capability
 | Target | Implemented | Employee-scoped monthly `Kpi` goal (`kpi_id`, `employee_id`, `period_year`, `period_month`, `goal_value`), `RequireRole("admin")` auth |
 | Achievement | Implemented | Manually entered actual value against exactly one `Target` (`target_id`, `actual_value`), `RequireRole("admin")` auth |
 | Dashboard (Performance Management) | Implemented | Organization-wide `Kpi`/`Target`/`Achievement` counts at `GET /performance/dashboard`, `CurrentUser` auth (not admin-only), distinct from the pre-existing generic `/dashboard` |
+| Reporting (Performance Management) | Implemented | Read-only operational report, one row per `Achievement` (`Achievement → Target → Kpi + HrEmployee`) at `GET /performance/reporting`, mandatory pagination, `RequireRole("admin")` auth |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -830,6 +831,20 @@ Performance Management Dashboard (Iteration 1): a read-only summary of `Kpi`/`Ta
 Deliberately distinct from the pre-existing, unrelated `GET /dashboard` endpoint (Phase 1/2 generic `Organization`/`Project`/`Employee`/`Assignment`/`Task` scaffold, not part of Phase 5) — that endpoint was not modified. No ratios, percentages, or scoring — counts only. No Territory/Region/Area or Organization Hierarchy scoping — organization-wide only.
 
 **Authorization:** `CurrentUser` (any authenticated user) — no `RequireRole("admin")` gate, mirroring the pre-existing `/dashboard` endpoint's own precedent for aggregate-count endpoints; not a new authorization mechanism.
+
+---
+
+## Reporting (Performance Management)
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/performance/reporting-iteration-1-scope-and-implementation-plan.md`
+
+Reporting (Iteration 1): a read-only operational report, one row per existing `Achievement`, resolved through `Target` to `Kpi` and `HrEmployee` — the last item in Roadmap Phase 5's `KPI → Target → Achievement → Dashboard → Reporting` sequence. Relationship: `Achievement → Target → Kpi + HrEmployee`. Route: `GET /performance/reporting`. Response includes human-readable KPI (`kpi_code`, `kpi_name`) and employee (`employee_number`, `employee_full_name`) information alongside `period_year`, `period_month`, `goal_value`, `actual_value`. Pagination is mandatory — no unbounded plain-list endpoint. Filterable by `employee_id`, `kpi_id`, `period_year`, `period_month`. `Target` rows with no recorded `Achievement` do not appear.
+
+No repository of its own tied to a single model — `ReportingRepository` is a hand-written cross-aggregate join, mirroring `DashboardRepository`'s established not-tied-to-one-model precedent. No CSV/PDF/export, no scheduled reports or email delivery, no persisted report definitions/templates/history, no report builder, no calculation/formula engine, no scoring or achievement percentage, no Territory/Region/Area or Organization Hierarchy scoping. Distinct and separate from the Phase 7 "Reporting Platform" (enterprise infrastructure, deferred, its own future ADR gate) — untouched by this capability.
+
+**Authorization:** Role Based (`RequireRole("admin")`) — this endpoint exposes row-level, per-employee performance data, organization-wide, not scoped to the caller, the same exposure category as `Kpi`/`Target`/`Achievement`'s own list/get endpoints. Same mechanism, no new authorization framework introduced.
 
 ---
 
