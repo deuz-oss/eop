@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-11 — Competitor Activity Iteration 1 Completed
+
+**Reference:**
+
+- PR #97
+- `docs/architecture/capabilities/competitor-activity/competitor-activity-iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Competitor Activity
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Implemented `CompetitorActivity` as a repeatable Visit child aggregate: a competitor observation recorded against a `Visit`, fields `visit_id` (`ON DELETE RESTRICT`), `competitor_name`, `activity_type`, `notes`. `visit_id` is non-unique — many `CompetitorActivity` records may reference the same `Visit`, the deliberate opposite of `Survey`'s one-per-Visit shape; no duplicate-rejection logic, since repeated observations for the same Visit are expected and permitted. Authorization is Owner Only, evaluated against the resolved parent `Visit` through the existing `VisitAuthorizationEvaluator`, reused completely unmodified — no new evaluator class, the same child-of-Owner-Only-parent pattern already established by `Survey`. It intentionally has no competitor/product master data — `competitor_name`/`activity_type` are free-text `String(255)`, no taxonomy table, no new Competitor/Product/SKU entity. Flat CRUD at `/competitor-activities`, mirroring the established flat-route precedent for repeatable children-of-a-parent (no nested-resource URL pattern exists elsewhere in the codebase). Iteration 1 excludes GPS, photo/selfie, scoring, approval workflow, Territory/Region/Area, Route Planning, Mission relationship, analytics, AI, automatic calculation, integration, and reporting. This governance reconciliation is documentation-only and does not change production behavior.
+
+---
+
 # 2026-08-11 — Mission Iteration 1 (Single-Store Employee Assignment) Completed
 
 **Reference:**

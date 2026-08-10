@@ -87,6 +87,7 @@ Business Capability
 | Reporting (Performance Management) | Implemented | Read-only operational report, one row per `Achievement` (`Achievement → Target → Kpi + HrEmployee`) at `GET /performance/reporting`, mandatory pagination, `RequireRole("admin")` auth |
 | Productivity | Closed — Covered by KPI / Target / Achievement | Not a separate capability; represented as an ordinary `Kpi` using existing `Target`/`Achievement` |
 | Mission | Implemented | Employee-to-store planning/assignment record (`employee_id`, `store_id`, `scheduled_date`), `RequireRole("admin")` auth |
+| Competitor Activity | Implemented | Repeatable competitor observation attached to a `Visit` (`visit_id`, `competitor_name`, `activity_type`, `notes`), non-unique `visit_id`, Owner Only auth via existing `VisitAuthorizationEvaluator` |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -871,6 +872,20 @@ Mission (Iteration 1): a standalone planning/assignment record — one employee 
 Mission is the *plan* (assigned in advance by an administrator); `Visit` is the *executed* record of a field employee actually being at a store. Mission does not modify or become a parent of `Visit` — no structural or FK link between them. Route Planning remains a separate, unimplemented capability and is not a dependency. No Territory/Region/Area dependency. No GPS, photo, selfie, or completion-tracking behavior.
 
 **Authorization:** Role Based (`RequireRole("admin")`) — a Mission is assigned by an administrator, not self-authored by the assigned employee. `employee_id` is Mission's business scope, not its authorization boundary — no Owner Only evaluator exists for this entity. Same mechanism as `Kpi`/`Target`/`Achievement`/`Store`.
+
+---
+
+## Competitor Activity
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/competitor-activity/competitor-activity-iteration-1-scope-and-implementation-plan.md`
+
+Competitor Activity (Iteration 1): a repeatable competitor observation recorded against a `Visit`. Fields: `visit_id` (references `Visit`, `ON DELETE RESTRICT`), `competitor_name`, `activity_type`, `notes`. `visit_id` is non-unique — many `CompetitorActivity` records may reference the same `Visit`, the deliberate opposite of `Survey`'s one-per-Visit shape (`Survey.visit_id` is unique). No duplicate-rejection logic. Flat CRUD, no lifecycle/status field. Route: `/competitor-activities` (flat, tag `Visit`), mirroring the established flat-route precedent for repeatable children-of-a-parent (no nested-resource URL pattern exists elsewhere in the codebase). Supports plain list (scoped to the caller's own Visits) and paginated endpoints, filterable/paginable by `visit_id`.
+
+No competitor/product master-data relationship, no new Competitor/Product/SKU entity. No GPS, photo/selfie/file attachment, scoring, or approval workflow. No Territory/Region/Area or Route Planning dependency. No Mission relationship. No analytics, AI, automatic calculation, integration, or reporting.
+
+**Authorization:** Owner Only, evaluated against the resolved *parent* `Visit` — `CompetitorActivity` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified, the same child-of-Owner-Only-parent pattern already established by `Survey`. Authorization always reflects the Visit's current owner, even if `Visit.employee_id` is reassigned after a `CompetitorActivity` row is created.
 
 ---
 

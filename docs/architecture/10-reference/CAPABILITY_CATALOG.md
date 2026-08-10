@@ -67,6 +67,7 @@ Detailed implementation remains in the individual capability documents.
 | Reporting (Performance Management) | Implemented | Performance Management | — (capability decision only) |
 | Productivity | Closed — Covered by KPI / Target / Achievement | Performance Management | — (CPO/CTO product decision) |
 | Mission | Implemented | Field Operations | — (capability decision only) |
+| Competitor Activity | Implemented | Field Operations | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -1055,6 +1056,44 @@ Supports plain list and paginated endpoints. Filterable by `employee_id`, `store
 
 ---
 
+# Competitor Activity
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`CompetitorActivity`: a repeatable competitor observation recorded against a `Visit`. Fields: `visit_id` (references `Visit`, `ON DELETE RESTRICT`), `competitor_name`, `activity_type`, `notes`. Flat CRUD, no lifecycle/status field.
+
+`visit_id` is non-unique — many `CompetitorActivity` records may reference the same `Visit`, the deliberate opposite of `Survey`'s one-per-Visit shape (`Survey.visit_id` is unique; `Survey` represents a single authoritative outcome for a Visit, `CompetitorActivity` represents a repeatable field observation, evaluated and resolved independently rather than assumed by convention). No duplicate-rejection logic — repeated observations for the same Visit are expected and permitted.
+
+`competitor_name`/`activity_type` are free-text `String(255)`, no taxonomy or master-data table — no new Competitor/Product/SKU entity. No GPS, photo/selfie/file attachment, scoring, or approval workflow. No Territory/Region/Area or Route Planning dependency. No Mission relationship. No analytics, AI, automatic calculation, integration, or reporting.
+
+---
+
+## Authorization
+
+Owner Only, evaluated against the resolved *parent* `Visit` — `CompetitorActivity` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified (no new evaluator class), the same child-of-Owner-Only-parent pattern already established by `Survey`. Authorization always reflects the Visit's current owner, even if `Visit.employee_id` is reassigned after a `CompetitorActivity` row is created.
+
+---
+
+## API
+
+Route: `/competitor-activities` (flat, tag `Visit`) — mirrors the established flat-route precedent for repeatable children-of-a-parent (e.g. `Interview`/`Offer`); no nested-resource URL pattern exists elsewhere in the codebase. Supports plain list (scoped to the caller's own Visits) and paginated endpoints, filterable/paginable by `visit_id`.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/competitor-activity/competitor-activity-iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1237,6 +1276,7 @@ Business Capabilities
 | Reporting (Performance Management) | ✓ | ✓ | ✓ | Implemented |
 | Productivity | ✓ | ✓ | — | Closed — Covered by KPI / Target / Achievement |
 | Mission | ✓ | ✓ | ✓ | Implemented |
+| Competitor Activity | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
