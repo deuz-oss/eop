@@ -15,6 +15,7 @@ from eop_api.api.audit_logs import router as audit_logs_router
 from eop_api.api.auth import router as auth_router
 from eop_api.api.candidates import router as candidates_router
 from eop_api.api.compensation import router as compensation_router
+from eop_api.api.competitor_activities import router as competitor_activities_router
 from eop_api.api.dashboard import router as dashboard_router
 from eop_api.api.deductions import router as deductions_router
 from eop_api.api.departments import router as departments_router
@@ -156,6 +157,7 @@ app.include_router(achievements_router, responses=PROBLEM_RESPONSES)
 app.include_router(performance_dashboard_router, responses=PROBLEM_RESPONSES)
 app.include_router(reporting_router, responses=PROBLEM_RESPONSES)
 app.include_router(missions_router, responses=PROBLEM_RESPONSES)
+app.include_router(competitor_activities_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])

@@ -6,6 +6,7 @@ from eop_api.models.attendance_event import AttendanceEvent
 from eop_api.models.audit_log import AuditLog
 from eop_api.models.candidate import Candidate
 from eop_api.models.compensation import Compensation
+from eop_api.models.competitor_activity import CompetitorActivity
 from eop_api.models.deduction import Deduction
 from eop_api.models.deduction_type import DeductionType
 from eop_api.models.department import Department
@@ -57,6 +58,7 @@ __all__ = [
     "AuditLog",
     "Candidate",
     "Compensation",
+    "CompetitorActivity",
     "Deduction",
     "DeductionType",
     "Department",
