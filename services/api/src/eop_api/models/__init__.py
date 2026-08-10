@@ -1,3 +1,4 @@
+from eop_api.models.achievement import Achievement
 from eop_api.models.allowance import Allowance
 from eop_api.models.application import Application
 from eop_api.models.assignment import Assignment
@@ -47,6 +48,7 @@ from eop_api.models.visit import Visit
 from eop_api.models.work_schedule import WorkSchedule
 
 __all__ = [
+    "Achievement",
     "Allowance",
     "Application",
     "Assignment",

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from eop_api.api.achievements import router as achievements_router
 from eop_api.api.allowances import router as allowances_router
 from eop_api.api.applications import router as applications_router
 from eop_api.api.assignments import router as assignments_router
@@ -148,6 +149,7 @@ app.include_router(visits_router, responses=PROBLEM_RESPONSES)
 app.include_router(surveys_router, responses=PROBLEM_RESPONSES)
 app.include_router(kpis_router, responses=PROBLEM_RESPONSES)
 app.include_router(targets_router, responses=PROBLEM_RESPONSES)
+app.include_router(achievements_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
