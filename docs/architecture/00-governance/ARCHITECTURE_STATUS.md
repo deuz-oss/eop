@@ -88,6 +88,7 @@ Business Capability
 | Productivity | Closed — Covered by KPI / Target / Achievement | Not a separate capability; represented as an ordinary `Kpi` using existing `Target`/`Achievement` |
 | Mission | Implemented | Employee-to-store planning/assignment record (`employee_id`, `store_id`, `scheduled_date`), `RequireRole("admin")` auth |
 | Competitor Activity | Implemented | Repeatable competitor observation attached to a `Visit` (`visit_id`, `competitor_name`, `activity_type`, `notes`), non-unique `visit_id`, Owner Only auth via existing `VisitAuthorizationEvaluator` |
+| POSM Audit | Implemented | Repeatable POSM observation attached to a `Visit` (`visit_id`, `posm_type`, `condition`, `notes`), non-unique `visit_id`, Owner Only auth via existing `VisitAuthorizationEvaluator` |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -886,6 +887,20 @@ Competitor Activity (Iteration 1): a repeatable competitor observation recorded 
 No competitor/product master-data relationship, no new Competitor/Product/SKU entity. No GPS, photo/selfie/file attachment, scoring, or approval workflow. No Territory/Region/Area or Route Planning dependency. No Mission relationship. No analytics, AI, automatic calculation, integration, or reporting.
 
 **Authorization:** Owner Only, evaluated against the resolved *parent* `Visit` — `CompetitorActivity` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified, the same child-of-Owner-Only-parent pattern already established by `Survey`. Authorization always reflects the Visit's current owner, even if `Visit.employee_id` is reassigned after a `CompetitorActivity` row is created.
+
+---
+
+## POSM Audit
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/posm-audit/posm-audit-iteration-1-scope-and-implementation-plan.md`
+
+POSM Audit (Iteration 1): a repeatable point-of-sale materials (POSM) observation recorded against a `Visit`. Fields: `visit_id` (references `Visit`, `ON DELETE RESTRICT`), `posm_type`, `condition`, `notes`. `visit_id` is non-unique — many `PosmAudit` records may reference the same `Visit`, the same cardinality as `CompetitorActivity` (the deliberate opposite of `Survey`'s one-per-Visit shape). No duplicate-rejection logic. Flat CRUD, no lifecycle/status field — `condition` is observation text only, not a workflow status. Route: `/posm-audits` (flat, tag `Visit`), mirroring the established flat-route precedent for repeatable children-of-a-parent (no nested-resource URL pattern exists elsewhere in the codebase). Supports plain list (scoped to the caller's own Visits) and paginated endpoints, with `visit_id` filtering available through the paginated endpoint.
+
+No POSM master-data relationship, no new POSM/Product/SKU entity. No direct Store/HrEmployee relationship — that context is obtained transitively through `Visit`. No GPS, photo/selfie/`FileObject` attachment, scoring, or approval workflow. No Territory/Region/Area or Route Planning dependency. No Mission relationship. No analytics, AI, automatic calculation, integration, or reporting. No dedicated POSM timestamp — relies on inherited entity timestamps and `Visit` context.
+
+**Authorization:** Owner Only, evaluated against the resolved *parent* `Visit` — `PosmAudit` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified, the same child-of-Owner-Only-parent pattern already established by `Survey` and `CompetitorActivity`.
 
 ---
 
