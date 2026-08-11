@@ -80,7 +80,7 @@ async def service(storage: FakeStorageProvider) -> AsyncGenerator[FileService]:
         yield FileService(storage=storage, uow_factory=uow_factory, bucket="eop-files")
     finally:
         async with engine.begin() as conn:
-            await conn.execute(text("TRUNCATE TABLE file_objects"))
+            await conn.execute(text("TRUNCATE TABLE file_objects CASCADE"))
         await engine.dispose()
 
 
