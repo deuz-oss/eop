@@ -19,6 +19,7 @@ from eop_api.api.competitor_activities import router as competitor_activities_ro
 from eop_api.api.dashboard import router as dashboard_router
 from eop_api.api.deductions import router as deductions_router
 from eop_api.api.departments import router as departments_router
+from eop_api.api.display_audits import router as display_audits_router
 from eop_api.api.employees import router as employees_router
 from eop_api.api.employment_statuses import router as employment_statuses_router
 from eop_api.api.employment_types import router as employment_types_router
@@ -164,6 +165,7 @@ app.include_router(competitor_activities_router, responses=PROBLEM_RESPONSES)
 app.include_router(posm_audits_router, responses=PROBLEM_RESPONSES)
 app.include_router(field_attendance_events_router, responses=PROBLEM_RESPONSES)
 app.include_router(visit_photos_router, responses=PROBLEM_RESPONSES)
+app.include_router(display_audits_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
