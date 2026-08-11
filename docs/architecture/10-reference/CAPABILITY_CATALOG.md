@@ -69,6 +69,7 @@ Detailed implementation remains in the individual capability documents.
 | Mission | Implemented | Field Operations | — (capability decision only) |
 | Competitor Activity | Implemented | Field Operations | — (capability decision only) |
 | POSM Audit | Implemented | Field Operations | — (capability decision only) |
+| Field Attendance | Implemented | Field Operations | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -1133,6 +1134,50 @@ Route: `/posm-audits` (flat, tag `Visit`) — mirrors the established flat-route
 
 ---
 
+# Field Attendance
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`FieldAttendanceEvent`: a standalone aggregate recording one field employee check-in or check-out event, evidenced by GPS coordinates and a mandatory selfie. Fields: `employee_id` (references `HrEmployee`, `ON DELETE RESTRICT`), `event_type` (`CHECK_IN`/`CHECK_OUT`), `event_time`, `latitude`, `longitude`, `gps_accuracy_meters`, `selfie_file_id` (references `FileObject`, `ON DELETE RESTRICT`). Flat CRUD, no lifecycle/status field.
+
+**Deliberately distinct from the existing HR/Payroll `AttendanceEvent`** (shift clock-in/out feeding Payroll's attendance deduction) despite the shared word "Attendance" — neither reused nor modified. The two share only the identity-resolution infrastructure (`CurrentRequestContext`/`EmployeeContextResolver`, via `HrEmployee.user_id`) and the Owner Only authorization shape, not a table, model, enum, or FK.
+
+No uniqueness constraint — multiple events per employee are allowed, no one-check-in-or-check-out-per-day enforcement. No automatic pairing, sequencing, correction, or reconciliation logic.
+
+GPS is mandatory (`latitude`/`longitude`/`gps_accuracy_meters` all `NOT NULL`), with structural range validation only (`latitude` ∈ [-90, 90], `longitude` ∈ [-180, 180], `gps_accuracy_meters` ≥ 0) — no geofencing, no store-radius validation, no spoof/mock-location detection, no accuracy-based rejection threshold. Selfie evidence is mandatory for both `CHECK_IN` and `CHECK_OUT` (`selfie_file_id NOT NULL`) — evidence only, not an identity-verification mechanism; no face recognition, biometric processing, or liveness detection. Reuses the existing `FileObject` unmodified — no new file-storage subsystem.
+
+No relationship to `Visit`, `Store`, `Mission`, `Product`/`SKU`, or any Territory/Region/Area concept. No payroll, overtime, or work-schedule integration. No analytics, AI, or reporting.
+
+**Governance follow-up (non-blocking):** selfie privacy/retention policy is not defined in Iteration 1 — uses the existing `FileObject` lifecycle as-is, no new retention period, no consent workflow. Does not block this implementation because the selfie is treated strictly as evidence, not biometric identity data; tracked as a remaining business-policy item.
+
+---
+
+## Authorization
+
+Owner Only — the authenticated user may access `FieldAttendanceEvent` rows belonging to their own `HrEmployee`, resolved via `CurrentRequestContext`/`EmployeeContextResolver`. Reuses the existing `AttendanceAuthorizationEvaluator` completely unmodified (duck-typed on `resource.employee_id`, does not reference the `AttendanceEvent` model by type) — no new evaluator class. No manager/subordinate access, consistent with `attendance-authorization/decision.md`'s own rejection of Manager Access (`TD-003`, Employee Manager Hierarchy Limitation), which applies identically here.
+
+---
+
+## API
+
+Route: `/field-attendance` (flat, tag `Field Attendance`) — dedicated, distinct from `/hr/attendance-events`. Supports plain list (scoped to the caller's own `employee_id`) and paginated endpoints, filterable by `event_type`/`event_time`. `employee_id` is force-scoped to the caller server-side at the service layer — never exposed as a client-supplied filter.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/field-attendance/field-attendance-iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1317,6 +1362,7 @@ Business Capabilities
 | Mission | ✓ | ✓ | ✓ | Implemented |
 | Competitor Activity | ✓ | ✓ | ✓ | Implemented |
 | POSM Audit | ✓ | ✓ | ✓ | Implemented |
+| Field Attendance | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
