@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-11 — Field Attendance Iteration 1 Completed
+
+**Reference:**
+
+- PR #101
+- `docs/architecture/capabilities/field-attendance/field-attendance-iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Field Attendance
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Implemented `FieldAttendanceEvent` as a standalone aggregate: one field employee check-in or check-out event, evidenced by GPS coordinates and a mandatory selfie. Fields: `employee_id` (references `HrEmployee`, `ON DELETE RESTRICT`), `event_type` (`CHECK_IN`/`CHECK_OUT`), `event_time`, `latitude`, `longitude`, `gps_accuracy_meters`, `selfie_file_id` (references `FileObject`, `ON DELETE RESTRICT` — the first FK ever added into `file_objects` in this repository). No uniqueness constraint — multiple events per employee are allowed, no automatic pairing, sequencing, correction, or reconciliation logic. **Deliberately distinct from the existing HR/Payroll `AttendanceEvent`** (shift clock-in/out feeding Payroll's attendance deduction) despite the shared word "Attendance" — neither reused nor modified; the two share only the identity-resolution infrastructure (`CurrentRequestContext`/`EmployeeContextResolver`, via `HrEmployee.user_id`) and the Owner Only authorization shape, not a table, model, enum, or FK. GPS is mandatory, with structural range validation only (`latitude` ∈ [-90, 90], `longitude` ∈ [-180, 180], `gps_accuracy_meters` ≥ 0) — no geofencing, store-radius validation, spoof/mock-location detection, or accuracy-based rejection threshold. Selfie evidence is mandatory for both `CHECK_IN` and `CHECK_OUT` — evidence only, not identity verification; no face recognition, biometric processing, or liveness detection. Reuses the existing `FileObject` unmodified. Authorization is Owner Only, via the existing `AttendanceAuthorizationEvaluator`, reused completely unmodified — no manager/subordinate access, consistent with `attendance-authorization/decision.md`'s own rejection of Manager Access (`TD-003`). Flat CRUD at `/field-attendance`, no pairing/correction/approval workflow. No relationship to `Visit`, `Store`, `Mission`, `Product`/`SKU`, or any Territory/Region/Area concept; no payroll, overtime, work-schedule, analytics, AI, or reporting integration. Selfie privacy/retention policy is not defined in Iteration 1 — uses the existing `FileObject` lifecycle as-is, tracked as a non-blocking governance/business-policy follow-up since the selfie is treated strictly as evidence, not biometric identity data. Also included a required test-fixture compatibility fix: `test_file_service.py`'s `TRUNCATE TABLE file_objects` now uses `CASCADE`, matching the convention `test_files_api.py` already used, since this is the first FK into `file_objects`.
+
+---
+
 # 2026-08-11 — POSM Audit Iteration 1 Completed
 
 **Reference:**

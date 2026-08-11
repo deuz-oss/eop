@@ -89,6 +89,7 @@ Business Capability
 | Mission | Implemented | Employee-to-store planning/assignment record (`employee_id`, `store_id`, `scheduled_date`), `RequireRole("admin")` auth |
 | Competitor Activity | Implemented | Repeatable competitor observation attached to a `Visit` (`visit_id`, `competitor_name`, `activity_type`, `notes`), non-unique `visit_id`, Owner Only auth via existing `VisitAuthorizationEvaluator` |
 | POSM Audit | Implemented | Repeatable POSM observation attached to a `Visit` (`visit_id`, `posm_type`, `condition`, `notes`), non-unique `visit_id`, Owner Only auth via existing `VisitAuthorizationEvaluator` |
+| Field Attendance | Implemented | Standalone field check-in/check-out event (`employee_id`, `event_type`, `event_time`, `latitude`, `longitude`, `gps_accuracy_meters`, `selfie_file_id`), mandatory GPS + selfie evidence, distinct from HR/Payroll `AttendanceEvent`, Owner Only auth via existing `AttendanceAuthorizationEvaluator` |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -901,6 +902,24 @@ POSM Audit (Iteration 1): a repeatable point-of-sale materials (POSM) observatio
 No POSM master-data relationship, no new POSM/Product/SKU entity. No direct Store/HrEmployee relationship — that context is obtained transitively through `Visit`. No GPS, photo/selfie/`FileObject` attachment, scoring, or approval workflow. No Territory/Region/Area or Route Planning dependency. No Mission relationship. No analytics, AI, automatic calculation, integration, or reporting. No dedicated POSM timestamp — relies on inherited entity timestamps and `Visit` context.
 
 **Authorization:** Owner Only, evaluated against the resolved *parent* `Visit` — `PosmAudit` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified, the same child-of-Owner-Only-parent pattern already established by `Survey` and `CompetitorActivity`.
+
+---
+
+## Field Attendance
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/field-attendance/field-attendance-iteration-1-scope-and-implementation-plan.md`
+
+Field Attendance (Iteration 1): `FieldAttendanceEvent`, a standalone aggregate recording one field employee check-in or check-out event, evidenced by GPS coordinates and a mandatory selfie. Fields: `employee_id` (references `HrEmployee`, `ON DELETE RESTRICT`), `event_type` (`CHECK_IN`/`CHECK_OUT`), `event_time`, `latitude`, `longitude`, `gps_accuracy_meters`, `selfie_file_id` (references `FileObject`, `ON DELETE RESTRICT`). No uniqueness constraint — multiple events per employee are allowed, no pairing/sequencing/correction logic. Flat CRUD, no lifecycle/status field. Route: `/field-attendance` (flat, tag `Field Attendance`), dedicated and distinct from `/hr/attendance-events`. Supports plain list (scoped to the caller's own `employee_id`) and paginated endpoints, filterable by `event_type`/`event_time`; `employee_id` is force-scoped server-side, never a client-supplied filter.
+
+**Deliberately distinct from the existing HR/Payroll `AttendanceEvent`** (shift clock-in/out feeding Payroll's attendance deduction) despite the shared word "Attendance" — neither reused nor modified. The two share only the identity-resolution infrastructure (`CurrentRequestContext`/`EmployeeContextResolver`, via `HrEmployee.user_id`) and the Owner Only authorization shape, not a table, model, enum, or FK.
+
+GPS is mandatory, with structural range validation only (`latitude` ∈ [-90, 90], `longitude` ∈ [-180, 180], `gps_accuracy_meters` ≥ 0) — no geofencing, store-radius validation, spoof/mock-location detection, or accuracy-based rejection threshold. Selfie evidence is mandatory for both `CHECK_IN` and `CHECK_OUT` — evidence only, not identity verification; no face recognition, biometric processing, or liveness detection. Reuses the existing `FileObject` unmodified — no new file-storage subsystem. No relationship to `Visit`, `Store`, `Mission`, `Product`/`SKU`, or any Territory/Region/Area concept. No payroll, overtime, work-schedule, analytics, AI, or reporting integration.
+
+**Governance follow-up (non-blocking):** selfie privacy/retention policy is not defined in Iteration 1 — uses the existing `FileObject` lifecycle as-is. Does not block this implementation since the selfie is treated strictly as evidence, not biometric identity data; tracked as a remaining business-policy item.
+
+**Authorization:** Owner Only, via the existing `AttendanceAuthorizationEvaluator`, reused completely unmodified (duck-typed on `resource.employee_id`, does not reference the `AttendanceEvent` model by type). No manager/subordinate access, consistent with `attendance-authorization/decision.md`'s own rejection of Manager Access (`TD-003`), which applies identically here.
 
 ---
 
