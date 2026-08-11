@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-11 — Photo Evidence Iteration 1 Completed
+
+**Reference:**
+
+- PR #103
+- `docs/architecture/capabilities/photo-evidence/photo-evidence-iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Photo Evidence
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Implemented `VisitPhoto` as a standalone Visit child aggregate: one uploaded photo attached to one `Visit`, fields `visit_id` (`ON DELETE RESTRICT`) and `file_object_id` (references `FileObject`, `ON DELETE RESTRICT`) — exactly two fields, no caption/description/category/photo type/tags/coordinates/device metadata. `visit_id` is non-unique — many `VisitPhoto` records may reference the same `Visit`, the same cardinality as `CompetitorActivity`/`PosmAudit` (the deliberate opposite of `Survey`'s one-per-Visit shape); no duplicate-rejection logic, since multiple photos per Visit are expected and permitted. Authorization is Owner Only, evaluated against the resolved parent `Visit` through the existing `VisitAuthorizationEvaluator`, reused completely unmodified — no new evaluator class, the same child-of-Owner-Only-parent pattern already established by `Survey`, `CompetitorActivity`, and `PosmAudit`. Reuses the existing `FileObject` unmodified — no new file entity, no new storage abstraction, no generic/polymorphic attachment framework — following the upload-then-reference existence-check pattern Field Attendance's `selfie_file_id` established. Flat CRUD at `/visit-photos`, mirroring the established flat-route precedent for repeatable children-of-a-parent, with `visit_id` filtering available through the paginated endpoint. **Photo Evidence is a standalone Visit child aggregate — it does not modify the `Visit` aggregate itself.** Deliberately distinct from Field Attendance's selfie evidence, the existing HR/Payroll `AttendanceEvent`, and `Visit` itself: no biometric verification, face recognition, liveness detection, AI image analysis, GPS validation, geofencing, or fraud detection — a plain evidentiary photo reference only. No relationship to `Survey`, `CompetitorActivity`, `PosmAudit`, or `Mission`. This governance reconciliation is documentation-only and does not change production behavior.
+
+---
+
 # 2026-08-11 — Field Attendance Iteration 1 Completed
 
 **Reference:**

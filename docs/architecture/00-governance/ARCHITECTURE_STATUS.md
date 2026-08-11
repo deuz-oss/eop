@@ -90,6 +90,7 @@ Business Capability
 | Competitor Activity | Implemented | Repeatable competitor observation attached to a `Visit` (`visit_id`, `competitor_name`, `activity_type`, `notes`), non-unique `visit_id`, Owner Only auth via existing `VisitAuthorizationEvaluator` |
 | POSM Audit | Implemented | Repeatable POSM observation attached to a `Visit` (`visit_id`, `posm_type`, `condition`, `notes`), non-unique `visit_id`, Owner Only auth via existing `VisitAuthorizationEvaluator` |
 | Field Attendance | Implemented | Standalone field check-in/check-out event (`employee_id`, `event_type`, `event_time`, `latitude`, `longitude`, `gps_accuracy_meters`, `selfie_file_id`), mandatory GPS + selfie evidence, distinct from HR/Payroll `AttendanceEvent`, Owner Only auth via existing `AttendanceAuthorizationEvaluator` |
+| Photo Evidence | Implemented | Standalone Visit child aggregate (`VisitPhoto`: `visit_id`, `file_object_id`), many-per-Visit, existing `FileObject` reused unmodified, Owner Only auth via existing `VisitAuthorizationEvaluator` |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -920,6 +921,22 @@ GPS is mandatory, with structural range validation only (`latitude` ∈ [-90, 90
 **Governance follow-up (non-blocking):** selfie privacy/retention policy is not defined in Iteration 1 — uses the existing `FileObject` lifecycle as-is. Does not block this implementation since the selfie is treated strictly as evidence, not biometric identity data; tracked as a remaining business-policy item.
 
 **Authorization:** Owner Only, via the existing `AttendanceAuthorizationEvaluator`, reused completely unmodified (duck-typed on `resource.employee_id`, does not reference the `AttendanceEvent` model by type). No manager/subordinate access, consistent with `attendance-authorization/decision.md`'s own rejection of Manager Access (`TD-003`), which applies identically here.
+
+---
+
+## Photo Evidence
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/photo-evidence/photo-evidence-iteration-1-scope-and-implementation-plan.md`
+
+Photo Evidence (Iteration 1): `VisitPhoto`, a standalone child aggregate of `Visit` representing one uploaded photo attached to one Visit. Fields: `visit_id` (references `Visit`, `ON DELETE RESTRICT`), `file_object_id` (references `FileObject`, `ON DELETE RESTRICT`). `visit_id` is non-unique — many `VisitPhoto` records may reference the same `Visit`, the same cardinality as `CompetitorActivity`/`PosmAudit` (the deliberate opposite of `Survey`'s one-per-Visit shape). No duplicate-rejection logic. Flat CRUD, no lifecycle/status field. Route: `/visit-photos` (flat, tag `Visit`), mirroring the established flat-route precedent for repeatable children-of-a-parent (no nested-resource URL pattern exists elsewhere in the codebase). Supports plain list (scoped to the caller's own Visits) and paginated endpoints, with `visit_id` filtering available through the paginated endpoint.
+
+**Photo Evidence is a standalone Visit child aggregate. It does not modify the `Visit` aggregate itself.** Exactly two fields, no others — no caption, description, category, photo type, tags, coordinates, captured-at, or device metadata. `FileObject` remains generic, unmodified infrastructure — Photo Evidence merely references it (`file_object_id`), the same reuse pattern Field Attendance's `selfie_file_id` established; no new file entity, no new storage abstraction, no generic/polymorphic attachment framework.
+
+**Distinct from Field Attendance's selfie evidence, the existing HR/Payroll `AttendanceEvent`, and `Visit` itself:** no biometric verification, face recognition, liveness detection, AI image analysis, GPS validation, geofencing, or fraud detection — a plain evidentiary photo reference only. No relationship to `Survey`, `CompetitorActivity`, `PosmAudit`, or `Mission`.
+
+**Authorization:** Owner Only, evaluated against the resolved *parent* `Visit` — `VisitPhoto` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified, the same child-of-Owner-Only-parent pattern already established by `Survey`, `CompetitorActivity`, and `PosmAudit`.
 
 ---
 
