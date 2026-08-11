@@ -10,6 +10,7 @@ from eop_api.models.competitor_activity import CompetitorActivity
 from eop_api.models.deduction import Deduction
 from eop_api.models.deduction_type import DeductionType
 from eop_api.models.department import Department
+from eop_api.models.display_audit import DisplayAudit
 from eop_api.models.employee import Employee
 from eop_api.models.employment_status import EmploymentStatus
 from eop_api.models.employment_type import EmploymentType
@@ -65,6 +66,7 @@ __all__ = [
     "Deduction",
     "DeductionType",
     "Department",
+    "DisplayAudit",
     "Employee",
     "EmploymentStatus",
     "EmploymentType",
