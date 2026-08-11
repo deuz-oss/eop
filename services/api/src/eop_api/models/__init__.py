@@ -13,6 +13,7 @@ from eop_api.models.department import Department
 from eop_api.models.employee import Employee
 from eop_api.models.employment_status import EmploymentStatus
 from eop_api.models.employment_type import EmploymentType
+from eop_api.models.field_attendance_event import FieldAttendanceEvent
 from eop_api.models.file_object import FileObject
 from eop_api.models.holiday import Holiday
 from eop_api.models.hr_employee import HrEmployee
@@ -66,6 +67,7 @@ __all__ = [
     "Employee",
     "EmploymentStatus",
     "EmploymentType",
+    "FieldAttendanceEvent",
     "FileObject",
     "Holiday",
     "HrEmployee",
