@@ -49,6 +49,7 @@ from eop_api.models.timesheet import Timesheet
 from eop_api.models.user import User
 from eop_api.models.user_role import user_roles
 from eop_api.models.visit import Visit
+from eop_api.models.visit_photo import VisitPhoto
 from eop_api.models.work_schedule import WorkSchedule
 
 __all__ = [
@@ -103,5 +104,6 @@ __all__ = [
     "User",
     "user_roles",
     "Visit",
+    "VisitPhoto",
     "WorkSchedule",
 ]
