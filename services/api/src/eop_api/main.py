@@ -58,6 +58,7 @@ from eop_api.api.targets import router as targets_router
 from eop_api.api.tasks import router as tasks_router
 from eop_api.api.teams import router as teams_router
 from eop_api.api.timesheets import router as timesheets_router
+from eop_api.api.visit_photos import router as visit_photos_router
 from eop_api.api.visits import router as visits_router
 from eop_api.api.work_schedules import router as work_schedules_router
 from eop_api.core.config import settings
@@ -162,6 +163,7 @@ app.include_router(missions_router, responses=PROBLEM_RESPONSES)
 app.include_router(competitor_activities_router, responses=PROBLEM_RESPONSES)
 app.include_router(posm_audits_router, responses=PROBLEM_RESPONSES)
 app.include_router(field_attendance_events_router, responses=PROBLEM_RESPONSES)
+app.include_router(visit_photos_router, responses=PROBLEM_RESPONSES)
 
 
 @app.get("/", tags=["Root"])
