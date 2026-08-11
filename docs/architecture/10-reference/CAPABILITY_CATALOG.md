@@ -70,6 +70,7 @@ Detailed implementation remains in the individual capability documents.
 | Competitor Activity | Implemented | Field Operations | — (capability decision only) |
 | POSM Audit | Implemented | Field Operations | — (capability decision only) |
 | Field Attendance | Implemented | Field Operations | — (capability decision only) |
+| Photo Evidence | Implemented | Field Operations | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -1178,6 +1179,46 @@ Route: `/field-attendance` (flat, tag `Field Attendance`) — dedicated, distinc
 
 ---
 
+# Photo Evidence
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`VisitPhoto`: a standalone child aggregate of `Visit` representing one uploaded photo attached to one Visit. Fields: `visit_id` (references `Visit`, `ON DELETE RESTRICT`), `file_object_id` (references `FileObject`, `ON DELETE RESTRICT`). Flat CRUD, no lifecycle/status field.
+
+`visit_id` is non-unique — many `VisitPhoto` records may reference the same `Visit`, the same cardinality as `CompetitorActivity`/`PosmAudit` (the deliberate opposite of `Survey`'s one-per-Visit shape). No duplicate-rejection logic — multiple photos per Visit are expected and permitted.
+
+Exactly two fields, no others — no caption, description, category, photo type, tags, coordinates, captured-at, device metadata, checksum, or AI/OCR/classification metadata. `FileObject` remains the sole source of file metadata (filename, content type, size, storage key, bucket) — reused completely unmodified, no new file entity, no new storage abstraction, no generic/polymorphic attachment framework.
+
+**Distinct from Field Attendance's selfie evidence, the existing HR/Payroll `AttendanceEvent`, and `Visit` itself:** Photo Evidence does not modify the `Visit` aggregate, does not perform biometric verification, face recognition, liveness detection, AI image analysis, GPS validation, geofencing, or fraud detection — it is a plain evidentiary photo reference, not a security/identity mechanism. No relationship to `Survey`, `CompetitorActivity`, `PosmAudit`, or `Mission`.
+
+---
+
+## Authorization
+
+Owner Only, evaluated against the resolved *parent* `Visit` — `VisitPhoto` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified (no new evaluator class), the same child-of-Owner-Only-parent pattern already established by `Survey`, `CompetitorActivity`, and `PosmAudit`.
+
+---
+
+## API
+
+Route: `/visit-photos` (flat, tag `Visit`) — mirrors the established flat-route precedent for repeatable children-of-a-parent; no nested-resource URL pattern exists elsewhere in the codebase. Supports plain list (scoped to the caller's own Visits) and paginated endpoints, with `visit_id` filtering available through the paginated endpoint.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/photo-evidence/photo-evidence-iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1363,6 +1404,7 @@ Business Capabilities
 | Competitor Activity | ✓ | ✓ | ✓ | Implemented |
 | POSM Audit | ✓ | ✓ | ✓ | Implemented |
 | Field Attendance | ✓ | ✓ | ✓ | Implemented |
+| Photo Evidence | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |
