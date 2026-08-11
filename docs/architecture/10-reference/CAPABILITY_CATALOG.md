@@ -71,6 +71,7 @@ Detailed implementation remains in the individual capability documents.
 | POSM Audit | Implemented | Field Operations | — (capability decision only) |
 | Field Attendance | Implemented | Field Operations | — (capability decision only) |
 | Photo Evidence | Implemented | Field Operations | — (capability decision only) |
+| Display Audit | Implemented | Field Operations | — (capability decision only) |
 | Permission Model | Deferred | Platform | Future ADR |
 | Policy Engine | Deferred | Platform | Future ADR |
 | Delegated Approval | Deferred | Approval | Future ADR |
@@ -1219,6 +1220,44 @@ Route: `/visit-photos` (flat, tag `Visit`) — mirrors the established flat-rout
 
 ---
 
+# Display Audit
+
+**Status**
+
+```
+Implemented
+```
+
+---
+
+## Purpose
+
+`DisplayAudit`: a repeatable display-compliance observation recorded against a `Visit`. Fields: `visit_id` (references `Visit`, `ON DELETE RESTRICT`), `display_area`, `observation`, `notes`. Flat CRUD, no lifecycle/status field — `observation` is free-text only, not a workflow status.
+
+`visit_id` is non-unique — many `DisplayAudit` records may reference the same `Visit`, the same cardinality as `CompetitorActivity`/`PosmAudit`/`VisitPhoto` (the deliberate opposite of `Survey`'s one-per-Visit shape). No duplicate-rejection logic — multiple display observations per Visit are expected and permitted.
+
+`display_area`/`observation` are free-text `String(255)`, no taxonomy or master-data table — **no Product/SKU relationship or dependency**. No `FileObject`/photo coupling (Photo Evidence remains its own separate capability, not duplicated here). No GPS/location (Field Attendance's domain). No scoring, compliance-percentage calculation, or approval/moderation workflow. No relationship to `Mission`, `Survey` (Survey's `display_compliant` is not modified or repurposed), `CompetitorActivity`, or `PosmAudit`. No Territory/Region/Area, analytics, AI, integration, or reporting.
+
+---
+
+## Authorization
+
+Owner Only, evaluated against the resolved *parent* `Visit` — `DisplayAudit` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified (no new evaluator class), the same child-of-Owner-Only-parent pattern already established by `Survey`, `CompetitorActivity`, `PosmAudit`, and `VisitPhoto`.
+
+---
+
+## API
+
+Route: `/display-audits` (flat, tag `Visit`) — mirrors the established flat-route precedent for repeatable children-of-a-parent; no nested-resource URL pattern exists elsewhere in the codebase. Supports plain list (scoped to the caller's own Visits) and paginated endpoints, with `visit_id` filtering available through the paginated endpoint.
+
+---
+
+## Governing Decision
+
+`docs/architecture/capabilities/display-audit/display-audit-iteration-1-scope-and-implementation-plan.md`
+
+---
+
 # Deferred Capabilities
 
 ---
@@ -1405,6 +1444,7 @@ Business Capabilities
 | POSM Audit | ✓ | ✓ | ✓ | Implemented |
 | Field Attendance | ✓ | ✓ | ✓ | Implemented |
 | Photo Evidence | ✓ | ✓ | ✓ | Implemented |
+| Display Audit | ✓ | ✓ | ✓ | Implemented |
 | Permission Model | ✗ | ✗ | ✗ | Deferred |
 | Policy Engine | ✗ | ✗ | ✗ | Deferred |
 | Delegated Approval | ✗ | ✗ | ✗ | Deferred |

@@ -30,6 +30,29 @@ For detailed decisions, refer to the related ADR or Capability Decision.
 
 ---
 
+# 2026-08-11 — Display Audit Iteration 1 Completed
+
+**Reference:**
+
+- PR #105
+- `docs/architecture/capabilities/display-audit/display-audit-iteration-1-scope-and-implementation-plan.md`
+
+**Capability:**
+
+Display Audit
+
+**Status:**
+
+Implemented
+
+---
+
+## Summary
+
+Implemented `DisplayAudit` as a repeatable Visit child aggregate: a display-compliance observation recorded against a `Visit`, fields `visit_id` (`ON DELETE RESTRICT`), `display_area`, `observation`, `notes`. `visit_id` is non-unique — many `DisplayAudit` records may reference the same `Visit`, the same cardinality as `CompetitorActivity`/`PosmAudit`/`VisitPhoto` (the deliberate opposite of `Survey`'s one-per-Visit shape); no duplicate-rejection logic, since multiple display observations per Visit are expected and permitted. Authorization is Owner Only, evaluated against the resolved parent `Visit` through the existing `VisitAuthorizationEvaluator`, reused completely unmodified — no new evaluator class, the same child-of-Owner-Only-parent pattern already established by `Survey`, `CompetitorActivity`, `PosmAudit`, and `VisitPhoto`. `display_area`/`observation` are free-text `String(255)`, no taxonomy table — **no Product/SKU relationship or dependency**. No `FileObject`/photo coupling (Photo Evidence remains its own separate capability). No GPS/location (Field Attendance's domain). No scoring, compliance-percentage calculation, or approval/moderation workflow. No relationship to `Mission`, `Survey` (Survey's `display_compliant` is not modified or repurposed), `CompetitorActivity`, or `PosmAudit`. Flat CRUD at `/display-audits`, mirroring the established flat-route precedent for repeatable children-of-a-parent, with `visit_id` filtering available through the paginated endpoint. This governance reconciliation is documentation-only and does not change production behavior.
+
+---
+
 # 2026-08-11 — Photo Evidence Iteration 1 Completed
 
 **Reference:**

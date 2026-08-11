@@ -91,6 +91,7 @@ Business Capability
 | POSM Audit | Implemented | Repeatable POSM observation attached to a `Visit` (`visit_id`, `posm_type`, `condition`, `notes`), non-unique `visit_id`, Owner Only auth via existing `VisitAuthorizationEvaluator` |
 | Field Attendance | Implemented | Standalone field check-in/check-out event (`employee_id`, `event_type`, `event_time`, `latitude`, `longitude`, `gps_accuracy_meters`, `selfie_file_id`), mandatory GPS + selfie evidence, distinct from HR/Payroll `AttendanceEvent`, Owner Only auth via existing `AttendanceAuthorizationEvaluator` |
 | Photo Evidence | Implemented | Standalone Visit child aggregate (`VisitPhoto`: `visit_id`, `file_object_id`), many-per-Visit, existing `FileObject` reused unmodified, Owner Only auth via existing `VisitAuthorizationEvaluator` |
+| Display Audit | Implemented | Repeatable display-compliance observation attached to a `Visit` (`DisplayAudit`: `visit_id`, `display_area`, `observation`, `notes`), many-per-Visit, no Product/SKU dependency, Owner Only auth via existing `VisitAuthorizationEvaluator` |
 | Permission Model | Deferred | Not introduced |
 | Policy Engine | Deferred | Not introduced |
 | Delegated Approval | Deferred | Not introduced |
@@ -937,6 +938,20 @@ Photo Evidence (Iteration 1): `VisitPhoto`, a standalone child aggregate of `Vis
 **Distinct from Field Attendance's selfie evidence, the existing HR/Payroll `AttendanceEvent`, and `Visit` itself:** no biometric verification, face recognition, liveness detection, AI image analysis, GPS validation, geofencing, or fraud detection — a plain evidentiary photo reference only. No relationship to `Survey`, `CompetitorActivity`, `PosmAudit`, or `Mission`.
 
 **Authorization:** Owner Only, evaluated against the resolved *parent* `Visit` — `VisitPhoto` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified, the same child-of-Owner-Only-parent pattern already established by `Survey`, `CompetitorActivity`, and `PosmAudit`.
+
+---
+
+## Display Audit
+
+**Status:** Implemented
+
+**Related:** `docs/architecture/capabilities/display-audit/display-audit-iteration-1-scope-and-implementation-plan.md`
+
+Display Audit (Iteration 1): `DisplayAudit`, a repeatable display-compliance observation recorded against a `Visit`. Fields: `visit_id` (references `Visit`, `ON DELETE RESTRICT`), `display_area`, `observation`, `notes`. `visit_id` is non-unique — many `DisplayAudit` records may reference the same `Visit`, the same cardinality as `CompetitorActivity`/`PosmAudit`/`VisitPhoto` (the deliberate opposite of `Survey`'s one-per-Visit shape). No duplicate-rejection logic. Flat CRUD, no lifecycle/status field — `observation` is free-text only, not a workflow status. Route: `/display-audits` (flat, tag `Visit`), mirroring the established flat-route precedent for repeatable children-of-a-parent (no nested-resource URL pattern exists elsewhere in the codebase). Supports plain list (scoped to the caller's own Visits) and paginated endpoints, with `visit_id` filtering available through the paginated endpoint.
+
+`display_area`/`observation` are free-text `String(255)`, no taxonomy or master-data table — **no Product/SKU relationship or dependency**. No `FileObject`/photo coupling (Photo Evidence remains its own separate capability, not duplicated here). No GPS/location (Field Attendance's domain). No scoring, compliance-percentage calculation, or approval/moderation workflow. No relationship to `Mission`, `Survey` (Survey's `display_compliant` is not modified or repurposed), `CompetitorActivity`, or `PosmAudit`. No Territory/Region/Area, analytics, AI, integration, or reporting.
+
+**Authorization:** Owner Only, evaluated against the resolved *parent* `Visit` — `DisplayAudit` has no `employee_id` column of its own. Reuses the existing `VisitAuthorizationEvaluator` completely unmodified, the same child-of-Owner-Only-parent pattern already established by `Survey`, `CompetitorActivity`, `PosmAudit`, and `VisitPhoto`.
 
 ---
 
