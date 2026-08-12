@@ -25,12 +25,8 @@ def upgrade() -> None:
     """Upgrade schema."""
     for table in _TABLES:
         op.add_column(table, sa.Column("approved_by", sa.Uuid(), nullable=True))
-        op.add_column(
-            table, sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True)
-        )
-        op.add_column(
-            table, sa.Column("rejection_reason", sa.String(length=1000), nullable=True)
-        )
+        op.add_column(table, sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True))
+        op.add_column(table, sa.Column("rejection_reason", sa.String(length=1000), nullable=True))
         op.create_foreign_key(
             f"fk_{table}_approved_by_users",
             table,
