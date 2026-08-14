@@ -216,9 +216,7 @@ async def test_update_rejects_missing_employee(
     leave_balance = await service.create(_create(employee_id))
 
     with pytest.raises(EmployeeNotFoundError):
-        await service.update(
-            leave_balance.id, LeaveBalanceUpdate(employee_id=uuid.uuid4())
-        )
+        await service.update(leave_balance.id, LeaveBalanceUpdate(employee_id=uuid.uuid4()))
 
 
 async def test_update_rejects_negative_used_days(

@@ -58,9 +58,7 @@ async def create_job_grade(
 
 
 @router.get("", response_model=list[JobGradeResponse])
-async def list_job_grades(
-    service: JobGradeServiceDep, _: CurrentUser
-) -> list[JobGradeResponse]:
+async def list_job_grades(service: JobGradeServiceDep, _: CurrentUser) -> list[JobGradeResponse]:
     job_grades = await service.list()
     return [JobGradeResponse.model_validate(job_grade) for job_grade in job_grades]
 

@@ -127,9 +127,7 @@ async def test_update_rejects_duplicate_name(service: RoleService):
 async def test_update_allows_unchanged_name(service: RoleService):
     role = await service.create(RoleCreate(name="admin", description="Before"))
 
-    updated = await service.update(
-        role.id, RoleUpdate(name="admin", description="After")
-    )
+    updated = await service.update(role.id, RoleUpdate(name="admin", description="After"))
 
     assert updated is not None
     assert updated.description == "After"

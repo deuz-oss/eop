@@ -188,9 +188,7 @@ class LeaveRequestService:
             uow.session.expunge(updated)
             return updated
 
-    async def delete(
-        self, leave_request_id: uuid.UUID, request_context: RequestContext
-    ) -> bool:
+    async def delete(self, leave_request_id: uuid.UUID, request_context: RequestContext) -> bool:
         async with self._uow_factory() as uow:
             repo = LeaveRequestRepository(uow.session)
             leave_request = await repo.get(leave_request_id)

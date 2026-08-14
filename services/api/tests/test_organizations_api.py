@@ -173,9 +173,7 @@ def test_list_organizations_paginated_search_and_pagination_together(client: Tes
         client.post("/organizations", json={"name": f"Open Org {i}"})
     client.post("/organizations", json={"name": "Closed Org"})
 
-    response = client.get(
-        "/organizations/paginated", params={"q": "open", "offset": 1, "limit": 2}
-    )
+    response = client.get("/organizations/paginated", params={"q": "open", "offset": 1, "limit": 2})
 
     assert response.status_code == 200
     body = response.json()

@@ -160,9 +160,7 @@ class HrEmployeeService:
             if not await EmploymentTypeRepository(uow.session).exists(data.employment_type_id):
                 raise EmploymentTypeNotFoundError(str(data.employment_type_id))
 
-            if not await EmploymentStatusRepository(uow.session).exists(
-                data.employment_status_id
-            ):
+            if not await EmploymentStatusRepository(uow.session).exists(data.employment_status_id):
                 raise EmploymentStatusNotFoundError(str(data.employment_status_id))
 
             if not await ShiftRepository(uow.session).exists(data.shift_id):
@@ -247,9 +245,7 @@ class HrEmployeeService:
             manager_id = values.get("manager_id", employee.manager_id)
             job_grade_id = values.get("job_grade_id", employee.job_grade_id)
             employment_type_id = values.get("employment_type_id", employee.employment_type_id)
-            employment_status_id = values.get(
-                "employment_status_id", employee.employment_status_id
-            )
+            employment_status_id = values.get("employment_status_id", employee.employment_status_id)
             shift_id = values.get("shift_id", employee.shift_id)
             employee_number = values.get("employee_number", employee.employee_number)
             email = values.get("email", employee.email)

@@ -110,9 +110,7 @@ def test_anonymous_request_current_user_id_is_none(client: TestClient):
     assert response.json()["user_id"] is None
 
 
-def test_user_id_contextvar_is_reset_after_request_completes(
-    client: TestClient, active_user: User
-):
+def test_user_id_contextvar_is_reset_after_request_completes(client: TestClient, active_user: User):
     token = _login(client)
 
     client.get("/__whoami", headers={"Authorization": f"Bearer {token}"})
@@ -125,9 +123,7 @@ def test_user_id_contextvar_does_not_leak_into_next_anonymous_request(
 ):
     token = _login(client)
 
-    authenticated_response = client.get(
-        "/__whoami", headers={"Authorization": f"Bearer {token}"}
-    )
+    authenticated_response = client.get("/__whoami", headers={"Authorization": f"Bearer {token}"})
     anonymous_response = client.get("/__whoami-anonymous")
 
     assert authenticated_response.json()["user_id"] == str(active_user.id)

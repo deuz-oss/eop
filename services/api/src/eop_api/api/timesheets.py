@@ -86,9 +86,7 @@ async def create_timesheet(
 
 
 @router.get("", response_model=list[TimesheetResponse])
-async def list_timesheets(
-    service: TimesheetServiceDep, _: CurrentUser
-) -> list[TimesheetResponse]:
+async def list_timesheets(service: TimesheetServiceDep, _: CurrentUser) -> list[TimesheetResponse]:
     timesheets = await service.list()
     return [TimesheetResponse.model_validate(item) for item in timesheets]
 

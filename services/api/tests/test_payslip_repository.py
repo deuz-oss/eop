@@ -97,9 +97,7 @@ async def employee_id(session: AsyncSession) -> uuid.UUID:
         code="HQ", name="HQ", location_type_id=location_type.id
     )
     job_grade = await JobGradeRepository(session).create(code="L1", name="Junior", level=1)
-    employment_type = await EmploymentTypeRepository(session).create(
-        code="FT", name="Full-Time"
-    )
+    employment_type = await EmploymentTypeRepository(session).create(code="FT", name="Full-Time")
     employment_status = await EmploymentStatusRepository(session).create(
         code="ACTIVE", name="Active"
     )

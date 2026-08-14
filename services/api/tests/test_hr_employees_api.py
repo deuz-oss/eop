@@ -621,9 +621,7 @@ def test_create_employee_rejects_missing_employment_status(
     assert response.status_code == 404
 
 
-def test_create_employee_rejects_missing_shift(
-    client: TestClient, user_headers: dict[str, str]
-):
+def test_create_employee_rejects_missing_shift(client: TestClient, user_headers: dict[str, str]):
     refs = _create_refs(client, user_headers)
 
     response = client.post(
@@ -1011,9 +1009,7 @@ def test_update_employee_rejects_missing_job_grade(
     assert response.status_code == 404
 
 
-def test_update_employee_changes_employment_type(
-    client: TestClient, user_headers: dict[str, str]
-):
+def test_update_employee_changes_employment_type(client: TestClient, user_headers: dict[str, str]):
     refs = _create_refs(client, user_headers)
     other_employment_type = _create_employment_type(client, user_headers, code="PT")
     created = _create_employee(client, user_headers, refs)

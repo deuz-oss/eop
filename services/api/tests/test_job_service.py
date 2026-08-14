@@ -81,9 +81,7 @@ async def test_enqueue_at_delegates_to_provider(service: JobService, provider: F
 
     job = await service.enqueue_at(run_at=run_at, name="report", payload=None)
 
-    assert provider.calls == [
-        ("enqueue_at", {"run_at": run_at, "name": "report", "payload": None})
-    ]
+    assert provider.calls == [("enqueue_at", {"run_at": run_at, "name": "report", "payload": None})]
     assert job.name == "report"
 
 

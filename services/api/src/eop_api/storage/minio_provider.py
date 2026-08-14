@@ -27,9 +27,7 @@ class MinIOStorageProvider(StorageProvider):
         secret_key: str,
         secure: bool = False,
     ) -> None:
-        self._client = Minio(
-            endpoint, access_key=access_key, secret_key=secret_key, secure=secure
-        )
+        self._client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
 
     async def _ensure_bucket(self, bucket: str) -> None:
         exists = await asyncio.to_thread(self._client.bucket_exists, bucket)
@@ -40,9 +38,7 @@ class MinIOStorageProvider(StorageProvider):
         self, *, bucket: str, key: str, data: BinaryIO, length: int, content_type: str
     ) -> None:
         await self._ensure_bucket(bucket)
-        await asyncio.to_thread(
-            self._client.put_object, bucket, key, data, length, content_type
-        )
+        await asyncio.to_thread(self._client.put_object, bucket, key, data, length, content_type)
 
     async def download(self, *, bucket: str, key: str) -> AsyncIterator[bytes]:
         try:

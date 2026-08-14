@@ -298,9 +298,7 @@ def _create_leave_balance(
 
 
 def test_create_leave_balance_requires_authentication(client: TestClient):
-    response = client.post(
-        "/hr/leave-balances", json=_leave_balance_payload(str(uuid.uuid4()))
-    )
+    response = client.post("/hr/leave-balances", json=_leave_balance_payload(str(uuid.uuid4())))
 
     assert response.status_code == 401
 
@@ -530,8 +528,7 @@ def test_delete_leave_balance(client: TestClient, user_headers: dict[str, str]):
 
     assert response.status_code == 204
     assert (
-        client.get(f"/hr/leave-balances/{created['id']}", headers=user_headers).status_code
-        == 404
+        client.get(f"/hr/leave-balances/{created['id']}", headers=user_headers).status_code == 404
     )
 
 

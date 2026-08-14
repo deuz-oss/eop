@@ -367,9 +367,7 @@ async def _overtime_request_id(
     return overtime_request.id
 
 
-async def _timesheet_id(
-    timesheet_service: TimesheetService, employee_id: uuid.UUID
-) -> uuid.UUID:
+async def _timesheet_id(timesheet_service: TimesheetService, employee_id: uuid.UUID) -> uuid.UUID:
     timesheet = await timesheet_service.create(
         TimesheetCreate(
             employee_id=employee_id, start_date=date(2026, 2, 10), end_date=date(2026, 2, 16)

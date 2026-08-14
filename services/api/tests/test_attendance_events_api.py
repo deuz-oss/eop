@@ -364,9 +364,7 @@ def test_get_attendance_event_requires_authentication(client: TestClient):
 
 
 def test_update_attendance_event_requires_authentication(client: TestClient):
-    response = client.put(
-        f"/hr/attendance-events/{uuid.uuid4()}", json={"remarks": "Corrected"}
-    )
+    response = client.put(f"/hr/attendance-events/{uuid.uuid4()}", json={"remarks": "Corrected"})
 
     assert response.status_code == 401
 
@@ -380,9 +378,7 @@ def test_delete_attendance_event_requires_authentication(client: TestClient):
 def test_create_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
 
-    body = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    body = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
 
     assert body["employee_id"] == employee["id"]
     assert body["shift_id"] == employee["shift_id"]
@@ -427,9 +423,7 @@ def test_create_attendance_event_rejects_invalid_event_type(
 
     response = client.post(
         "/hr/attendance-events",
-        json=_attendance_event_payload(
-            employee["id"], employee["shift_id"], event_type="INVALID"
-        ),
+        json=_attendance_event_payload(employee["id"], employee["shift_id"], event_type="INVALID"),
         headers=user_headers,
     )
 
@@ -476,9 +470,7 @@ def test_create_attendance_event_forbidden_for_non_owner(
 
 def test_get_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    created = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
 
     response = client.get(f"/hr/attendance-events/{created['id']}", headers=user_headers)
 
@@ -504,9 +496,7 @@ def test_get_attendance_event_forbidden(
     other_headers: dict[str, str],
 ):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    created = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
     _create_employee(
         client,
         user_headers,
@@ -695,9 +685,7 @@ def test_list_attendance_events_paginated_filter_by_employee_id_is_ignored(
         full_name="Bob Smith",
         user_id=str(other.id),
     )
-    created = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
     _create_attendance_event(
         client, other_headers, other_employee["id"], other_employee["shift_id"]
     )
@@ -716,9 +704,7 @@ def test_list_attendance_events_paginated_filter_by_employee_id_is_ignored(
 
 def test_update_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    created = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
 
     response = client.put(
         f"/hr/attendance-events/{created['id']}",
@@ -748,9 +734,7 @@ def test_update_attendance_event_rejects_missing_employee(
     client: TestClient, user: User, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    created = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
 
     response = client.put(
         f"/hr/attendance-events/{created['id']}",
@@ -765,9 +749,7 @@ def test_update_attendance_event_rejects_missing_shift(
     client: TestClient, user: User, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    created = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
 
     response = client.put(
         f"/hr/attendance-events/{created['id']}",
@@ -786,9 +768,7 @@ def test_update_attendance_event_forbidden(
     other_headers: dict[str, str],
 ):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    created = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
     _create_employee(
         client,
         user_headers,
@@ -811,9 +791,7 @@ def test_update_attendance_event_forbidden(
 
 def test_delete_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    created = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
 
     response = client.delete(f"/hr/attendance-events/{created['id']}", headers=user_headers)
 
@@ -842,9 +820,7 @@ def test_delete_attendance_event_forbidden(
     other_headers: dict[str, str],
 ):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    created = _create_attendance_event(
-        client, user_headers, employee["id"], employee["shift_id"]
-    )
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
     _create_employee(
         client,
         user_headers,

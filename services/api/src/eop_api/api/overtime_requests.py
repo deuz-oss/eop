@@ -33,9 +33,7 @@ def get_overtime_request_service() -> OvertimeRequestService:
     return OvertimeRequestService()
 
 
-OvertimeRequestServiceDep = Annotated[
-    OvertimeRequestService, Depends(get_overtime_request_service)
-]
+OvertimeRequestServiceDep = Annotated[OvertimeRequestService, Depends(get_overtime_request_service)]
 
 
 def get_approval_service() -> ApprovalService:

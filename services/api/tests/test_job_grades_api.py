@@ -215,9 +215,7 @@ def test_list_job_grades_paginated_custom_offset(client: TestClient, user_header
     for i in range(5):
         _create_job_grade(client, user_headers, code=f"L{i}", name=f"Grade {i}", level=i)
 
-    response = client.get(
-        "/hr/job-grades/paginated", headers=user_headers, params={"offset": 2}
-    )
+    response = client.get("/hr/job-grades/paginated", headers=user_headers, params={"offset": 2})
 
     assert response.status_code == 200
     body = response.json()
@@ -226,15 +224,11 @@ def test_list_job_grades_paginated_custom_offset(client: TestClient, user_header
     assert len(body["items"]) == 3
 
 
-def test_list_job_grades_paginated_search_by_name(
-    client: TestClient, user_headers: dict[str, str]
-):
+def test_list_job_grades_paginated_search_by_name(client: TestClient, user_headers: dict[str, str]):
     _create_job_grade(client, user_headers, code="L1", name="Junior Engineer", level=1)
     _create_job_grade(client, user_headers, code="L2", name="Senior Manager", level=2)
 
-    response = client.get(
-        "/hr/job-grades/paginated", headers=user_headers, params={"q": "junior"}
-    )
+    response = client.get("/hr/job-grades/paginated", headers=user_headers, params={"q": "junior"})
 
     assert response.status_code == 200
     body = response.json()
@@ -242,15 +236,11 @@ def test_list_job_grades_paginated_search_by_name(
     assert body["items"][0]["name"] == "Junior Engineer"
 
 
-def test_list_job_grades_paginated_search_by_code(
-    client: TestClient, user_headers: dict[str, str]
-):
+def test_list_job_grades_paginated_search_by_code(client: TestClient, user_headers: dict[str, str]):
     _create_job_grade(client, user_headers, code="ENG-L1", name="Junior", level=1)
     _create_job_grade(client, user_headers, code="MGR-L2", name="Senior", level=2)
 
-    response = client.get(
-        "/hr/job-grades/paginated", headers=user_headers, params={"q": "eng"}
-    )
+    response = client.get("/hr/job-grades/paginated", headers=user_headers, params={"q": "eng"})
 
     assert response.status_code == 200
     body = response.json()
@@ -264,9 +254,7 @@ def test_list_job_grades_paginated_filter_by_level(
     job_grade = _create_job_grade(client, user_headers, code="L1", name="Junior", level=1)
     _create_job_grade(client, user_headers, code="L2", name="Senior", level=2)
 
-    response = client.get(
-        "/hr/job-grades/paginated", headers=user_headers, params={"level": 1}
-    )
+    response = client.get("/hr/job-grades/paginated", headers=user_headers, params={"level": 1})
 
     assert response.status_code == 200
     body = response.json()
@@ -320,9 +308,7 @@ def test_update_job_grade_rejects_duplicate_level(client: TestClient, user_heade
     _create_job_grade(client, user_headers, code="L1", level=1)
     other = _create_job_grade(client, user_headers, code="L2", level=2)
 
-    response = client.put(
-        f"/hr/job-grades/{other['id']}", json={"level": 1}, headers=user_headers
-    )
+    response = client.put(f"/hr/job-grades/{other['id']}", json={"level": 1}, headers=user_headers)
 
     assert response.status_code == 409
 
@@ -333,9 +319,7 @@ def test_delete_job_grade(client: TestClient, user_headers: dict[str, str]):
     response = client.delete(f"/hr/job-grades/{created['id']}", headers=user_headers)
 
     assert response.status_code == 204
-    assert (
-        client.get(f"/hr/job-grades/{created['id']}", headers=user_headers).status_code == 404
-    )
+    assert client.get(f"/hr/job-grades/{created['id']}", headers=user_headers).status_code == 404
 
 
 def test_delete_job_grade_not_found(client: TestClient, user_headers: dict[str, str]):

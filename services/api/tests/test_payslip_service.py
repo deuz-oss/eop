@@ -154,9 +154,7 @@ async def other_employee_id(session_factory: Callable[[], AsyncSession]) -> uuid
 @pytest.fixture
 async def payroll_run_id(session_factory: Callable[[], AsyncSession]) -> uuid.UUID:
     async with session_factory() as session:
-        payroll_run = await PayrollRunRepository(session).create(
-            code="RUN-001", name="First Run"
-        )
+        payroll_run = await PayrollRunRepository(session).create(code="RUN-001", name="First Run")
         await session.commit()
         return payroll_run.id
 
@@ -236,16 +234,12 @@ async def test_create_without_context_skips_authorization(
     assert payslip.employee_id == employee_id
 
 
-async def test_create_rejects_missing_employee(
-    service: PayslipService, payroll_run_id: uuid.UUID
-):
+async def test_create_rejects_missing_employee(service: PayslipService, payroll_run_id: uuid.UUID):
     with pytest.raises(EmployeeNotFoundError):
         await service.create(_create(uuid.uuid4(), payroll_run_id))
 
 
-async def test_create_rejects_missing_payroll_run(
-    service: PayslipService, employee_id: uuid.UUID
-):
+async def test_create_rejects_missing_payroll_run(service: PayslipService, employee_id: uuid.UUID):
     with pytest.raises(PayrollRunNotFoundError):
         await service.create(_create(employee_id, uuid.uuid4()))
 

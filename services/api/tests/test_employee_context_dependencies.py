@@ -197,9 +197,7 @@ def test_employee_context_rejects_anonymous(client: TestClient):
     assert response.status_code == 401
 
 
-def test_request_context_carries_user_and_employee_context(
-    client: TestClient, linked_user: User
-):
+def test_request_context_carries_user_and_employee_context(client: TestClient, linked_user: User):
     token = create_access_token(subject=str(linked_user.id))
 
     response = client.get("/__request_context", headers={"Authorization": f"Bearer {token}"})

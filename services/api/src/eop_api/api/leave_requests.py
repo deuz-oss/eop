@@ -117,9 +117,7 @@ async def get_leave_request(
     except LeaveAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if leave_request is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
     return LeaveRequestResponse.model_validate(leave_request)
 
 
@@ -144,9 +142,7 @@ async def update_leave_request(
             detail="end_date must not be before start_date",
         ) from exc
     if leave_request is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
     return LeaveRequestResponse.model_validate(leave_request)
 
 
@@ -161,9 +157,7 @@ async def delete_leave_request(
     except LeaveAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
 
 
 @router.post("/{leave_request_id}/approve", response_model=LeaveRequestResponse)
@@ -179,9 +173,7 @@ async def approve_leave_request(
     except InvalidApprovalStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if leave_request is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
     return LeaveRequestResponse.model_validate(leave_request)
 
 
@@ -201,7 +193,5 @@ async def reject_leave_request(
     except InvalidApprovalStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if leave_request is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
     return LeaveRequestResponse.model_validate(leave_request)
