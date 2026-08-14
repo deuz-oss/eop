@@ -363,9 +363,7 @@ def test_get_reconciliation_employee_not_found(client: TestClient, user_headers:
     assert response.status_code == 404
 
 
-def test_get_reconciliation_absent_when_no_facts(
-    client: TestClient, user_headers: dict[str, str]
-):
+def test_get_reconciliation_absent_when_no_facts(client: TestClient, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers)
 
     response = client.get(

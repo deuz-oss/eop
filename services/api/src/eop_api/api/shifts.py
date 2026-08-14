@@ -72,9 +72,7 @@ async def list_shifts_paginated(
 
 
 @router.get("/{shift_id}", response_model=ShiftResponse)
-async def get_shift(
-    shift_id: uuid.UUID, service: ShiftServiceDep, _: CurrentUser
-) -> ShiftResponse:
+async def get_shift(shift_id: uuid.UUID, service: ShiftServiceDep, _: CurrentUser) -> ShiftResponse:
     shift = await service.get(shift_id)
     if shift is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found")

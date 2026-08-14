@@ -28,9 +28,7 @@ def get_attendance_event_service() -> AttendanceEventService:
     return AttendanceEventService()
 
 
-AttendanceEventServiceDep = Annotated[
-    AttendanceEventService, Depends(get_attendance_event_service)
-]
+AttendanceEventServiceDep = Annotated[AttendanceEventService, Depends(get_attendance_event_service)]
 
 
 def get_attendance_event_filters(

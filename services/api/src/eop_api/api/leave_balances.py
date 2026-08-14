@@ -94,9 +94,7 @@ async def get_leave_balance(
 ) -> LeaveBalanceResponse:
     leave_balance = await service.get(leave_balance_id)
     if leave_balance is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Leave balance not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave balance not found")
     return LeaveBalanceResponse.model_validate(leave_balance)
 
 
@@ -119,9 +117,7 @@ async def update_leave_balance(
             detail="allocated_days, used_days, and remaining_days must be >= 0",
         ) from exc
     if leave_balance is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Leave balance not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave balance not found")
     return LeaveBalanceResponse.model_validate(leave_balance)
 
 
@@ -131,6 +127,4 @@ async def delete_leave_balance(
 ) -> None:
     deleted = await service.delete(leave_balance_id)
     if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Leave balance not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave balance not found")

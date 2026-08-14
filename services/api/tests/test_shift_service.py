@@ -153,9 +153,7 @@ async def test_update_rejects_equal_start_and_end_time(service: ShiftService):
     shift = await service.create(_create(start_time=time(9, 0), end_time=time(17, 0)))
 
     with pytest.raises(InvalidShiftTimeError):
-        await service.update(
-            shift.id, ShiftUpdate(start_time=time(12, 0), end_time=time(12, 0))
-        )
+        await service.update(shift.id, ShiftUpdate(start_time=time(12, 0), end_time=time(12, 0)))
 
 
 async def test_update_rejects_negative_break_duration(service: ShiftService):

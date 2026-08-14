@@ -133,9 +133,7 @@ async def test_get_current_user_rejects_invalid_token(service: AuthService):
         await service.get_current_user("not-a-valid-token")
 
 
-async def test_get_current_user_rejects_inactive_user(
-    service: AuthService, inactive_user: User
-):
+async def test_get_current_user_rejects_inactive_user(service: AuthService, inactive_user: User):
     token = create_access_token(subject=str(inactive_user.id))
 
     with pytest.raises(InvalidTokenError):

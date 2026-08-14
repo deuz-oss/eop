@@ -275,9 +275,7 @@ async def test_create_persists_employment_type_id(
     assert employee.employment_type_id == employee_kwargs["employment_type_id"]
 
 
-async def test_get_retrieves_employment_type_id(
-    repo: HrEmployeeRepository, employee_kwargs: dict
-):
+async def test_get_retrieves_employment_type_id(repo: HrEmployeeRepository, employee_kwargs: dict):
     employee = await repo.create(
         employee_number="EMP-1",
         first_name="Ada",

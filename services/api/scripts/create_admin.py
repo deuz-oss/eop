@@ -96,9 +96,7 @@ async def create_admin(password: str) -> None:
 
         role = await role_repo.get_by_name(ADMIN_ROLE_NAME)
         if role is None:
-            role = await role_repo.create(
-                name=ADMIN_ROLE_NAME, description="Full system access"
-            )
+            role = await role_repo.create(name=ADMIN_ROLE_NAME, description="Full system access")
             print(f"Created role: {ADMIN_ROLE_NAME}")
         else:
             print(f"Role already exists: {ADMIN_ROLE_NAME}")

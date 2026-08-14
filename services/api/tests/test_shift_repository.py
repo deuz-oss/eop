@@ -81,9 +81,7 @@ async def test_list_returns_created(repo: ShiftRepository):
     await repo.create(
         code="MORNING", name="Morning Shift", start_time=time(9, 0), end_time=time(17, 0)
     )
-    await repo.create(
-        code="NIGHT", name="Night Shift", start_time=time(22, 0), end_time=time(6, 0)
-    )
+    await repo.create(code="NIGHT", name="Night Shift", start_time=time(22, 0), end_time=time(6, 0))
 
     items = await repo.list()
 
@@ -164,9 +162,7 @@ async def test_paginate_search_returns_matching_rows_by_name(repo: ShiftReposito
     await repo.create(
         code="MORNING", name="Morning Shift", start_time=time(9, 0), end_time=time(17, 0)
     )
-    await repo.create(
-        code="NIGHT", name="Night Shift", start_time=time(22, 0), end_time=time(6, 0)
-    )
+    await repo.create(code="NIGHT", name="Night Shift", start_time=time(22, 0), end_time=time(6, 0))
 
     page = await repo.paginate(search=SearchParams(q="morning"))
 
@@ -175,9 +171,7 @@ async def test_paginate_search_returns_matching_rows_by_name(repo: ShiftReposito
 
 
 async def test_paginate_search_returns_matching_rows_by_code(repo: ShiftRepository):
-    await repo.create(
-        code="MORNING-01", name="Early", start_time=time(9, 0), end_time=time(17, 0)
-    )
+    await repo.create(code="MORNING-01", name="Early", start_time=time(9, 0), end_time=time(17, 0))
     await repo.create(code="NIGHT-01", name="Late", start_time=time(22, 0), end_time=time(6, 0))
 
     page = await repo.paginate(search=SearchParams(q="morning"))
@@ -190,9 +184,7 @@ async def test_paginate_no_search_returns_all_rows(repo: ShiftRepository):
     await repo.create(
         code="MORNING", name="Morning Shift", start_time=time(9, 0), end_time=time(17, 0)
     )
-    await repo.create(
-        code="NIGHT", name="Night Shift", start_time=time(22, 0), end_time=time(6, 0)
-    )
+    await repo.create(code="NIGHT", name="Night Shift", start_time=time(22, 0), end_time=time(6, 0))
 
     page = await repo.paginate(search=None)
 

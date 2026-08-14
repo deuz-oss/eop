@@ -128,9 +128,7 @@ def test_create_task_rejects_blank_title(client: TestClient, project_id: str):
 
 
 def test_create_task_rejects_missing_project(client: TestClient):
-    response = client.post(
-        "/tasks", json={"project_id": str(uuid.uuid4()), "title": "Orphan"}
-    )
+    response = client.post("/tasks", json={"project_id": str(uuid.uuid4()), "title": "Orphan"})
 
     assert response.status_code == 404
 
@@ -233,9 +231,7 @@ def test_update_task_rejects_organization_mismatch(
 ):
     created = client.post("/tasks", json={"project_id": project_id, "title": "Task"}).json()
 
-    response = client.patch(
-        f"/tasks/{created['id']}", json={"assignee_id": other_org_employee_id}
-    )
+    response = client.patch(f"/tasks/{created['id']}", json={"assignee_id": other_org_employee_id})
 
     assert response.status_code == 409
 

@@ -164,18 +164,14 @@ async def test_create_rejects_end_time_before_start_time(
     service: OvertimeRequestService, employee_id: uuid.UUID
 ):
     with pytest.raises(InvalidOvertimeTimeRangeError):
-        await service.create(
-            _create(employee_id, start_time=time(20, 0), end_time=time(18, 0))
-        )
+        await service.create(_create(employee_id, start_time=time(20, 0), end_time=time(18, 0)))
 
 
 async def test_create_rejects_equal_start_and_end_time(
     service: OvertimeRequestService, employee_id: uuid.UUID
 ):
     with pytest.raises(InvalidOvertimeTimeRangeError):
-        await service.create(
-            _create(employee_id, start_time=time(18, 0), end_time=time(18, 0))
-        )
+        await service.create(_create(employee_id, start_time=time(18, 0), end_time=time(18, 0)))
 
 
 async def test_get_missing_returns_none(service: OvertimeRequestService):
@@ -188,26 +184,20 @@ async def test_list_returns_created(service: OvertimeRequestService, employee_id
 
     items = await service.list()
 
-    assert {date(2026, 2, 10), date(2026, 3, 1)}.issubset(
-        {item.overtime_date for item in items}
-    )
+    assert {date(2026, 2, 10), date(2026, 3, 1)}.issubset({item.overtime_date for item in items})
 
 
 async def test_update_existing(service: OvertimeRequestService, employee_id: uuid.UUID):
     overtime_request = await service.create(_create(employee_id))
 
-    updated = await service.update(
-        overtime_request.id, OvertimeRequestUpdate(status="approved")
-    )
+    updated = await service.update(overtime_request.id, OvertimeRequestUpdate(status="approved"))
 
     assert updated is not None
     assert updated.status == "approved"
 
 
 async def test_update_missing_returns_none(service: OvertimeRequestService):
-    assert (
-        await service.update(uuid.uuid4(), OvertimeRequestUpdate(status="approved")) is None
-    )
+    assert await service.update(uuid.uuid4(), OvertimeRequestUpdate(status="approved")) is None
 
 
 async def test_update_rejects_missing_employee(
@@ -216,9 +206,7 @@ async def test_update_rejects_missing_employee(
     overtime_request = await service.create(_create(employee_id))
 
     with pytest.raises(EmployeeNotFoundError):
-        await service.update(
-            overtime_request.id, OvertimeRequestUpdate(employee_id=uuid.uuid4())
-        )
+        await service.update(overtime_request.id, OvertimeRequestUpdate(employee_id=uuid.uuid4()))
 
 
 async def test_update_rejects_end_time_before_start_time(
@@ -227,9 +215,7 @@ async def test_update_rejects_end_time_before_start_time(
     overtime_request = await service.create(_create(employee_id))
 
     with pytest.raises(InvalidOvertimeTimeRangeError):
-        await service.update(
-            overtime_request.id, OvertimeRequestUpdate(end_time=time(17, 0))
-        )
+        await service.update(overtime_request.id, OvertimeRequestUpdate(end_time=time(17, 0)))
 
 
 async def test_update_partial_payload_validated_against_effective_start_time(
@@ -242,9 +228,7 @@ async def test_update_partial_payload_validated_against_effective_start_time(
     )
 
     with pytest.raises(InvalidOvertimeTimeRangeError):
-        await service.update(
-            overtime_request.id, OvertimeRequestUpdate(end_time=time(17, 0))
-        )
+        await service.update(overtime_request.id, OvertimeRequestUpdate(end_time=time(17, 0)))
 
 
 async def test_delete_existing(service: OvertimeRequestService, employee_id: uuid.UUID):

@@ -242,9 +242,7 @@ def test_list_shifts(client: TestClient, user_headers: dict[str, str]):
     assert {"Morning Shift", "Night Shift"}.issubset(names)
 
 
-def test_list_shifts_paginated_default_pagination(
-    client: TestClient, user_headers: dict[str, str]
-):
+def test_list_shifts_paginated_default_pagination(client: TestClient, user_headers: dict[str, str]):
     for i in range(3):
         _create_shift(client, user_headers, code=f"S{i}", name=f"Shift {i}")
 
@@ -282,9 +280,7 @@ def test_list_shifts_paginated_search_by_name(client: TestClient, user_headers: 
         end_time="06:00:00",
     )
 
-    response = client.get(
-        "/hr/shifts/paginated", headers=user_headers, params={"q": "morning"}
-    )
+    response = client.get("/hr/shifts/paginated", headers=user_headers, params={"q": "morning"})
 
     assert response.status_code == 200
     body = response.json()
@@ -303,9 +299,7 @@ def test_list_shifts_paginated_search_by_code(client: TestClient, user_headers: 
         end_time="06:00:00",
     )
 
-    response = client.get(
-        "/hr/shifts/paginated", headers=user_headers, params={"q": "morning"}
-    )
+    response = client.get("/hr/shifts/paginated", headers=user_headers, params={"q": "morning"})
 
     assert response.status_code == 200
     body = response.json()

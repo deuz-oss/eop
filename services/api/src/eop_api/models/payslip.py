@@ -47,9 +47,7 @@ class Payslip(BaseEntity):
     payroll_run_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("payroll_runs.id", ondelete="RESTRICT"),
     )
-    gross_salary_amount: Mapped[Decimal | None] = mapped_column(
-        Numeric(14, 2), default=None
-    )
+    gross_salary_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
     gross_salary_currency: Mapped[str | None] = mapped_column(String(3), default=None)
     net_salary_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), default=None)
     net_salary_currency: Mapped[str | None] = mapped_column(String(3), default=None)

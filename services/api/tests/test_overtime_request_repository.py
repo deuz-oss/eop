@@ -172,9 +172,7 @@ async def test_list_returns_created(repo: OvertimeRequestRepository, employee_id
 
     items = await repo.list()
 
-    assert {date(2026, 2, 10), date(2026, 3, 1)}.issubset(
-        {item.overtime_date for item in items}
-    )
+    assert {date(2026, 2, 10), date(2026, 3, 1)}.issubset({item.overtime_date for item in items})
 
 
 async def test_get_by_employee_returns_only_that_employees_requests(
@@ -379,9 +377,7 @@ async def test_paginate_no_search_returns_all_rows(
     assert page.total == 2
 
 
-async def test_paginate_filters_by_status(
-    repo: OvertimeRequestRepository, employee_id: uuid.UUID
-):
+async def test_paginate_filters_by_status(repo: OvertimeRequestRepository, employee_id: uuid.UUID):
     approved = await repo.create(
         employee_id=employee_id,
         overtime_date=date(2026, 2, 10),
@@ -435,9 +431,7 @@ async def test_paginate_filters_by_overtime_date(
         end_time=time(20, 0),
     )
 
-    page = await repo.paginate(
-        filters=FilterParams(values={"overtime_date": date(2026, 2, 10)})
-    )
+    page = await repo.paginate(filters=FilterParams(values={"overtime_date": date(2026, 2, 10)}))
 
     assert page.total == 1
     assert page.items[0].id == matching.id

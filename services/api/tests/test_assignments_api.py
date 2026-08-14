@@ -349,4 +349,3 @@ def test_delete_assignment_not_found(client: TestClient):
     response = client.delete(f"/assignments/{uuid.uuid4()}")
 
     assert response.status_code == 404
-

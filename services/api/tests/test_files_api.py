@@ -200,9 +200,7 @@ def test_download_returns_the_uploaded_bytes(client: TestClient, user_headers: d
 
 
 def test_download_missing_returns_404(client: TestClient, user_headers: dict[str, str]):
-    response = client.get(
-        "/files/00000000-0000-0000-0000-000000000000", headers=user_headers
-    )
+    response = client.get("/files/00000000-0000-0000-0000-000000000000", headers=user_headers)
 
     assert response.status_code == 404
 
@@ -224,8 +222,6 @@ def test_delete_removes_metadata_and_binary(
 
 
 def test_delete_missing_returns_404(client: TestClient, user_headers: dict[str, str]):
-    response = client.delete(
-        "/files/00000000-0000-0000-0000-000000000000", headers=user_headers
-    )
+    response = client.delete("/files/00000000-0000-0000-0000-000000000000", headers=user_headers)
 
     assert response.status_code == 404

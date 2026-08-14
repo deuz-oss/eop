@@ -444,9 +444,7 @@ def test_create_overtime_request_rejects_end_time_before_start_time(
 
     response = client.post(
         "/hr/overtime-requests",
-        json=_overtime_request_payload(
-            employee["id"], start_time="20:00:00", end_time="18:00:00"
-        ),
+        json=_overtime_request_payload(employee["id"], start_time="20:00:00", end_time="18:00:00"),
         headers=user_headers,
     )
 
@@ -524,9 +522,7 @@ def test_list_overtime_requests_paginated_search_by_reason(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
-    _create_overtime_request(
-        client, user_headers, employee["id"], reason="Quarter-end close"
-    )
+    _create_overtime_request(client, user_headers, employee["id"], reason="Quarter-end close")
     _create_overtime_request(
         client,
         user_headers,
@@ -662,9 +658,7 @@ def test_approve_overtime_request_requires_authentication(client: TestClient):
 
 
 def test_reject_overtime_request_requires_authentication(client: TestClient):
-    response = client.post(
-        f"/hr/overtime-requests/{uuid.uuid4()}/reject", json={"reason": "No"}
-    )
+    response = client.post(f"/hr/overtime-requests/{uuid.uuid4()}/reject", json={"reason": "No"})
 
     assert response.status_code == 401
 
@@ -797,15 +791,11 @@ def test_approve_overtime_request_forbidden_for_non_manager(
     )
     created = _create_overtime_request(client, user_headers, requester["id"])
 
-    response = client.post(
-        f"/hr/overtime-requests/{created['id']}/approve", headers=other_headers
-    )
+    response = client.post(f"/hr/overtime-requests/{created['id']}/approve", headers=other_headers)
 
     assert response.status_code == 403
     assert (
-        client.get(f"/hr/overtime-requests/{created['id']}", headers=user_headers).json()[
-            "status"
-        ]
+        client.get(f"/hr/overtime-requests/{created['id']}", headers=user_headers).json()["status"]
         == "pending"
     )
 
@@ -838,8 +828,6 @@ def test_reject_overtime_request_forbidden_for_non_manager(
 
     assert response.status_code == 403
     assert (
-        client.get(f"/hr/overtime-requests/{created['id']}", headers=user_headers).json()[
-            "status"
-        ]
+        client.get(f"/hr/overtime-requests/{created['id']}", headers=user_headers).json()["status"]
         == "pending"
     )

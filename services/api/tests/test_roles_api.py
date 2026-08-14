@@ -250,9 +250,7 @@ def test_assign_role(
 ):
     created = client.post("/roles", json={"name": "billing"}, headers=admin_headers).json()
 
-    response = client.post(
-        f"/roles/{created['id']}/users/{member_user.id}", headers=admin_headers
-    )
+    response = client.post(f"/roles/{created['id']}/users/{member_user.id}", headers=admin_headers)
 
     assert response.status_code == 204
 
@@ -263,9 +261,7 @@ def test_assign_role_rejects_duplicate(
     created = client.post("/roles", json={"name": "billing"}, headers=admin_headers).json()
     client.post(f"/roles/{created['id']}/users/{member_user.id}", headers=admin_headers)
 
-    response = client.post(
-        f"/roles/{created['id']}/users/{member_user.id}", headers=admin_headers
-    )
+    response = client.post(f"/roles/{created['id']}/users/{member_user.id}", headers=admin_headers)
 
     assert response.status_code == 409
 
@@ -273,9 +269,7 @@ def test_assign_role_rejects_duplicate(
 def test_assign_role_rejects_missing_role(
     client: TestClient, admin_headers: dict[str, str], member_user: User
 ):
-    response = client.post(
-        f"/roles/{uuid.uuid4()}/users/{member_user.id}", headers=admin_headers
-    )
+    response = client.post(f"/roles/{uuid.uuid4()}/users/{member_user.id}", headers=admin_headers)
 
     assert response.status_code == 404
 
@@ -283,9 +277,7 @@ def test_assign_role_rejects_missing_role(
 def test_assign_role_rejects_missing_user(client: TestClient, admin_headers: dict[str, str]):
     created = client.post("/roles", json={"name": "billing"}, headers=admin_headers).json()
 
-    response = client.post(
-        f"/roles/{created['id']}/users/{uuid.uuid4()}", headers=admin_headers
-    )
+    response = client.post(f"/roles/{created['id']}/users/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
 
@@ -298,9 +290,7 @@ def test_assign_role_rejects_non_admin(
 ):
     created = client.post("/roles", json={"name": "billing"}, headers=admin_headers).json()
 
-    response = client.post(
-        f"/roles/{created['id']}/users/{member_user.id}", headers=member_headers
-    )
+    response = client.post(f"/roles/{created['id']}/users/{member_user.id}", headers=member_headers)
 
     assert response.status_code == 403
 

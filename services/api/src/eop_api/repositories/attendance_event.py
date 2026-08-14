@@ -27,9 +27,7 @@ class AttendanceEventRepository(BaseRepository[AttendanceEvent]):
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, AttendanceEvent)
 
-    async def exists_between(
-        self, employee_id: uuid.UUID, start: datetime, end: datetime
-    ) -> bool:
+    async def exists_between(self, employee_id: uuid.UUID, start: datetime, end: datetime) -> bool:
         """Whether any `AttendanceEvent` falls within `[start, end]` for `employee_id`.
 
         Single-table, same-model query only -- no join against any other

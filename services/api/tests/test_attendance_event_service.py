@@ -202,9 +202,7 @@ def _request_context(employee_id: uuid.UUID) -> RequestContext:
     return RequestContext(user=user, employee_context=EmployeeContext(user=user, employee=employee))
 
 
-def _create(
-    employee_id: uuid.UUID, shift_id: uuid.UUID, **overrides
-) -> AttendanceEventCreate:
+def _create(employee_id: uuid.UUID, shift_id: uuid.UUID, **overrides) -> AttendanceEventCreate:
     values = {
         "employee_id": employee_id,
         "shift_id": shift_id,
@@ -235,18 +233,14 @@ async def test_create_rejects_missing_employee(
     service: AttendanceEventService, shift_id: uuid.UUID
 ):
     with pytest.raises(EmployeeNotFoundError):
-        await service.create(
-            _create(uuid.uuid4(), shift_id), _request_context(uuid.uuid4())
-        )
+        await service.create(_create(uuid.uuid4(), shift_id), _request_context(uuid.uuid4()))
 
 
 async def test_create_rejects_missing_shift(
     service: AttendanceEventService, employee_id: uuid.UUID
 ):
     with pytest.raises(ShiftNotFoundError):
-        await service.create(
-            _create(employee_id, uuid.uuid4()), _request_context(employee_id)
-        )
+        await service.create(_create(employee_id, uuid.uuid4()), _request_context(employee_id))
 
 
 async def test_create_denied_for_non_owner(
@@ -257,14 +251,10 @@ async def test_create_denied_for_non_owner(
 ):
     """`employee_id` on the payload does not belong to the calling employee."""
     with pytest.raises(AttendanceAuthorizationDeniedError):
-        await service.create(
-            _create(employee_id, shift_id), _request_context(other_employee_id)
-        )
+        await service.create(_create(employee_id, shift_id), _request_context(other_employee_id))
 
 
-async def test_get_missing_returns_none(
-    service: AttendanceEventService, employee_id: uuid.UUID
-):
+async def test_get_missing_returns_none(service: AttendanceEventService, employee_id: uuid.UUID):
     assert await service.get(uuid.uuid4(), _request_context(employee_id)) is None
 
 
@@ -329,9 +319,7 @@ async def test_update_existing(
     assert updated.remarks == "Corrected"
 
 
-async def test_update_missing_returns_none(
-    service: AttendanceEventService, employee_id: uuid.UUID
-):
+async def test_update_missing_returns_none(service: AttendanceEventService, employee_id: uuid.UUID):
     assert (
         await service.update(
             uuid.uuid4(),
@@ -349,9 +337,7 @@ async def test_update_rejects_missing_employee(
     event = await service.create(_create(employee_id, shift_id), context)
 
     with pytest.raises(EmployeeNotFoundError):
-        await service.update(
-            event.id, AttendanceEventUpdate(employee_id=uuid.uuid4()), context
-        )
+        await service.update(event.id, AttendanceEventUpdate(employee_id=uuid.uuid4()), context)
 
 
 async def test_update_rejects_missing_shift(
@@ -420,9 +406,7 @@ async def test_list_paginated_passes_through_offset_and_limit(
     context = _request_context(employee_id)
     for i in range(5):
         await service.create(
-            _create(
-                employee_id, shift_id, event_time=datetime(2026, 1, 5, 9, i, tzinfo=UTC)
-            ),
+            _create(employee_id, shift_id, event_time=datetime(2026, 1, 5, 9, i, tzinfo=UTC)),
             context,
         )
 

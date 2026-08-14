@@ -299,8 +299,7 @@ def test_delete_employment_type(client: TestClient, user_headers: dict[str, str]
 
     assert response.status_code == 204
     assert (
-        client.get(f"/hr/employment-types/{created['id']}", headers=user_headers).status_code
-        == 404
+        client.get(f"/hr/employment-types/{created['id']}", headers=user_headers).status_code == 404
     )
 
 

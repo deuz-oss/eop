@@ -661,9 +661,7 @@ def test_delete_timesheet(client: TestClient, user_headers: dict[str, str]):
     response = client.delete(f"/hr/timesheets/{created['id']}", headers=user_headers)
 
     assert response.status_code == 204
-    assert (
-        client.get(f"/hr/timesheets/{created['id']}", headers=user_headers).status_code == 404
-    )
+    assert client.get(f"/hr/timesheets/{created['id']}", headers=user_headers).status_code == 404
 
 
 def test_delete_timesheet_not_found(client: TestClient, user_headers: dict[str, str]):
