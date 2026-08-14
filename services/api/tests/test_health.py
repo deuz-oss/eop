@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 
+from eop_api.api.health import check_storage
 from eop_api.db.dependencies import get_db
 from eop_api.main import app
 
@@ -33,25 +34,15 @@ async def _override_get_db_fail() -> AsyncGenerator:
     yield _FailingSession()
 
 
-async def _check_storage_ok() -> bool:
-    return True
-
-
-async def _check_storage_fail() -> bool:
-    return False
-
-
 def _get(client_monkeypatch, db_override, storage_ok: bool):
-    client_monkeypatch.setattr(
-        "eop_api.api.health._check_storage",
-        _check_storage_ok if storage_ok else _check_storage_fail,
-    )
+    app.dependency_overrides[check_storage] = lambda: storage_ok
     app.dependency_overrides[get_db] = db_override
     try:
         with TestClient(app) as client:
             return client.get("/health")
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(check_storage, None)
 
 
 def test_health_reports_connected_database_and_storage(monkeypatch):
@@ -122,8 +113,6 @@ def test_storage_failure_does_not_expose_raw_exception_details(monkeypatch):
 
 
 async def test_check_storage_swallows_connectivity_exception(monkeypatch):
-    from eop_api.api.health import _check_storage
-
     monkeypatch.setattr("eop_api.api.health.MinIOStorageProvider", _RaisingStorageProvider)
 
-    assert await _check_storage() is False
+    assert await check_storage() is False

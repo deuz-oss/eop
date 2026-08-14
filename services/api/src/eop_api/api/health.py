@@ -1,7 +1,8 @@
 import asyncio
+from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,7 +15,7 @@ router = APIRouter(tags=["Health"])
 logger = structlog.get_logger(__name__)
 
 
-async def _check_storage() -> bool:
+async def check_storage() -> bool:
     """Verify MinIO connectivity using the same `bucket_exists` primitive
     `MinIOStorageProvider` already relies on internally (`_ensure_bucket`).
     Connection failures surface as `urllib3` errors, not `MinioException`, so
@@ -33,16 +34,17 @@ async def _check_storage() -> bool:
     return True
 
 
+StorageConnected = Annotated[bool, Depends(check_storage)]
+
+
 @router.get("/health")
-async def health(session: DbSession) -> JSONResponse:
+async def health(session: DbSession, storage_connected: StorageConnected) -> JSONResponse:
     database_connected = True
     try:
         await session.execute(text("SELECT 1"))
     except SQLAlchemyError:
         logger.exception("Database health check failed")
         database_connected = False
-
-    storage_connected = await _check_storage()
 
     healthy = database_connected and storage_connected
     return JSONResponse(

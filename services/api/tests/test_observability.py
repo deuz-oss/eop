@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import SQLAlchemyError
 
+from eop_api.api.health import check_storage
 from eop_api.db.dependencies import get_db
 from eop_api.main import app
 from eop_api.middleware.request_id import REQUEST_ID_HEADER
@@ -32,11 +33,13 @@ app.include_router(boom_router)
 
 def test_health_response_includes_request_id_header():
     app.dependency_overrides[get_db] = _override_get_db_ok
+    app.dependency_overrides[check_storage] = lambda: True
     try:
         with TestClient(app) as client:
             response = client.get("/health")
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(check_storage, None)
 
     assert response.status_code == 200
     assert REQUEST_ID_HEADER in response.headers
@@ -45,12 +48,14 @@ def test_health_response_includes_request_id_header():
 
 def test_incoming_request_id_is_reused():
     app.dependency_overrides[get_db] = _override_get_db_ok
+    app.dependency_overrides[check_storage] = lambda: True
     incoming_id = "test-request-id-123"
     try:
         with TestClient(app) as client:
             response = client.get("/health", headers={REQUEST_ID_HEADER: incoming_id})
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(check_storage, None)
 
     assert response.headers[REQUEST_ID_HEADER] == incoming_id
 
@@ -83,11 +88,13 @@ def test_disconnected_database_response_still_has_request_id():
         yield _FailingSession()
 
     app.dependency_overrides[get_db] = _override_get_db_fail
+    app.dependency_overrides[check_storage] = lambda: True
     try:
         with TestClient(app) as client:
             response = client.get("/health")
     finally:
         app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(check_storage, None)
 
     assert response.status_code == 503
     assert REQUEST_ID_HEADER in response.headers
