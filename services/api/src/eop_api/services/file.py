@@ -19,6 +19,18 @@ def _default_storage_provider() -> StorageProvider:
     )
 
 
+class FileTooLargeError(Exception):
+    """Raised when an upload's size exceeds the configured maximum.
+
+    Carries the rejected `size` so callers can report it without needing to
+    re-derive it.
+    """
+
+    def __init__(self, size: int) -> None:
+        super().__init__(f"File size {size} exceeds the maximum allowed size")
+        self.size = size
+
+
 class FileService:
     """Business logic for `FileObject`. Owns the transaction boundary via a UoW.
 
@@ -31,10 +43,14 @@ class FileService:
         storage: StorageProvider | None = None,
         uow_factory: Callable[[], SQLAlchemyUnitOfWork] = SQLAlchemyUnitOfWork,
         bucket: str | None = None,
+        max_size_bytes: int | None = None,
     ) -> None:
         self._storage = storage or _default_storage_provider()
         self._uow_factory = uow_factory
         self._bucket = bucket or settings.minio_bucket
+        self._max_size_bytes = (
+            max_size_bytes if max_size_bytes is not None else settings.file_upload_max_size_bytes
+        )
 
     async def upload(
         self, *, filename: str, content_type: str, size: int, data: BinaryIO
@@ -44,7 +60,14 @@ class FileService:
         This ordering means a storage failure never leaves behind a metadata
         row with no corresponding object; at worst, a metadata failure after
         a successful upload leaves an unreferenced (harmless) blob in storage.
+
+        Size is validated before any storage or database call is made, so a
+        rejected upload never reaches `StorageProvider.upload` and never
+        creates a `FileObject` row.
         """
+        if size > self._max_size_bytes:
+            raise FileTooLargeError(size)
+
         storage_key = str(uuid.uuid4())
         await self._storage.upload(
             bucket=self._bucket,

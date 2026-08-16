@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
 from eop_api.db.base import Base
-from eop_api.services.file import FileService
+from eop_api.services.file import FileService, FileTooLargeError
 from eop_api.storage.base import StorageProvider
 from eop_api.storage.exceptions import StorageObjectNotFoundError
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
@@ -153,3 +153,60 @@ async def test_delete_removes_metadata_and_binary(
 async def test_delete_missing_returns_false(service: FileService, storage: FakeStorageProvider):
     assert await service.delete(uuid.uuid4()) is False
     assert storage.delete_calls == []
+
+
+def test_default_max_size_matches_locked_policy():
+    assert settings.file_upload_max_size_bytes == 10 * 1024 * 1024
+
+
+async def test_upload_accepts_file_at_exactly_the_max_size(
+    service: FileService, storage: FakeStorageProvider
+):
+    max_size = settings.file_upload_max_size_bytes
+    data = b"x" * max_size
+
+    file_object = await service.upload(
+        filename="big.bin",
+        content_type="application/octet-stream",
+        size=max_size,
+        data=io.BytesIO(data),
+    )
+
+    assert file_object.size == max_size
+    assert storage.upload_calls == [("eop-files", file_object.storage_key)]
+
+
+async def test_upload_rejects_size_over_the_max(service: FileService, storage: FakeStorageProvider):
+    oversized = settings.file_upload_max_size_bytes + 1
+
+    with pytest.raises(FileTooLargeError) as exc_info:
+        await service.upload(
+            filename="too-big.bin",
+            content_type="application/octet-stream",
+            size=oversized,
+            data=io.BytesIO(b"x"),
+        )
+
+    assert exc_info.value.size == oversized
+    # Rejected before the storage provider is ever called.
+    assert storage.upload_calls == []
+
+
+async def test_upload_over_max_size_creates_no_file_object_row(
+    service: FileService, storage: FakeStorageProvider
+):
+    with pytest.raises(FileTooLargeError):
+        await service.upload(
+            filename="too-big.bin",
+            content_type="application/octet-stream",
+            size=settings.file_upload_max_size_bytes + 1,
+            data=io.BytesIO(b"x"),
+        )
+
+    engine = create_async_engine(settings.database_url)
+    async with engine.connect() as conn:
+        result = await conn.execute(text("SELECT COUNT(*) FROM file_objects"))
+        count = result.scalar_one()
+    await engine.dispose()
+
+    assert count == 0

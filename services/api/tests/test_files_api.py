@@ -4,12 +4,13 @@ from collections.abc import AsyncIterator, Generator
 from typing import BinaryIO
 
 import pytest
+from fastapi import UploadFile
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
-from eop_api.api.files import get_file_service
+from eop_api.api.files import _file_size, get_file_service
 from eop_api.core.config import settings
 from eop_api.core.security import hash_password
 from eop_api.db.base import Base
@@ -225,3 +226,45 @@ def test_delete_missing_returns_404(client: TestClient, user_headers: dict[str, 
     response = client.delete("/files/00000000-0000-0000-0000-000000000000", headers=user_headers)
 
     assert response.status_code == 404
+
+
+# --- upload size limit ---------------------------------------------------------
+
+
+def test_upload_accepts_exactly_the_max_size(client: TestClient, user_headers: dict[str, str]):
+    content = b"x" * settings.file_upload_max_size_bytes
+
+    response = _upload(
+        client, user_headers, content=content, content_type="application/octet-stream"
+    )
+
+    assert response.status_code == 201
+    assert response.json()["size"] == settings.file_upload_max_size_bytes
+
+
+def test_upload_rejects_content_over_the_max_size(client: TestClient, user_headers: dict[str, str]):
+    content = b"x" * (settings.file_upload_max_size_bytes + 1)
+
+    response = _upload(
+        client, user_headers, content=content, content_type="application/octet-stream"
+    )
+
+    assert response.status_code == 413
+
+
+def test_upload_still_accepts_text_plain(client: TestClient, user_headers: dict[str, str]):
+    response = _upload(client, user_headers, content=b"hello", content_type="text/plain")
+
+    assert response.status_code == 201
+    assert response.json()["content_type"] == "text/plain"
+
+
+def test_file_size_fallback_measures_oversized_content_directly():
+    """`_file_size`'s stream-measurement fallback (used when a client omits
+    `UploadFile.size`) must report the true size, so an oversized upload can't
+    bypass the limit merely because `size` wasn't populated by the multipart
+    parser."""
+    content = b"x" * (settings.file_upload_max_size_bytes + 1)
+    upload = UploadFile(io.BytesIO(content), size=None, filename="big.bin")
+
+    assert _file_size(upload) == len(content)
