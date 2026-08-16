@@ -82,7 +82,7 @@ def user_headers(client: TestClient, user: User) -> dict[str, str]:
 def _create_organization(
     client: TestClient, headers: dict[str, str], *, name: str = "Acme Corp"
 ) -> dict:
-    response = client.post("/organizations", json={"name": name})
+    response = client.post("/organizations", json={"name": name}, headers=headers)
     assert response.status_code == 201
     return response.json()
 
@@ -846,6 +846,8 @@ def test_delete_organization_with_positions_fails(client: TestClient, user_heade
     )
 
     with TestClient(app, raise_server_exceptions=False) as non_raising_client:
-        response = non_raising_client.delete(f"/organizations/{organization['id']}")
+        response = non_raising_client.delete(
+            f"/organizations/{organization['id']}", headers=user_headers
+        )
 
     assert response.status_code == 500

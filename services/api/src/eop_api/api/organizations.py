@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.search import Search
 from eop_api.schemas.organization import (
@@ -25,21 +26,23 @@ OrganizationServiceDep = Annotated[OrganizationService, Depends(get_organization
 
 @router.post("", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
 async def create_organization(
-    data: OrganizationCreate, service: OrganizationServiceDep
+    data: OrganizationCreate, service: OrganizationServiceDep, _: CurrentUser
 ) -> OrganizationResponse:
     organization = await service.create(data)
     return OrganizationResponse.model_validate(organization)
 
 
 @router.get("", response_model=list[OrganizationResponse])
-async def list_organizations(service: OrganizationServiceDep) -> list[OrganizationResponse]:
+async def list_organizations(
+    service: OrganizationServiceDep, _: CurrentUser
+) -> list[OrganizationResponse]:
     organizations = await service.list()
     return [OrganizationResponse.model_validate(organization) for organization in organizations]
 
 
 @router.get("/paginated", response_model=Page[OrganizationResponse])
 async def list_organizations_paginated(
-    service: OrganizationServiceDep, pagination: Pagination, search: Search
+    service: OrganizationServiceDep, pagination: Pagination, search: Search, _: CurrentUser
 ) -> Page[OrganizationResponse]:
     page = await service.list_paginated(pagination, search)
     return Page(
@@ -52,7 +55,7 @@ async def list_organizations_paginated(
 
 @router.get("/{organization_id}", response_model=OrganizationResponse)
 async def get_organization(
-    organization_id: uuid.UUID, service: OrganizationServiceDep
+    organization_id: uuid.UUID, service: OrganizationServiceDep, _: CurrentUser
 ) -> OrganizationResponse:
     organization = await service.get(organization_id)
     if organization is None:
@@ -62,7 +65,10 @@ async def get_organization(
 
 @router.patch("/{organization_id}", response_model=OrganizationResponse)
 async def update_organization(
-    organization_id: uuid.UUID, data: OrganizationUpdate, service: OrganizationServiceDep
+    organization_id: uuid.UUID,
+    data: OrganizationUpdate,
+    service: OrganizationServiceDep,
+    _: CurrentUser,
 ) -> OrganizationResponse:
     organization = await service.update(organization_id, data)
     if organization is None:
@@ -71,7 +77,9 @@ async def update_organization(
 
 
 @router.delete("/{organization_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_organization(organization_id: uuid.UUID, service: OrganizationServiceDep) -> None:
+async def delete_organization(
+    organization_id: uuid.UUID, service: OrganizationServiceDep, _: CurrentUser
+) -> None:
     deleted = await service.delete(organization_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")

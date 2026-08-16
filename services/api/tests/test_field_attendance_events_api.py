@@ -183,7 +183,9 @@ def _create_employee(
     user_id: str | None = None,
 ) -> dict:
     suffix = uuid.uuid4().hex[:8]
-    organization = client.post("/organizations", json={"name": f"Acme Corp {suffix}"}).json()
+    organization = client.post(
+        "/organizations", json={"name": f"Acme Corp {suffix}"}, headers=headers
+    ).json()
     department = client.post(
         "/departments",
         json={

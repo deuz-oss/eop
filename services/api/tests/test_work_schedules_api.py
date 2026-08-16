@@ -130,7 +130,9 @@ def _create_employee(
     """Creates its own HR master-data scaffolding, suffixed by a fresh id.
     Mirrors `test_compensation_api.py`'s `_create_employee` helper."""
     suffix = uuid.uuid4().hex[:8]
-    organization = client.post("/organizations", json={"name": f"Acme Corp {suffix}"}).json()
+    organization = client.post(
+        "/organizations", json={"name": f"Acme Corp {suffix}"}, headers=headers
+    ).json()
     department = client.post(
         "/departments",
         json={

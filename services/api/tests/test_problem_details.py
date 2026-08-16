@@ -91,10 +91,12 @@ def member_token(member_user: User) -> str:
     return create_access_token(subject=str(member_user.id))
 
 
-def test_not_found_returns_problem_details(client: TestClient):
+def test_not_found_returns_problem_details(client: TestClient, member_token: str):
     missing_id = uuid.uuid4()
 
-    response = client.get(f"/organizations/{missing_id}")
+    response = client.get(
+        f"/organizations/{missing_id}", headers={"Authorization": f"Bearer {member_token}"}
+    )
 
     assert response.status_code == 404
     assert response.headers["content-type"] == "application/problem+json"
@@ -132,8 +134,12 @@ def test_forbidden_returns_problem_details(client: TestClient, member_token: str
     assert body["instance"] == "/roles"
 
 
-def test_validation_error_returns_problem_details(client: TestClient):
-    response = client.post("/organizations", json={"name": ""})
+def test_validation_error_returns_problem_details(client: TestClient, member_token: str):
+    response = client.post(
+        "/organizations",
+        json={"name": ""},
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
 
     assert response.status_code == 422
     body = response.json()
@@ -154,10 +160,14 @@ def test_request_id_included_and_matches_response_header(client: TestClient):
     assert body["request_id"] == response.headers[REQUEST_ID_HEADER]
 
 
-def test_instance_reflects_request_path(client: TestClient):
+def test_instance_reflects_request_path(client: TestClient, member_token: str):
     organization_id = uuid.uuid4()
 
-    response = client.patch(f"/organizations/{organization_id}", json={"name": "After"})
+    response = client.patch(
+        f"/organizations/{organization_id}",
+        json={"name": "After"},
+        headers={"Authorization": f"Bearer {member_token}"},
+    )
 
     assert response.status_code == 404
     assert response.json()["instance"] == f"/organizations/{organization_id}"

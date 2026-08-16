@@ -5,12 +5,15 @@ from collections.abc import Generator
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
+from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.main import app
+from eop_api.models.user import User
+from eop_api.repositories.user import UserRepository
 
 
 @pytest.fixture(autouse=True)
@@ -33,7 +36,7 @@ def _tables() -> Generator[None]:
     async def _truncate() -> None:
         engine = create_async_engine(settings.database_url)
         async with engine.begin() as conn:
-            await conn.execute(text("TRUNCATE TABLE organizations CASCADE"))
+            await conn.execute(text("TRUNCATE TABLE organizations, users CASCADE"))
         await engine.dispose()
 
     asyncio.run(_create())
@@ -47,15 +50,45 @@ def client() -> Generator[TestClient]:
         yield test_client
 
 
+async def _create_user(*, email: str, password: str) -> User:
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await UserRepository(session).create(
+            email=email,
+            password_hash=hash_password(password),
+            full_name="Test User",
+            is_active=True,
+        )
+        await session.commit()
+        session.expunge(user)
+    await engine.dispose()
+    return user
+
+
 @pytest.fixture
-def organization_id(client: TestClient) -> str:
-    response = client.post("/organizations", json={"name": "Acme Corp"})
+def user() -> User:
+    return asyncio.run(_create_user(email="member@example.com", password="member-pass"))
+
+
+@pytest.fixture
+def user_headers(client: TestClient, user: User) -> dict[str, str]:
+    response = client.post(
+        "/auth/login", json={"email": "member@example.com", "password": "member-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def organization_id(client: TestClient, user_headers: dict[str, str]) -> str:
+    response = client.post("/organizations", json={"name": "Acme Corp"}, headers=user_headers)
     return response.json()["id"]
 
 
 @pytest.fixture
-def other_organization_id(client: TestClient) -> str:
-    response = client.post("/organizations", json={"name": "Globex Corp"})
+def other_organization_id(client: TestClient, user_headers: dict[str, str]) -> str:
+    response = client.post("/organizations", json={"name": "Globex Corp"}, headers=user_headers)
     return response.json()["id"]
 
 
