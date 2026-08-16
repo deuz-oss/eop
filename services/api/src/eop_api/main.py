@@ -112,9 +112,6 @@ app.include_router(auth_router, responses=PROBLEM_RESPONSES)
 app.include_router(organizations_router, responses=PROBLEM_RESPONSES)
 app.include_router(projects_router, responses=PROBLEM_RESPONSES)
 app.include_router(employees_router, responses=PROBLEM_RESPONSES)
-# TODO: Locations (and location types) are authenticated-only for now. Once the
-# platform defines administrative roles for master data, gate these routes with
-# RequireRole(...) the way roles.py does.
 app.include_router(locations_router, responses=PROBLEM_RESPONSES)
 app.include_router(location_types_router, responses=PROBLEM_RESPONSES)
 app.include_router(departments_router, responses=PROBLEM_RESPONSES)

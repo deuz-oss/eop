@@ -13,6 +13,7 @@ from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
 
 TARGET_DATE = "2026-03-02"
@@ -162,6 +163,31 @@ def _create_team(
     return response.json()
 
 
+async def _seed_location_admin(user_id: uuid.UUID) -> None:
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+def _location_admin_headers(client: TestClient) -> dict[str, str]:
+    """A throwaway admin session used only to satisfy the admin-only
+    Location/LocationType write requirement during master-data bootstrap --
+    the employee/user actually under test keeps its own identity."""
+    suffix = uuid.uuid4().hex[:8]
+    email = f"location-admin-{suffix}@example.com"
+    user = asyncio.run(_create_user(email=email, password="admin-pass"))
+    asyncio.run(_seed_location_admin(user.id))
+    response = client.post("/auth/login", json={"email": email, "password": "admin-pass"})
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 def _create_location_type(
     client: TestClient, headers: dict[str, str], *, name: str = "Office", code: str = "OFFICE"
 ) -> dict:
@@ -245,8 +271,11 @@ def _create_employee(
     team = _create_team(
         client, headers, organization_id=organization["id"], department_id=department["id"]
     )
-    location_type = _create_location_type(client, headers)
-    location = _create_location(client, headers, location_type_id=location_type["id"])
+    location_admin_headers = _location_admin_headers(client)
+    location_type = _create_location_type(client, location_admin_headers)
+    location = _create_location(
+        client, location_admin_headers, location_type_id=location_type["id"]
+    )
     job_grade = _create_job_grade(client, headers)
     employment_type = _create_employment_type(client, headers)
     employment_status = _create_employment_status(client, headers)

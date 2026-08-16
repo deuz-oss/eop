@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.location import LocationCreate, LocationResponse, LocationUpdate
 from eop_api.schemas.pagination import Page
@@ -26,6 +27,12 @@ def get_location_service() -> LocationService:
 
 LocationServiceDep = Annotated[LocationService, Depends(get_location_service)]
 
+# Location Authorization Policy: reads remain open to any authenticated user
+# (unchanged); create/update/delete require the "admin" role
+# (`RequireRole("admin")`), the same mechanism `roles.py`/`stores.py` use --
+# no new authorization framework introduced.
+RequireLocationAdmin = Annotated[CurrentUser, Depends(RequireRole("admin"))]
+
 
 def get_location_filters(
     location_type_id: Annotated[uuid.UUID | None, Query()] = None,
@@ -39,7 +46,7 @@ LocationFilters = Annotated[FilterParams, Depends(get_location_filters)]
 
 @router.post("", response_model=LocationResponse, status_code=status.HTTP_201_CREATED)
 async def create_location(
-    data: LocationCreate, service: LocationServiceDep, _: CurrentUser
+    data: LocationCreate, service: LocationServiceDep, _: RequireLocationAdmin
 ) -> LocationResponse:
     try:
         location = await service.create(data)
@@ -93,7 +100,10 @@ async def get_location(
 
 @router.put("/{location_id}", response_model=LocationResponse)
 async def update_location(
-    location_id: uuid.UUID, data: LocationUpdate, service: LocationServiceDep, _: CurrentUser
+    location_id: uuid.UUID,
+    data: LocationUpdate,
+    service: LocationServiceDep,
+    _: RequireLocationAdmin,
 ) -> LocationResponse:
     try:
         location = await service.update(location_id, data)
@@ -121,7 +131,7 @@ async def update_location(
 
 @router.delete("/{location_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_location(
-    location_id: uuid.UUID, service: LocationServiceDep, _: CurrentUser
+    location_id: uuid.UUID, service: LocationServiceDep, _: RequireLocationAdmin
 ) -> None:
     deleted = await service.delete(location_id)
     if not deleted:

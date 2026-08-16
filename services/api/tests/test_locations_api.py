@@ -13,7 +13,12 @@ from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
+
+# Location Authorization: reads remain open to any authenticated user;
+# create/update/delete are Role Based (`RequireRole("admin")`), mirroring
+# `test_stores_api.py`'s exact fixture/test pattern.
 
 
 @pytest.fixture(autouse=True)
@@ -78,6 +83,35 @@ def user_headers(client: TestClient, user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def admin_user() -> User:
+    return asyncio.run(_create_user(email="admin@example.com", password="admin-pass"))
+
+
+async def _seed_admin(user_id: uuid.UUID) -> None:
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+@pytest.fixture
+def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
+    asyncio.run(_seed_admin(admin_user.id))
+
+    response = client.post(
+        "/auth/login", json={"email": "admin@example.com", "password": "admin-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _create_location_type(
     client: TestClient, headers: dict[str, str], *, code: str = "store", name: str = "Store"
 ) -> dict:
@@ -101,6 +135,9 @@ def _create_location(
     response = client.post("/locations", json=payload, headers=headers)
     assert response.status_code == 201
     return response.json()
+
+
+# --- authentication -----------------------------------------------------------
 
 
 def test_create_location_requires_authentication(client: TestClient):
@@ -136,10 +173,60 @@ def test_delete_location_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_create_location(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+# --- authorization: reads open to any authenticated user, writes admin-only ---
 
-    body = _create_location(client, user_headers, location_type_id=location_type["id"])
+
+def test_list_locations_allows_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.get("/locations", headers=user_headers)
+
+    assert response.status_code == 200
+
+
+def test_get_location_allows_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.get(f"/locations/{uuid.uuid4()}", headers=user_headers)
+
+    # 404 (not 403) proves the request reached the service layer -- the
+    # non-admin caller was not rejected by authorization.
+    assert response.status_code == 404
+
+
+def test_list_locations_allows_admin(client: TestClient, admin_headers: dict[str, str]):
+    response = client.get("/locations", headers=admin_headers)
+
+    assert response.status_code == 200
+
+
+def test_create_location_rejects_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.post(
+        "/locations",
+        json={"name": "Headquarters", "code": "HQ-1", "location_type_id": str(uuid.uuid4())},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_update_location_rejects_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.put(
+        f"/locations/{uuid.uuid4()}", json={"name": "New Name"}, headers=user_headers
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_location_rejects_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.delete(f"/locations/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 403
+
+
+# --- create ---------------------------------------------------------------
+
+
+def test_create_location(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
+
+    body = _create_location(client, admin_headers, location_type_id=location_type["id"])
 
     assert body["name"] == "Headquarters"
     assert body["code"] == "HQ-1"
@@ -148,15 +235,19 @@ def test_create_location(client: TestClient, user_headers: dict[str, str]):
     uuid.UUID(body["id"])
 
 
-def test_create_location_with_parent(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+def test_create_location_with_parent(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
     parent = _create_location(
-        client, user_headers, name="Headquarters", code="HQ-1", location_type_id=location_type["id"]
+        client,
+        admin_headers,
+        name="Headquarters",
+        code="HQ-1",
+        location_type_id=location_type["id"],
     )
 
     child = _create_location(
         client,
-        user_headers,
+        admin_headers,
         name="Region A",
         code="REG-A",
         location_type_id=location_type["id"],
@@ -166,32 +257,32 @@ def test_create_location_with_parent(client: TestClient, user_headers: dict[str,
     assert child["parent_id"] == parent["id"]
 
 
-def test_create_location_rejects_blank_name(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+def test_create_location_rejects_blank_name(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
 
     response = client.post(
         "/locations",
         json={"name": "", "code": "HQ-1", "location_type_id": location_type["id"]},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 422
 
 
 def test_create_location_rejects_missing_location_type(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
     response = client.post(
         "/locations",
         json={"name": "Headquarters", "code": "HQ-1", "location_type_id": str(uuid.uuid4())},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 404
 
 
-def test_create_location_rejects_missing_parent(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+def test_create_location_rejects_missing_parent(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
 
     response = client.post(
         "/locations",
@@ -201,29 +292,34 @@ def test_create_location_rejects_missing_parent(client: TestClient, user_headers
             "location_type_id": location_type["id"],
             "parent_id": str(uuid.uuid4()),
         },
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 404
 
 
-def test_create_location_rejects_duplicate_code(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
-    _create_location(client, user_headers, code="HQ-1", location_type_id=location_type["id"])
+def test_create_location_rejects_duplicate_code(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
+    _create_location(client, admin_headers, code="HQ-1", location_type_id=location_type["id"])
 
     response = client.post(
         "/locations",
         json={"name": "Other", "code": "HQ-1", "location_type_id": location_type["id"]},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 409
 
 
-def test_get_location(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+# --- read -------------------------------------------------------------------
+
+
+def test_get_location(
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
+):
+    location_type = _create_location_type(client, admin_headers)
     created = _create_location(
-        client, user_headers, name="Globex", location_type_id=location_type["id"]
+        client, admin_headers, name="Globex", location_type_id=location_type["id"]
     )
 
     response = client.get(f"/locations/{created['id']}", headers=user_headers)
@@ -238,13 +334,15 @@ def test_get_location_not_found(client: TestClient, user_headers: dict[str, str]
     assert response.status_code == 404
 
 
-def test_list_locations(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+def test_list_locations(
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
+):
+    location_type = _create_location_type(client, admin_headers)
     _create_location(
-        client, user_headers, name="Alpha", code="A-1", location_type_id=location_type["id"]
+        client, admin_headers, name="Alpha", code="A-1", location_type_id=location_type["id"]
     )
     _create_location(
-        client, user_headers, name="Beta", code="B-1", location_type_id=location_type["id"]
+        client, admin_headers, name="Beta", code="B-1", location_type_id=location_type["id"]
     )
 
     response = client.get("/locations", headers=user_headers)
@@ -255,13 +353,13 @@ def test_list_locations(client: TestClient, user_headers: dict[str, str]):
 
 
 def test_list_locations_paginated_default_pagination(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
 ):
-    location_type = _create_location_type(client, user_headers)
+    location_type = _create_location_type(client, admin_headers)
     for i in range(3):
         _create_location(
             client,
-            user_headers,
+            admin_headers,
             name=f"Store {i}",
             code=f"S-{i}",
             location_type_id=location_type["id"],
@@ -277,12 +375,14 @@ def test_list_locations_paginated_default_pagination(
     assert len(body["items"]) == 3
 
 
-def test_list_locations_paginated_custom_offset(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+def test_list_locations_paginated_custom_offset(
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
+):
+    location_type = _create_location_type(client, admin_headers)
     for i in range(5):
         _create_location(
             client,
-            user_headers,
+            admin_headers,
             name=f"Store {i}",
             code=f"S-{i}",
             location_type_id=location_type["id"],
@@ -297,12 +397,14 @@ def test_list_locations_paginated_custom_offset(client: TestClient, user_headers
     assert len(body["items"]) == 3
 
 
-def test_list_locations_paginated_custom_limit(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+def test_list_locations_paginated_custom_limit(
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
+):
+    location_type = _create_location_type(client, admin_headers)
     for i in range(5):
         _create_location(
             client,
-            user_headers,
+            admin_headers,
             name=f"Store {i}",
             code=f"S-{i}",
             location_type_id=location_type["id"],
@@ -318,10 +420,10 @@ def test_list_locations_paginated_custom_limit(client: TestClient, user_headers:
 
 
 def test_list_locations_paginated_limit_above_maximum_is_clamped(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
 ):
-    location_type = _create_location_type(client, user_headers)
-    _create_location(client, user_headers, location_type_id=location_type["id"])
+    location_type = _create_location_type(client, admin_headers)
+    _create_location(client, admin_headers, location_type_id=location_type["id"])
 
     response = client.get("/locations/paginated", headers=user_headers, params={"limit": 500})
 
@@ -337,17 +439,19 @@ def test_list_locations_paginated_negative_offset_is_rejected(
     assert response.status_code == 422
 
 
-def test_list_locations_paginated_search_by_name(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+def test_list_locations_paginated_search_by_name(
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
+):
+    location_type = _create_location_type(client, admin_headers)
     _create_location(
         client,
-        user_headers,
+        admin_headers,
         name="Open Warehouse",
         code="W-1",
         location_type_id=location_type["id"],
     )
     _create_location(
-        client, user_headers, name="Closed Store", code="S-1", location_type_id=location_type["id"]
+        client, admin_headers, name="Closed Store", code="S-1", location_type_id=location_type["id"]
     )
 
     response = client.get("/locations/paginated", headers=user_headers, params={"q": "open"})
@@ -358,17 +462,19 @@ def test_list_locations_paginated_search_by_name(client: TestClient, user_header
     assert body["items"][0]["name"] == "Open Warehouse"
 
 
-def test_list_locations_paginated_search_by_code(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+def test_list_locations_paginated_search_by_code(
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
+):
+    location_type = _create_location_type(client, admin_headers)
     _create_location(
         client,
-        user_headers,
+        admin_headers,
         name="Warehouse",
         code="WH-ALPHA",
         location_type_id=location_type["id"],
     )
     _create_location(
-        client, user_headers, name="Store", code="ST-BETA", location_type_id=location_type["id"]
+        client, admin_headers, name="Store", code="ST-BETA", location_type_id=location_type["id"]
     )
 
     response = client.get("/locations/paginated", headers=user_headers, params={"q": "alpha"})
@@ -380,15 +486,15 @@ def test_list_locations_paginated_search_by_code(client: TestClient, user_header
 
 
 def test_list_locations_paginated_filter_by_location_type_id(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
 ):
-    warehouse = _create_location_type(client, user_headers, code="warehouse", name="Warehouse")
-    store = _create_location_type(client, user_headers, code="store", name="Store")
+    warehouse = _create_location_type(client, admin_headers, code="warehouse", name="Warehouse")
+    store = _create_location_type(client, admin_headers, code="store", name="Store")
     _create_location(
-        client, user_headers, name="Main Warehouse", code="W-1", location_type_id=warehouse["id"]
+        client, admin_headers, name="Main Warehouse", code="W-1", location_type_id=warehouse["id"]
     )
     _create_location(
-        client, user_headers, name="Main Store", code="S-1", location_type_id=store["id"]
+        client, admin_headers, name="Main Store", code="S-1", location_type_id=store["id"]
     )
 
     response = client.get(
@@ -402,14 +508,14 @@ def test_list_locations_paginated_filter_by_location_type_id(
 
 
 def test_list_locations_paginated_no_query_returns_all(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
 ):
-    location_type = _create_location_type(client, user_headers)
+    location_type = _create_location_type(client, admin_headers)
     _create_location(
-        client, user_headers, name="Alpha", code="A-1", location_type_id=location_type["id"]
+        client, admin_headers, name="Alpha", code="A-1", location_type_id=location_type["id"]
     )
     _create_location(
-        client, user_headers, name="Beta", code="B-1", location_type_id=location_type["id"]
+        client, admin_headers, name="Beta", code="B-1", location_type_id=location_type["id"]
     )
 
     response = client.get("/locations/paginated", headers=user_headers)
@@ -418,107 +524,117 @@ def test_list_locations_paginated_no_query_returns_all(
     assert response.json()["total"] == 2
 
 
-def test_update_location(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+# --- update -------------------------------------------------------------------
+
+
+def test_update_location(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
     created = _create_location(
-        client, user_headers, name="Before", location_type_id=location_type["id"]
+        client, admin_headers, name="Before", location_type_id=location_type["id"]
     )
 
     response = client.put(
-        f"/locations/{created['id']}", json={"name": "After"}, headers=user_headers
+        f"/locations/{created['id']}", json={"name": "After"}, headers=admin_headers
     )
 
     assert response.status_code == 200
     assert response.json()["name"] == "After"
 
 
-def test_update_location_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_update_location_not_found(client: TestClient, admin_headers: dict[str, str]):
     response = client.put(
-        f"/locations/{uuid.uuid4()}", json={"name": "After"}, headers=user_headers
+        f"/locations/{uuid.uuid4()}", json={"name": "After"}, headers=admin_headers
     )
 
     assert response.status_code == 404
 
 
-def test_update_location_rejects_missing_parent(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
-    created = _create_location(client, user_headers, location_type_id=location_type["id"])
+def test_update_location_rejects_missing_parent(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
+    created = _create_location(client, admin_headers, location_type_id=location_type["id"])
 
     response = client.put(
         f"/locations/{created['id']}",
         json={"parent_id": str(uuid.uuid4())},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 404
 
 
-def test_update_location_rejects_self_parent(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
-    created = _create_location(client, user_headers, location_type_id=location_type["id"])
+def test_update_location_rejects_self_parent(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
+    created = _create_location(client, admin_headers, location_type_id=location_type["id"])
 
     response = client.put(
         f"/locations/{created['id']}",
         json={"parent_id": created["id"]},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 422
 
 
 def test_update_location_rejects_missing_location_type(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    location_type = _create_location_type(client, user_headers)
-    created = _create_location(client, user_headers, location_type_id=location_type["id"])
+    location_type = _create_location_type(client, admin_headers)
+    created = _create_location(client, admin_headers, location_type_id=location_type["id"])
 
     response = client.put(
         f"/locations/{created['id']}",
         json={"location_type_id": str(uuid.uuid4())},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 404
 
 
-def test_update_location_rejects_duplicate_code(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
-    _create_location(client, user_headers, code="HQ-1", location_type_id=location_type["id"])
+def test_update_location_rejects_duplicate_code(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
+    _create_location(client, admin_headers, code="HQ-1", location_type_id=location_type["id"])
     other = _create_location(
-        client, user_headers, name="Other", code="HQ-2", location_type_id=location_type["id"]
+        client, admin_headers, name="Other", code="HQ-2", location_type_id=location_type["id"]
     )
 
-    response = client.put(f"/locations/{other['id']}", json={"code": "HQ-1"}, headers=user_headers)
+    response = client.put(f"/locations/{other['id']}", json={"code": "HQ-1"}, headers=admin_headers)
 
     assert response.status_code == 409
 
 
-def test_delete_location(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+# --- delete -------------------------------------------------------------------
+
+
+def test_delete_location(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
     created = _create_location(
-        client, user_headers, name="To Delete", location_type_id=location_type["id"]
+        client, admin_headers, name="To Delete", location_type_id=location_type["id"]
     )
 
-    response = client.delete(f"/locations/{created['id']}", headers=user_headers)
+    response = client.delete(f"/locations/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 204
-    assert client.get(f"/locations/{created['id']}", headers=user_headers).status_code == 404
+    assert client.get(f"/locations/{created['id']}", headers=admin_headers).status_code == 404
 
 
-def test_delete_location_not_found(client: TestClient, user_headers: dict[str, str]):
-    response = client.delete(f"/locations/{uuid.uuid4()}", headers=user_headers)
+def test_delete_location_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.delete(f"/locations/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
 
 
-def test_delete_location_with_children_fails(client: TestClient, user_headers: dict[str, str]):
-    location_type = _create_location_type(client, user_headers)
+def test_delete_location_with_children_fails(client: TestClient, admin_headers: dict[str, str]):
+    location_type = _create_location_type(client, admin_headers)
     parent = _create_location(
-        client, user_headers, name="Headquarters", code="HQ-1", location_type_id=location_type["id"]
+        client,
+        admin_headers,
+        name="Headquarters",
+        code="HQ-1",
+        location_type_id=location_type["id"],
     )
     _create_location(
         client,
-        user_headers,
+        admin_headers,
         name="Region A",
         code="REG-A",
         location_type_id=location_type["id"],
@@ -529,6 +645,6 @@ def test_delete_location_with_children_fails(client: TestClient, user_headers: d
     # here so the FK violation surfaces as the real 500 response it produces in
     # production, instead of propagating into the test as a raw exception.
     with TestClient(app, raise_server_exceptions=False) as non_raising_client:
-        response = non_raising_client.delete(f"/locations/{parent['id']}", headers=user_headers)
+        response = non_raising_client.delete(f"/locations/{parent['id']}", headers=admin_headers)
 
     assert response.status_code == 500
