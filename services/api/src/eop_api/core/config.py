@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     minio_secure: bool = False
     minio_bucket: str = "eop-files"
 
+    file_upload_max_size_bytes: int = 10 * 1024 * 1024
+
     jwt_secret: str = _DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 30

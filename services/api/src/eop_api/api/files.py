@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.schemas.file import FileResponse
-from eop_api.services.file import FileService
+from eop_api.services.file import FileService, FileTooLargeError
 
 router = APIRouter(prefix="/files", tags=["Files"])
 
@@ -35,12 +35,18 @@ async def upload_file(
     _: CurrentUser,
     file: Annotated[UploadFile, File()],
 ) -> FileResponse:
-    file_object = await service.upload(
-        filename=file.filename or "unnamed",
-        content_type=file.content_type or "application/octet-stream",
-        size=_file_size(file),
-        data=file.file,
-    )
+    try:
+        file_object = await service.upload(
+            filename=file.filename or "unnamed",
+            content_type=file.content_type or "application/octet-stream",
+            size=_file_size(file),
+            data=file.file,
+        )
+    except FileTooLargeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="File exceeds the maximum allowed upload size",
+        ) from exc
     return FileResponse.model_validate(file_object)
 
 
