@@ -208,6 +208,148 @@ async def test_delete_employee_referenced_by_leave_request_is_restricted(
         await HrEmployeeRepository(session).delete(employee_id)
 
 
+async def test_find_overlapping_returns_overlapping_request(
+    repo: LeaveRequestRepository, employee_id: uuid.UUID
+):
+    other = await repo.create(
+        employee_id=employee_id, start_date=date(2026, 2, 11), end_date=date(2026, 2, 15)
+    )
+
+    items = await repo.find_overlapping(employee_id, date(2026, 2, 10), date(2026, 2, 12))
+
+    assert [item.id for item in items] == [other.id]
+
+
+async def test_find_overlapping_excludes_non_overlapping_request(
+    repo: LeaveRequestRepository, employee_id: uuid.UUID
+):
+    await repo.create(
+        employee_id=employee_id, start_date=date(2026, 3, 1), end_date=date(2026, 3, 5)
+    )
+
+    items = await repo.find_overlapping(employee_id, date(2026, 2, 10), date(2026, 2, 12))
+
+    assert items == []
+
+
+async def test_find_overlapping_excludes_different_employee(
+    repo: LeaveRequestRepository, session: AsyncSession, employee_id: uuid.UUID
+):
+    organization = await OrganizationRepository(session).create(name="Other Corp")
+    department = await DepartmentRepository(session).create(
+        organization_id=organization.id, code="SLS", name="Sales"
+    )
+    position = await PositionRepository(session).create(
+        organization_id=organization.id,
+        department_id=department.id,
+        code="SLS-1",
+        name="Salesperson",
+    )
+    team = await TeamRepository(session).create(
+        organization_id=organization.id, department_id=department.id, code="FIELD", name="Field"
+    )
+    location_type = await LocationTypeRepository(session).create(code="REMOTE", name="Remote")
+    location = await LocationRepository(session).create(
+        code="RMT", name="Remote", location_type_id=location_type.id
+    )
+    job_grade = await JobGradeRepository(session).create(code="L2", name="Mid", level=2)
+    employment_type = await EmploymentTypeRepository(session).create(code="PT", name="Part-Time")
+    employment_status = await EmploymentStatusRepository(session).create(
+        code="ACTIVE2", name="Active"
+    )
+    shift = await ShiftRepository(session).create(
+        code="NIGHT",
+        name="Night Shift",
+        start_time=datetime(2024, 1, 1, 22, 0).time(),
+        end_time=datetime(2024, 1, 2, 6, 0).time(),
+    )
+    other_employee = await HrEmployeeRepository(session).create(
+        employee_number="EMP-2",
+        first_name="Grace",
+        last_name="Hopper",
+        full_name="Grace Hopper",
+        email="grace2@example.com",
+        organization_id=organization.id,
+        department_id=department.id,
+        position_id=position.id,
+        team_id=team.id,
+        location_id=location.id,
+        job_grade_id=job_grade.id,
+        employment_type_id=employment_type.id,
+        employment_status_id=employment_status.id,
+        shift_id=shift.id,
+        hire_date=datetime(2024, 1, 15).date(),
+        employment_status="active",
+    )
+    await repo.create(
+        employee_id=other_employee.id, start_date=date(2026, 2, 10), end_date=date(2026, 2, 12)
+    )
+
+    items = await repo.find_overlapping(employee_id, date(2026, 2, 10), date(2026, 2, 12))
+
+    assert items == []
+
+
+async def test_find_overlapping_detects_boundary_overlap(
+    repo: LeaveRequestRepository, employee_id: uuid.UUID
+):
+    """An existing request starting exactly on the queried range's end_date
+    still counts as overlapping, per the inclusive `<=`/`>=` condition."""
+    boundary = await repo.create(
+        employee_id=employee_id, start_date=date(2026, 2, 12), end_date=date(2026, 2, 14)
+    )
+
+    items = await repo.find_overlapping(employee_id, date(2026, 2, 10), date(2026, 2, 12))
+
+    assert [item.id for item in items] == [boundary.id]
+
+
+async def test_find_overlapping_excludes_given_id(
+    repo: LeaveRequestRepository, employee_id: uuid.UUID
+):
+    leave_request = await repo.create(
+        employee_id=employee_id, start_date=date(2026, 2, 10), end_date=date(2026, 2, 12)
+    )
+
+    items = await repo.find_overlapping(
+        employee_id,
+        leave_request.start_date,
+        leave_request.end_date,
+        exclude_id=leave_request.id,
+    )
+
+    assert items == []
+
+
+async def test_find_overlapping_does_not_filter_by_status(
+    repo: LeaveRequestRepository, employee_id: uuid.UUID
+):
+    """Persistence-only: status interpretation belongs to the caller, not
+    this repository -- pending/approved/rejected rows are all returned."""
+    pending = await repo.create(
+        employee_id=employee_id,
+        start_date=date(2026, 2, 10),
+        end_date=date(2026, 2, 12),
+        status="pending",
+    )
+    approved = await repo.create(
+        employee_id=employee_id,
+        start_date=date(2026, 2, 10),
+        end_date=date(2026, 2, 12),
+        status="approved",
+    )
+    rejected = await repo.create(
+        employee_id=employee_id,
+        start_date=date(2026, 2, 10),
+        end_date=date(2026, 2, 12),
+        status="rejected",
+    )
+
+    items = await repo.find_overlapping(employee_id, date(2026, 2, 10), date(2026, 2, 12))
+
+    assert {item.id for item in items} == {pending.id, approved.id, rejected.id}
+
+
 async def test_paginate_returns_total_and_page_slice(
     repo: LeaveRequestRepository, employee_id: uuid.UUID
 ):

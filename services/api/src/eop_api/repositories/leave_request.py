@@ -45,6 +45,32 @@ class LeaveRequestRepository(BaseRepository[LeaveRequest]):
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
+    async def find_overlapping(
+        self,
+        employee_id: uuid.UUID,
+        start_date: date,
+        end_date: date,
+        *,
+        exclude_id: uuid.UUID | None = None,
+    ) -> Sequence[LeaveRequest]:
+        """LeaveRequests for `employee_id` whose date range overlaps
+        `[start_date, end_date]`, optionally excluding `exclude_id`.
+
+        Single-table, same-model query only -- no approval-status filtering:
+        `status` is a business/workflow concept, not a persistence one, so
+        interpreting it (e.g. "only `approved` counts") belongs entirely to
+        the caller (`ApprovalService`), mirroring `find_for_employee_on_date`.
+        """
+        stmt = select(LeaveRequest).where(
+            LeaveRequest.employee_id == employee_id,
+            LeaveRequest.start_date <= end_date,
+            LeaveRequest.end_date >= start_date,
+        )
+        if exclude_id is not None:
+            stmt = stmt.where(LeaveRequest.id != exclude_id)
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
     async def paginate(
         self,
         *,

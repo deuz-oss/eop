@@ -17,6 +17,7 @@ from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
 from eop_api.repositories.hr_employee import HrEmployeeRepository
 from eop_api.repositories.job_grade import JobGradeRepository
+from eop_api.repositories.leave_balance import LeaveBalanceRepository
 from eop_api.repositories.location import LocationRepository
 from eop_api.repositories.location_type import LocationTypeRepository
 from eop_api.repositories.organization import OrganizationRepository
@@ -28,9 +29,13 @@ from eop_api.schemas.leave_request import LeaveRequestCreate
 from eop_api.schemas.overtime_request import OvertimeRequestCreate
 from eop_api.schemas.timesheet import TimesheetCreate
 from eop_api.services.approval import (
+    AmbiguousLeaveBalanceError,
     ApprovalAuthorizationDeniedError,
     ApprovalService,
+    CrossYearLeaveRequestError,
     InvalidApprovalStateError,
+    LeaveBalanceNotFoundError,
+    OverlappingLeaveRequestError,
 )
 from eop_api.services.employee_context import EmployeeContext, RequestContext
 from eop_api.services.leave_request import LeaveRequestService
@@ -353,6 +358,27 @@ async def _leave_request_id(
     return leave_request.id
 
 
+async def _create_leave_balance(
+    session_factory: Callable[[], AsyncSession],
+    *,
+    employee_id: uuid.UUID,
+    period_year: int,
+    allocated_days: int = 10,
+    used_days: int = 0,
+    remaining_days: int = 10,
+) -> uuid.UUID:
+    async with session_factory() as session:
+        balance = await LeaveBalanceRepository(session).create(
+            employee_id=employee_id,
+            period_year=period_year,
+            allocated_days=allocated_days,
+            used_days=used_days,
+            remaining_days=remaining_days,
+        )
+        await session.commit()
+        return balance.id
+
+
 async def _overtime_request_id(
     overtime_request_service: OvertimeRequestService, employee_id: uuid.UUID
 ) -> uuid.UUID:
@@ -382,10 +408,12 @@ async def _timesheet_id(timesheet_service: TimesheetService, employee_id: uuid.U
 async def test_approve_leave_request(
     service: ApprovalService,
     leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
     employee_id: uuid.UUID,
     manager_user_id: uuid.UUID,
     manager_request_context: RequestContext,
 ):
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
     leave_request_id = await _leave_request_id(leave_request_service, employee_id)
 
     approved = await service.approve_leave_request(leave_request_id, manager_request_context)
@@ -433,9 +461,11 @@ async def test_reject_leave_request_missing_returns_none(
 async def test_approve_leave_request_rejects_non_pending(
     service: ApprovalService,
     leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
     employee_id: uuid.UUID,
     manager_request_context: RequestContext,
 ):
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
     leave_request_id = await _leave_request_id(leave_request_service, employee_id)
     await service.approve_leave_request(leave_request_id, manager_request_context)
 
@@ -472,6 +502,273 @@ async def test_approve_leave_request_denied_for_non_manager(
     )
     assert unchanged is not None
     assert unchanged.status == "pending"
+
+
+# --- LeaveBalance synchronization (EOP Phase 8H) ------------------------
+
+
+async def test_approve_leave_request_deducts_balance(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    balance_id = await _create_leave_balance(
+        session_factory, employee_id=employee_id, period_year=2026
+    )
+    leave_request_id = await _leave_request_id(leave_request_service, employee_id)
+
+    await service.approve_leave_request(leave_request_id, manager_request_context)
+
+    async with session_factory() as session:
+        balance = await LeaveBalanceRepository(session).get(balance_id)
+    assert balance is not None
+    assert balance.used_days == 3
+    assert balance.remaining_days == 7
+
+
+async def test_approve_leave_request_deducts_inclusive_day_count(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    """`(end_date - start_date).days + 1` -- a single-day request deducts
+    exactly one day, not zero."""
+    balance_id = await _create_leave_balance(
+        session_factory, employee_id=employee_id, period_year=2026
+    )
+    leave_request = await leave_request_service.create(
+        LeaveRequestCreate(
+            employee_id=employee_id, start_date=date(2026, 3, 5), end_date=date(2026, 3, 5)
+        ),
+        _owner_request_context(employee_id),
+    )
+
+    await service.approve_leave_request(leave_request.id, manager_request_context)
+
+    async with session_factory() as session:
+        balance = await LeaveBalanceRepository(session).get(balance_id)
+    assert balance is not None
+    assert balance.used_days == 1
+    assert balance.remaining_days == 9
+
+
+async def test_reject_leave_request_does_not_deduct_balance(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    balance_id = await _create_leave_balance(
+        session_factory, employee_id=employee_id, period_year=2026
+    )
+    leave_request_id = await _leave_request_id(leave_request_service, employee_id)
+
+    await service.reject_leave_request(leave_request_id, manager_request_context, "No")
+
+    async with session_factory() as session:
+        balance = await LeaveBalanceRepository(session).get(balance_id)
+    assert balance is not None
+    assert balance.used_days == 0
+    assert balance.remaining_days == 10
+
+
+async def test_approve_leave_request_rejects_cross_year(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
+    leave_request = await leave_request_service.create(
+        LeaveRequestCreate(
+            employee_id=employee_id, start_date=date(2026, 12, 30), end_date=date(2027, 1, 2)
+        ),
+        _owner_request_context(employee_id),
+    )
+
+    with pytest.raises(CrossYearLeaveRequestError):
+        await service.approve_leave_request(leave_request.id, manager_request_context)
+
+
+async def test_approve_leave_request_rejects_missing_balance(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    leave_request_id = await _leave_request_id(leave_request_service, employee_id)
+
+    with pytest.raises(LeaveBalanceNotFoundError):
+        await service.approve_leave_request(leave_request_id, manager_request_context)
+
+
+async def test_approve_leave_request_rejects_ambiguous_balance(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
+    leave_request_id = await _leave_request_id(leave_request_service, employee_id)
+
+    with pytest.raises(AmbiguousLeaveBalanceError):
+        await service.approve_leave_request(leave_request_id, manager_request_context)
+
+
+async def test_approve_leave_request_rejects_overlapping_approved_request(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
+    first_id = await _leave_request_id(leave_request_service, employee_id)
+    await service.approve_leave_request(first_id, manager_request_context)
+    second = await leave_request_service.create(
+        LeaveRequestCreate(
+            employee_id=employee_id, start_date=date(2026, 2, 11), end_date=date(2026, 2, 13)
+        ),
+        _owner_request_context(employee_id),
+    )
+
+    with pytest.raises(OverlappingLeaveRequestError):
+        await service.approve_leave_request(second.id, manager_request_context)
+
+
+async def test_approve_leave_request_allows_pending_overlap(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    """An overlapping request that is still `pending` (never approved) does
+    not block a different request's approval."""
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
+    await _leave_request_id(leave_request_service, employee_id)
+    second = await leave_request_service.create(
+        LeaveRequestCreate(
+            employee_id=employee_id, start_date=date(2026, 2, 11), end_date=date(2026, 2, 13)
+        ),
+        _owner_request_context(employee_id),
+    )
+
+    approved = await service.approve_leave_request(second.id, manager_request_context)
+
+    assert approved is not None
+    assert approved.status == "approved"
+
+
+async def test_approve_leave_request_allows_rejected_overlap(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
+    first_id = await _leave_request_id(leave_request_service, employee_id)
+    await service.reject_leave_request(first_id, manager_request_context, "No")
+    second = await leave_request_service.create(
+        LeaveRequestCreate(
+            employee_id=employee_id, start_date=date(2026, 2, 11), end_date=date(2026, 2, 13)
+        ),
+        _owner_request_context(employee_id),
+    )
+
+    approved = await service.approve_leave_request(second.id, manager_request_context)
+
+    assert approved is not None
+    assert approved.status == "approved"
+
+
+async def test_approve_leave_request_rejects_boundary_overlap(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
+    first_id = await _leave_request_id(leave_request_service, employee_id)
+    await service.approve_leave_request(first_id, manager_request_context)
+    second = await leave_request_service.create(
+        LeaveRequestCreate(
+            employee_id=employee_id, start_date=date(2026, 2, 12), end_date=date(2026, 2, 14)
+        ),
+        _owner_request_context(employee_id),
+    )
+
+    with pytest.raises(OverlappingLeaveRequestError):
+        await service.approve_leave_request(second.id, manager_request_context)
+
+
+async def test_approve_leave_request_excludes_self_from_overlap_check(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    """Approving a request must not treat the request's own (already-staged
+    `approved`) date range as an overlap against itself."""
+    await _create_leave_balance(session_factory, employee_id=employee_id, period_year=2026)
+    leave_request_id = await _leave_request_id(leave_request_service, employee_id)
+
+    approved = await service.approve_leave_request(leave_request_id, manager_request_context)
+
+    assert approved is not None
+    assert approved.status == "approved"
+
+
+async def test_approve_leave_request_rolls_back_on_balance_failure(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    """When `_sync_leave_balance` raises (here: ambiguous balance rows), the
+    whole `uow` must roll back -- the staged `pending -> approved` transition
+    from `_apply_decision` is undone along with the (non-)balance write."""
+    first_balance_id = await _create_leave_balance(
+        session_factory, employee_id=employee_id, period_year=2026, remaining_days=5
+    )
+    second_balance_id = await _create_leave_balance(
+        session_factory, employee_id=employee_id, period_year=2026, remaining_days=8
+    )
+    leave_request_id = await _leave_request_id(leave_request_service, employee_id)
+
+    with pytest.raises(AmbiguousLeaveBalanceError):
+        await service.approve_leave_request(leave_request_id, manager_request_context)
+
+    unchanged = await leave_request_service.get(
+        leave_request_id, _owner_request_context(employee_id)
+    )
+    assert unchanged is not None
+    assert unchanged.status == "pending"
+    assert unchanged.approved_by is None
+    assert unchanged.approved_at is None
+
+    async with session_factory() as session:
+        repo = LeaveBalanceRepository(session)
+        first_balance = await repo.get(first_balance_id)
+        second_balance = await repo.get(second_balance_id)
+    assert first_balance is not None
+    assert first_balance.used_days == 0
+    assert first_balance.remaining_days == 5
+    assert second_balance is not None
+    assert second_balance.used_days == 0
+    assert second_balance.remaining_days == 8
 
 
 async def test_reject_leave_request_denied_for_non_manager(
