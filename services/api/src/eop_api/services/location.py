@@ -19,10 +19,14 @@ class ParentLocationNotFoundError(Exception):
 
 
 class SelfParentLocationError(Exception):
-    """Raised when a Location's `parent_id` is set to its own id.
+    """Raised when a Location's `parent_id` is set to its own id."""
 
-    Only a single-node cycle is rejected here -- full cycle detection across
-    the tree is explicitly out of scope for this module.
+
+class CyclicParentLocationError(Exception):
+    """Raised when a Location's proposed `parent_id` is already a
+    descendant of the Location being updated -- a multi-hop cycle
+    (e.g. A -> B -> A) rather than the single-node case
+    `SelfParentLocationError` covers.
     """
 
 
@@ -118,6 +122,11 @@ class LocationService:
             if values.get("parent_id") is not None and not await repo.exists(values["parent_id"]):
                 raise ParentLocationNotFoundError(str(values["parent_id"]))
 
+            if values.get("parent_id") is not None and await self._would_create_cycle(
+                repo, location_id, values["parent_id"]
+            ):
+                raise CyclicParentLocationError(str(values["parent_id"]))
+
             if "location_type_id" in values:
                 type_repo = LocationTypeRepository(uow.session)
                 if not await type_repo.exists(values["location_type_id"]):
@@ -142,3 +151,27 @@ class LocationService:
             if deleted:
                 await uow.commit()
             return deleted
+
+    @staticmethod
+    async def _would_create_cycle(
+        repo: LocationRepository, location_id: uuid.UUID, proposed_parent_id: uuid.UUID
+    ) -> bool:
+        """Whether assigning `proposed_parent_id` as `location_id`'s parent
+        would create a multi-hop cycle -- i.e. whether `location_id` is
+        already an ancestor of `proposed_parent_id`.
+
+        Walks up from `proposed_parent_id` via `parent_id` one hop at a time.
+        `visited` guards against looping forever should the tree already
+        contain a cycle from data predating this check.
+        """
+        visited: set[uuid.UUID] = set()
+        current_id: uuid.UUID | None = proposed_parent_id
+        while current_id is not None:
+            if current_id == location_id:
+                return True
+            if current_id in visited:
+                return False
+            visited.add(current_id)
+            current = await repo.get(current_id)
+            current_id = current.parent_id if current is not None else None
+        return False

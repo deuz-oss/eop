@@ -18,7 +18,9 @@ class Department(BaseEntity):
     """An organizational unit belonging to exactly one Organization.
 
     Departments form an adjacency-list tree via `parent_id`: unlimited depth,
-    no cycle detection. `parent_id` is `ON DELETE RESTRICT` so deleting a
+    no cycle constraint at the schema/FK level -- `DepartmentService` rejects
+    both self-parenting and multi-hop cycles at the service layer.
+    `parent_id` is `ON DELETE RESTRICT` so deleting a
     parent that still has children fails at the database level -- callers
     must reassign or delete the children first. `code` is unique within an
     Organization, not globally.

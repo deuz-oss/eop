@@ -17,7 +17,8 @@ class Team(BaseEntity):
     """A team belonging to exactly one Organization and Department.
 
     Teams form an adjacency-list tree via `parent_id`: unlimited depth, no
-    cycle detection beyond rejecting a direct self-parent. Unlike
+    cycle constraint at the schema/FK level -- `TeamService` rejects both
+    self-parenting and multi-hop cycles at the service layer. Unlike
     `Department`, `parent_id` here is scoped two ways at once -- a parent
     Team must belong to the same Organization *and* the same Department --
     which is a cross-column invariant validated by `TeamService`, not

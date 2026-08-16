@@ -11,6 +11,7 @@ from eop_api.schemas.location import LocationCreate, LocationResponse, LocationU
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.search import FilterParams
 from eop_api.services.location import (
+    CyclicParentLocationError,
     DuplicateLocationCodeError,
     LocationService,
     LocationTypeNotFoundError,
@@ -119,6 +120,11 @@ async def update_location(
     except ParentLocationNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Parent location not found"
+        ) from exc
+    except CyclicParentLocationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A location cannot be assigned a descendant as its parent",
         ) from exc
     except DuplicateLocationCodeError as exc:
         raise HTTPException(

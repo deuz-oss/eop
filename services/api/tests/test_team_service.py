@@ -17,6 +17,7 @@ from eop_api.schemas.pagination import PaginationParams
 from eop_api.schemas.search import FilterParams, SearchParams
 from eop_api.schemas.team import TeamCreate, TeamUpdate
 from eop_api.services.team import (
+    CyclicParentTeamError,
     DepartmentNotFoundError,
     DepartmentOrganizationMismatchError,
     DuplicateTeamCodeError,
@@ -526,6 +527,136 @@ async def test_update_rejects_self_parent(
 
     with pytest.raises(SelfParentTeamError):
         await service.update(team.id, TeamUpdate(parent_id=team.id))
+
+
+async def test_update_rejects_direct_two_node_cycle(
+    service: TeamService, organization: Organization, department: Department
+):
+    """A -> B (B's parent is A); setting A's parent to B would close A -> B -> A."""
+    a = await service.create(
+        TeamCreate(organization_id=organization.id, department_id=department.id, code="A", name="A")
+    )
+    b = await service.create(
+        TeamCreate(
+            organization_id=organization.id,
+            department_id=department.id,
+            code="B",
+            name="B",
+            parent_id=a.id,
+        )
+    )
+
+    with pytest.raises(CyclicParentTeamError):
+        await service.update(a.id, TeamUpdate(parent_id=b.id))
+
+
+async def test_update_rejects_three_node_cycle(
+    service: TeamService, organization: Organization, department: Department
+):
+    """A -> B -> C (chain); setting A's parent to C would close the cycle."""
+    a = await service.create(
+        TeamCreate(organization_id=organization.id, department_id=department.id, code="A", name="A")
+    )
+    b = await service.create(
+        TeamCreate(
+            organization_id=organization.id,
+            department_id=department.id,
+            code="B",
+            name="B",
+            parent_id=a.id,
+        )
+    )
+    c = await service.create(
+        TeamCreate(
+            organization_id=organization.id,
+            department_id=department.id,
+            code="C",
+            name="C",
+            parent_id=b.id,
+        )
+    )
+
+    with pytest.raises(CyclicParentTeamError):
+        await service.update(a.id, TeamUpdate(parent_id=c.id))
+
+
+async def test_update_allows_valid_reparenting(
+    service: TeamService, organization: Organization, department: Department
+):
+    a = await service.create(
+        TeamCreate(organization_id=organization.id, department_id=department.id, code="A", name="A")
+    )
+    b = await service.create(
+        TeamCreate(organization_id=organization.id, department_id=department.id, code="B", name="B")
+    )
+
+    updated = await service.update(b.id, TeamUpdate(parent_id=a.id))
+
+    assert updated is not None
+    assert updated.parent_id == a.id
+
+
+async def test_update_allows_reparenting_to_root(
+    service: TeamService, organization: Organization, department: Department
+):
+    """Clearing `parent_id` to make a node a root is valid and must not be
+    mistaken for a cycle."""
+    a = await service.create(
+        TeamCreate(organization_id=organization.id, department_id=department.id, code="A", name="A")
+    )
+    b = await service.create(
+        TeamCreate(
+            organization_id=organization.id,
+            department_id=department.id,
+            code="B",
+            name="B",
+            parent_id=a.id,
+        )
+    )
+    c = await service.create(
+        TeamCreate(
+            organization_id=organization.id,
+            department_id=department.id,
+            code="C",
+            name="C",
+            parent_id=b.id,
+        )
+    )
+
+    updated = await service.update(c.id, TeamUpdate(parent_id=None))
+
+    assert updated is not None
+    assert updated.parent_id is None
+
+
+async def test_update_allows_deep_valid_hierarchy(
+    service: TeamService, organization: Organization, department: Department
+):
+    """A long, non-cyclic ancestor chain must be walked correctly and must
+    not be mistaken for a cycle."""
+    deepest_id: uuid.UUID | None = None
+    for i in range(6):
+        node = await service.create(
+            TeamCreate(
+                organization_id=organization.id,
+                department_id=department.id,
+                code=f"N{i}",
+                name=f"N{i}",
+                parent_id=deepest_id,
+            )
+        )
+        deepest_id = node.id
+
+    leaf = await service.create(
+        TeamCreate(
+            organization_id=organization.id, department_id=department.id, code="LEAF", name="Leaf"
+        )
+    )
+
+    updated = await service.update(leaf.id, TeamUpdate(parent_id=deepest_id))
+
+    assert updated is not None
+    assert updated.parent_id == deepest_id
 
 
 async def test_update_rejects_duplicate_code(
