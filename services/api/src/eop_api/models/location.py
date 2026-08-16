@@ -16,7 +16,9 @@ class Location(BaseEntity):
     """An organizational place (site/facility), not a postal address.
 
     Locations form an adjacency-list tree via `parent_id`: unlimited depth,
-    no cycle detection. `parent_id` is `ON DELETE RESTRICT` so deleting a
+    no cycle constraint at the schema/FK level -- `LocationService` rejects
+    both self-parenting and multi-hop cycles at the service layer.
+    `parent_id` is `ON DELETE RESTRICT` so deleting a
     parent that still has children fails at the database level -- callers
     must reassign or delete the children first.
     """

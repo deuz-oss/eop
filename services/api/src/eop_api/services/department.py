@@ -27,10 +27,14 @@ class ParentOrganizationMismatchError(Exception):
 
 
 class SelfParentDepartmentError(Exception):
-    """Raised when a Department's `parent_id` is set to its own id.
+    """Raised when a Department's `parent_id` is set to its own id."""
 
-    Only a single-node cycle is rejected here -- full cycle detection across
-    the tree is explicitly out of scope for this module.
+
+class CyclicParentDepartmentError(Exception):
+    """Raised when a Department's proposed `parent_id` is already a
+    descendant of the Department being updated -- a multi-hop cycle
+    (e.g. A -> B -> A) rather than the single-node case
+    `SelfParentDepartmentError` covers.
     """
 
 
@@ -155,6 +159,8 @@ class DepartmentService:
                     raise ParentDepartmentNotFoundError(str(parent_id))
                 if parent.organization_id != organization_id:
                     raise ParentOrganizationMismatchError(str(parent_id))
+                if await self._would_create_cycle(repo, department_id, parent_id):
+                    raise CyclicParentDepartmentError(str(parent_id))
 
             if "organization_id" in values or "code" in values:
                 existing = await repo.get_by_organization_and_code(organization_id, code)
@@ -175,3 +181,27 @@ class DepartmentService:
             if deleted:
                 await uow.commit()
             return deleted
+
+    @staticmethod
+    async def _would_create_cycle(
+        repo: DepartmentRepository, department_id: uuid.UUID, proposed_parent_id: uuid.UUID
+    ) -> bool:
+        """Whether assigning `proposed_parent_id` as `department_id`'s parent
+        would create a multi-hop cycle -- i.e. whether `department_id` is
+        already an ancestor of `proposed_parent_id`.
+
+        Walks up from `proposed_parent_id` via `parent_id` one hop at a time.
+        `visited` guards against looping forever should the tree already
+        contain a cycle from data predating this check.
+        """
+        visited: set[uuid.UUID] = set()
+        current_id: uuid.UUID | None = proposed_parent_id
+        while current_id is not None:
+            if current_id == department_id:
+                return True
+            if current_id in visited:
+                return False
+            visited.add(current_id)
+            current = await repo.get(current_id)
+            current_id = current.parent_id if current is not None else None
+        return False

@@ -15,6 +15,7 @@ from eop_api.schemas.department import DepartmentCreate, DepartmentUpdate
 from eop_api.schemas.pagination import PaginationParams
 from eop_api.schemas.search import FilterParams, SearchParams
 from eop_api.services.department import (
+    CyclicParentDepartmentError,
     DepartmentService,
     DuplicateDepartmentCodeError,
     OrganizationNotFoundError,
@@ -255,6 +256,90 @@ async def test_update_rejects_self_parent(service: DepartmentService, organizati
 
     with pytest.raises(SelfParentDepartmentError):
         await service.update(department.id, DepartmentUpdate(parent_id=department.id))
+
+
+async def test_update_rejects_direct_two_node_cycle(
+    service: DepartmentService, organization: Organization
+):
+    """A -> B (B's parent is A); setting A's parent to B would close A -> B -> A."""
+    a = await service.create(DepartmentCreate(organization_id=organization.id, code="A", name="A"))
+    b = await service.create(
+        DepartmentCreate(organization_id=organization.id, code="B", name="B", parent_id=a.id)
+    )
+
+    with pytest.raises(CyclicParentDepartmentError):
+        await service.update(a.id, DepartmentUpdate(parent_id=b.id))
+
+
+async def test_update_rejects_three_node_cycle(
+    service: DepartmentService, organization: Organization
+):
+    """A -> B -> C (chain); setting A's parent to C would close the cycle."""
+    a = await service.create(DepartmentCreate(organization_id=organization.id, code="A", name="A"))
+    b = await service.create(
+        DepartmentCreate(organization_id=organization.id, code="B", name="B", parent_id=a.id)
+    )
+    c = await service.create(
+        DepartmentCreate(organization_id=organization.id, code="C", name="C", parent_id=b.id)
+    )
+
+    with pytest.raises(CyclicParentDepartmentError):
+        await service.update(a.id, DepartmentUpdate(parent_id=c.id))
+
+
+async def test_update_allows_valid_reparenting(
+    service: DepartmentService, organization: Organization
+):
+    a = await service.create(DepartmentCreate(organization_id=organization.id, code="A", name="A"))
+    b = await service.create(DepartmentCreate(organization_id=organization.id, code="B", name="B"))
+
+    updated = await service.update(b.id, DepartmentUpdate(parent_id=a.id))
+
+    assert updated is not None
+    assert updated.parent_id == a.id
+
+
+async def test_update_allows_reparenting_to_root(
+    service: DepartmentService, organization: Organization
+):
+    """Clearing `parent_id` to make a node a root is valid and must not be
+    mistaken for a cycle."""
+    a = await service.create(DepartmentCreate(organization_id=organization.id, code="A", name="A"))
+    b = await service.create(
+        DepartmentCreate(organization_id=organization.id, code="B", name="B", parent_id=a.id)
+    )
+    c = await service.create(
+        DepartmentCreate(organization_id=organization.id, code="C", name="C", parent_id=b.id)
+    )
+
+    updated = await service.update(c.id, DepartmentUpdate(parent_id=None))
+
+    assert updated is not None
+    assert updated.parent_id is None
+
+
+async def test_update_allows_deep_valid_hierarchy(
+    service: DepartmentService, organization: Organization
+):
+    """A long, non-cyclic ancestor chain must be walked correctly and must
+    not be mistaken for a cycle."""
+    deepest_id: uuid.UUID | None = None
+    for i in range(6):
+        node = await service.create(
+            DepartmentCreate(
+                organization_id=organization.id, code=f"N{i}", name=f"N{i}", parent_id=deepest_id
+            )
+        )
+        deepest_id = node.id
+
+    leaf = await service.create(
+        DepartmentCreate(organization_id=organization.id, code="LEAF", name="Leaf")
+    )
+
+    updated = await service.update(leaf.id, DepartmentUpdate(parent_id=deepest_id))
+
+    assert updated is not None
+    assert updated.parent_id == deepest_id
 
 
 async def test_update_rejects_duplicate_code(

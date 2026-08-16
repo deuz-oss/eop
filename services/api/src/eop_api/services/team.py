@@ -37,10 +37,13 @@ class ParentDepartmentMismatchError(Exception):
 
 
 class SelfParentTeamError(Exception):
-    """Raised when a Team's `parent_id` is set to its own id.
+    """Raised when a Team's `parent_id` is set to its own id."""
 
-    Only a single-node cycle is rejected here -- full cycle detection across
-    the tree is explicitly out of scope for this module.
+
+class CyclicParentTeamError(Exception):
+    """Raised when a Team's proposed `parent_id` is already a descendant of
+    the Team being updated -- a multi-hop cycle (e.g. A -> B -> A) rather
+    than the single-node case `SelfParentTeamError` covers.
     """
 
 
@@ -190,6 +193,8 @@ class TeamService:
                     raise ParentOrganizationMismatchError(str(parent_id))
                 if parent.department_id != department_id:
                     raise ParentDepartmentMismatchError(str(parent_id))
+                if await self._would_create_cycle(repo, team_id, parent_id):
+                    raise CyclicParentTeamError(str(parent_id))
 
             if "organization_id" in values or "code" in values:
                 existing = await repo.get_by_organization_and_code(organization_id, code)
@@ -210,3 +215,27 @@ class TeamService:
             if deleted:
                 await uow.commit()
             return deleted
+
+    @staticmethod
+    async def _would_create_cycle(
+        repo: TeamRepository, team_id: uuid.UUID, proposed_parent_id: uuid.UUID
+    ) -> bool:
+        """Whether assigning `proposed_parent_id` as `team_id`'s parent would
+        create a multi-hop cycle -- i.e. whether `team_id` is already an
+        ancestor of `proposed_parent_id`.
+
+        Walks up from `proposed_parent_id` via `parent_id` one hop at a time.
+        `visited` guards against looping forever should the tree already
+        contain a cycle from data predating this check.
+        """
+        visited: set[uuid.UUID] = set()
+        current_id: uuid.UUID | None = proposed_parent_id
+        while current_id is not None:
+            if current_id == team_id:
+                return True
+            if current_id in visited:
+                return False
+            visited.add(current_id)
+            current = await repo.get(current_id)
+            current_id = current.parent_id if current is not None else None
+        return False

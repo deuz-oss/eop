@@ -10,6 +10,7 @@ from eop_api.schemas.department import DepartmentCreate, DepartmentResponse, Dep
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.search import FilterParams
 from eop_api.services.department import (
+    CyclicParentDepartmentError,
     DepartmentService,
     DuplicateDepartmentCodeError,
     OrganizationNotFoundError,
@@ -132,6 +133,11 @@ async def update_department(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Parent department must belong to the same organization",
+        ) from exc
+    except CyclicParentDepartmentError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A department cannot be assigned a descendant as its parent",
         ) from exc
     except DuplicateDepartmentCodeError as exc:
         raise HTTPException(

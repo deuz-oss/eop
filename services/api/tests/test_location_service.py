@@ -15,6 +15,7 @@ from eop_api.schemas.location import LocationCreate, LocationUpdate
 from eop_api.schemas.pagination import PaginationParams
 from eop_api.schemas.search import FilterParams, SearchParams
 from eop_api.services.location import (
+    CyclicParentLocationError,
     DuplicateLocationCodeError,
     LocationService,
     LocationTypeNotFoundError,
@@ -192,6 +193,93 @@ async def test_update_rejects_self_parent(service: LocationService, location_typ
 
     with pytest.raises(SelfParentLocationError):
         await service.update(location.id, LocationUpdate(parent_id=location.id))
+
+
+async def test_update_rejects_direct_two_node_cycle(
+    service: LocationService, location_type: LocationType
+):
+    """A -> B (B's parent is A); setting A's parent to B would close A -> B -> A."""
+    a = await service.create(LocationCreate(name="A", code="A", location_type_id=location_type.id))
+    b = await service.create(
+        LocationCreate(name="B", code="B", location_type_id=location_type.id, parent_id=a.id)
+    )
+
+    with pytest.raises(CyclicParentLocationError):
+        await service.update(a.id, LocationUpdate(parent_id=b.id))
+
+
+async def test_update_rejects_three_node_cycle(
+    service: LocationService, location_type: LocationType
+):
+    """A -> B -> C (chain); setting A's parent to C would close the cycle."""
+    a = await service.create(LocationCreate(name="A", code="A", location_type_id=location_type.id))
+    b = await service.create(
+        LocationCreate(name="B", code="B", location_type_id=location_type.id, parent_id=a.id)
+    )
+    c = await service.create(
+        LocationCreate(name="C", code="C", location_type_id=location_type.id, parent_id=b.id)
+    )
+
+    with pytest.raises(CyclicParentLocationError):
+        await service.update(a.id, LocationUpdate(parent_id=c.id))
+
+
+async def test_update_allows_valid_reparenting(
+    service: LocationService, location_type: LocationType
+):
+    a = await service.create(LocationCreate(name="A", code="A", location_type_id=location_type.id))
+    b = await service.create(LocationCreate(name="B", code="B", location_type_id=location_type.id))
+
+    updated = await service.update(b.id, LocationUpdate(parent_id=a.id))
+
+    assert updated is not None
+    assert updated.parent_id == a.id
+
+
+async def test_update_allows_reparenting_to_root(
+    service: LocationService, location_type: LocationType
+):
+    """Clearing `parent_id` to make a node a root is valid and must not be
+    mistaken for a cycle."""
+    a = await service.create(LocationCreate(name="A", code="A", location_type_id=location_type.id))
+    b = await service.create(
+        LocationCreate(name="B", code="B", location_type_id=location_type.id, parent_id=a.id)
+    )
+    c = await service.create(
+        LocationCreate(name="C", code="C", location_type_id=location_type.id, parent_id=b.id)
+    )
+
+    updated = await service.update(c.id, LocationUpdate(parent_id=None))
+
+    assert updated is not None
+    assert updated.parent_id is None
+
+
+async def test_update_allows_deep_valid_hierarchy(
+    service: LocationService, location_type: LocationType
+):
+    """A long, non-cyclic ancestor chain must be walked correctly and must
+    not be mistaken for a cycle."""
+    deepest_id: uuid.UUID | None = None
+    for i in range(6):
+        node = await service.create(
+            LocationCreate(
+                name=f"N{i}",
+                code=f"N{i}",
+                location_type_id=location_type.id,
+                parent_id=deepest_id,
+            )
+        )
+        deepest_id = node.id
+
+    leaf = await service.create(
+        LocationCreate(name="Leaf", code="LEAF", location_type_id=location_type.id)
+    )
+
+    updated = await service.update(leaf.id, LocationUpdate(parent_id=deepest_id))
+
+    assert updated is not None
+    assert updated.parent_id == deepest_id
 
 
 async def test_update_rejects_missing_location_type(

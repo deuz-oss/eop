@@ -11,6 +11,7 @@ from eop_api.schemas.pagination import Page
 from eop_api.schemas.search import FilterParams
 from eop_api.schemas.team import TeamCreate, TeamResponse, TeamUpdate
 from eop_api.services.team import (
+    CyclicParentTeamError,
     DepartmentNotFoundError,
     DuplicateTeamCodeError,
     OrganizationNotFoundError,
@@ -161,6 +162,11 @@ async def update_team(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Parent team must belong to the same department",
+        ) from exc
+    except CyclicParentTeamError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A team cannot be assigned a descendant as its parent",
         ) from exc
     except DuplicateTeamCodeError as exc:
         raise HTTPException(
