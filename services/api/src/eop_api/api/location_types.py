@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.location_type import (
     LocationTypeCreate,
@@ -23,10 +24,16 @@ def get_location_type_service() -> LocationTypeService:
 
 LocationTypeServiceDep = Annotated[LocationTypeService, Depends(get_location_type_service)]
 
+# Location Type Authorization Policy: reads remain open to any authenticated
+# user (unchanged); create/update/delete require the "admin" role
+# (`RequireRole("admin")`), the same mechanism `roles.py`/`stores.py` use --
+# no new authorization framework introduced.
+RequireLocationAdmin = Annotated[CurrentUser, Depends(RequireRole("admin"))]
+
 
 @router.post("", response_model=LocationTypeResponse, status_code=status.HTTP_201_CREATED)
 async def create_location_type(
-    data: LocationTypeCreate, service: LocationTypeServiceDep, _: CurrentUser
+    data: LocationTypeCreate, service: LocationTypeServiceDep, _: RequireLocationAdmin
 ) -> LocationTypeResponse:
     location_type = await service.create(data)
     return LocationTypeResponse.model_validate(location_type)
@@ -68,7 +75,7 @@ async def update_location_type(
     location_type_id: uuid.UUID,
     data: LocationTypeUpdate,
     service: LocationTypeServiceDep,
-    _: CurrentUser,
+    _: RequireLocationAdmin,
 ) -> LocationTypeResponse:
     location_type = await service.update(location_type_id, data)
     if location_type is None:
@@ -78,7 +85,7 @@ async def update_location_type(
 
 @router.delete("/{location_type_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_location_type(
-    location_type_id: uuid.UUID, service: LocationTypeServiceDep, _: CurrentUser
+    location_type_id: uuid.UUID, service: LocationTypeServiceDep, _: RequireLocationAdmin
 ) -> None:
     deleted = await service.delete(location_type_id)
     if not deleted:

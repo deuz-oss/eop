@@ -13,6 +13,7 @@ from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
 
 
@@ -98,6 +99,31 @@ def other_headers(client: TestClient, other: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+async def _seed_location_admin(user_id: uuid.UUID) -> None:
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+def _location_admin_headers(client: TestClient) -> dict[str, str]:
+    """A throwaway admin session used only to satisfy the admin-only
+    Location/LocationType write requirement during master-data bootstrap --
+    the employee/user actually under test keeps its own identity."""
+    suffix = uuid.uuid4().hex[:8]
+    email = f"location-admin-{suffix}@example.com"
+    user = asyncio.run(_create_user(email=email, password="admin-pass"))
+    asyncio.run(_seed_location_admin(user.id))
+    response = client.post("/auth/login", json={"email": email, "password": "admin-pass"})
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 def _create_employee(
     client: TestClient, headers: dict[str, str], *, user_id: str | None = None
 ) -> dict:
@@ -134,13 +160,16 @@ def _create_employee(
         },
         headers=headers,
     ).json()
+    location_admin_headers = _location_admin_headers(client)
     location_type = client.post(
-        "/location-types", json={"name": "Office", "code": f"OFFICE-{suffix}"}, headers=headers
+        "/location-types",
+        json={"name": "Office", "code": f"OFFICE-{suffix}"},
+        headers=location_admin_headers,
     ).json()
     location = client.post(
         "/locations",
         json={"name": "HQ", "code": f"HQ-{suffix}", "location_type_id": location_type["id"]},
-        headers=headers,
+        headers=location_admin_headers,
     ).json()
     job_grade = client.post(
         "/hr/job-grades",

@@ -13,7 +13,12 @@ from eop_api.core.security import hash_password
 from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
+
+# Location Type Authorization: reads remain open to any authenticated user;
+# create/update/delete are Role Based (`RequireRole("admin")`), mirroring
+# `test_stores_api.py`'s exact fixture/test pattern.
 
 
 @pytest.fixture(autouse=True)
@@ -78,6 +83,38 @@ def user_headers(client: TestClient, user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.fixture
+def admin_user() -> User:
+    return asyncio.run(_create_user(email="admin@example.com", password="admin-pass"))
+
+
+async def _seed_admin(user_id: uuid.UUID) -> None:
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+@pytest.fixture
+def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
+    asyncio.run(_seed_admin(admin_user.id))
+
+    response = client.post(
+        "/auth/login", json={"email": "admin@example.com", "password": "admin-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+# --- authentication -----------------------------------------------------------
+
+
 def test_create_location_type_requires_authentication(client: TestClient):
     response = client.post("/location-types", json={"code": "warehouse", "name": "Warehouse"})
 
@@ -90,9 +127,59 @@ def test_list_location_types_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_create_location_type(client: TestClient, user_headers: dict[str, str]):
+# --- authorization: reads open to any authenticated user, writes admin-only ---
+
+
+def test_list_location_types_allows_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.get("/location-types", headers=user_headers)
+
+    assert response.status_code == 200
+
+
+def test_get_location_type_allows_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.get(f"/location-types/{uuid.uuid4()}", headers=user_headers)
+
+    # 404 (not 403) proves the request reached the service layer -- the
+    # non-admin caller was not rejected by authorization.
+    assert response.status_code == 404
+
+
+def test_list_location_types_allows_admin(client: TestClient, admin_headers: dict[str, str]):
+    response = client.get("/location-types", headers=admin_headers)
+
+    assert response.status_code == 200
+
+
+def test_create_location_type_rejects_non_admin(client: TestClient, user_headers: dict[str, str]):
     response = client.post(
-        "/location-types", json={"code": "warehouse", "name": "Warehouse"}, headers=user_headers
+        "/location-types",
+        json={"code": "warehouse", "name": "Warehouse"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_update_location_type_rejects_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.patch(
+        f"/location-types/{uuid.uuid4()}", json={"name": "New Name"}, headers=user_headers
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_location_type_rejects_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.delete(f"/location-types/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 403
+
+
+# --- create ---------------------------------------------------------------
+
+
+def test_create_location_type(client: TestClient, admin_headers: dict[str, str]):
+    response = client.post(
+        "/location-types", json={"code": "warehouse", "name": "Warehouse"}, headers=admin_headers
     )
 
     assert response.status_code == 201
@@ -102,17 +189,22 @@ def test_create_location_type(client: TestClient, user_headers: dict[str, str]):
     uuid.UUID(body["id"])
 
 
-def test_create_location_type_rejects_blank_name(client: TestClient, user_headers: dict[str, str]):
+def test_create_location_type_rejects_blank_name(client: TestClient, admin_headers: dict[str, str]):
     response = client.post(
-        "/location-types", json={"code": "warehouse", "name": ""}, headers=user_headers
+        "/location-types", json={"code": "warehouse", "name": ""}, headers=admin_headers
     )
 
     assert response.status_code == 422
 
 
-def test_get_location_type(client: TestClient, user_headers: dict[str, str]):
+# --- read -------------------------------------------------------------------
+
+
+def test_get_location_type(
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
+):
     created = client.post(
-        "/location-types", json={"code": "store", "name": "Store"}, headers=user_headers
+        "/location-types", json={"code": "store", "name": "Store"}, headers=admin_headers
     ).json()
 
     response = client.get(f"/location-types/{created['id']}", headers=user_headers)
@@ -127,11 +219,13 @@ def test_get_location_type_not_found(client: TestClient, user_headers: dict[str,
     assert response.status_code == 404
 
 
-def test_list_location_types(client: TestClient, user_headers: dict[str, str]):
+def test_list_location_types(
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
+):
     client.post(
-        "/location-types", json={"code": "warehouse", "name": "Warehouse"}, headers=user_headers
+        "/location-types", json={"code": "warehouse", "name": "Warehouse"}, headers=admin_headers
     )
-    client.post("/location-types", json={"code": "store", "name": "Store"}, headers=user_headers)
+    client.post("/location-types", json={"code": "store", "name": "Store"}, headers=admin_headers)
 
     response = client.get("/location-types", headers=user_headers)
 
@@ -141,11 +235,13 @@ def test_list_location_types(client: TestClient, user_headers: dict[str, str]):
 
 
 def test_list_location_types_paginated_default_pagination(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
 ):
     for i in range(3):
         client.post(
-            "/location-types", json={"code": f"type-{i}", "name": f"Type {i}"}, headers=user_headers
+            "/location-types",
+            json={"code": f"type-{i}", "name": f"Type {i}"},
+            headers=admin_headers,
         )
 
     response = client.get("/location-types/paginated", headers=user_headers)
@@ -158,11 +254,13 @@ def test_list_location_types_paginated_default_pagination(
     assert len(body["items"]) == 3
 
 
-def test_list_location_types_paginated_search(client: TestClient, user_headers: dict[str, str]):
+def test_list_location_types_paginated_search(
+    client: TestClient, admin_headers: dict[str, str], user_headers: dict[str, str]
+):
     client.post(
-        "/location-types", json={"code": "warehouse", "name": "Warehouse"}, headers=user_headers
+        "/location-types", json={"code": "warehouse", "name": "Warehouse"}, headers=admin_headers
     )
-    client.post("/location-types", json={"code": "store", "name": "Store"}, headers=user_headers)
+    client.post("/location-types", json={"code": "store", "name": "Store"}, headers=admin_headers)
 
     response = client.get("/location-types/paginated", headers=user_headers, params={"q": "ware"})
 
@@ -172,39 +270,45 @@ def test_list_location_types_paginated_search(client: TestClient, user_headers: 
     assert body["items"][0]["name"] == "Warehouse"
 
 
-def test_update_location_type(client: TestClient, user_headers: dict[str, str]):
+# --- update -------------------------------------------------------------------
+
+
+def test_update_location_type(client: TestClient, admin_headers: dict[str, str]):
     created = client.post(
-        "/location-types", json={"code": "before", "name": "Before"}, headers=user_headers
+        "/location-types", json={"code": "before", "name": "Before"}, headers=admin_headers
     ).json()
 
     response = client.patch(
-        f"/location-types/{created['id']}", json={"name": "After"}, headers=user_headers
+        f"/location-types/{created['id']}", json={"name": "After"}, headers=admin_headers
     )
 
     assert response.status_code == 200
     assert response.json()["name"] == "After"
 
 
-def test_update_location_type_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_update_location_type_not_found(client: TestClient, admin_headers: dict[str, str]):
     response = client.patch(
-        f"/location-types/{uuid.uuid4()}", json={"name": "After"}, headers=user_headers
+        f"/location-types/{uuid.uuid4()}", json={"name": "After"}, headers=admin_headers
     )
 
     assert response.status_code == 404
 
 
-def test_delete_location_type(client: TestClient, user_headers: dict[str, str]):
+# --- delete -------------------------------------------------------------------
+
+
+def test_delete_location_type(client: TestClient, admin_headers: dict[str, str]):
     created = client.post(
-        "/location-types", json={"code": "to-delete", "name": "To Delete"}, headers=user_headers
+        "/location-types", json={"code": "to-delete", "name": "To Delete"}, headers=admin_headers
     ).json()
 
-    response = client.delete(f"/location-types/{created['id']}", headers=user_headers)
+    response = client.delete(f"/location-types/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 204
-    assert client.get(f"/location-types/{created['id']}", headers=user_headers).status_code == 404
+    assert client.get(f"/location-types/{created['id']}", headers=admin_headers).status_code == 404
 
 
-def test_delete_location_type_not_found(client: TestClient, user_headers: dict[str, str]):
-    response = client.delete(f"/location-types/{uuid.uuid4()}", headers=user_headers)
+def test_delete_location_type_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.delete(f"/location-types/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404

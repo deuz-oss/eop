@@ -191,6 +191,19 @@ def _create_team(
     return response.json()
 
 
+def _location_admin_headers(client: TestClient) -> dict[str, str]:
+    """A throwaway admin session used only to satisfy the admin-only
+    Location/LocationType write requirement during master-data bootstrap --
+    the employee/user actually under test keeps its own identity. Reuses this
+    file's existing `_seed_admin` role-assignment helper."""
+    suffix = uuid.uuid4().hex[:8]
+    email = f"location-admin-{suffix}@example.com"
+    user = asyncio.run(_create_user(email=email, password="admin-pass"))
+    asyncio.run(_seed_admin(user.id))
+    response = client.post("/auth/login", json={"email": email, "password": "admin-pass"})
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
 def _create_location_type(client: TestClient, headers: dict[str, str], *, code: str) -> dict:
     response = client.post(
         "/location-types", json={"name": "Office", "code": code}, headers=headers
@@ -276,9 +289,10 @@ def _create_employee(
         department_id=department["id"],
         code=f"TEAM-{suffix}",
     )
-    location_type = _create_location_type(client, headers, code=f"OFFICE-{suffix}")
+    location_admin_headers = _location_admin_headers(client)
+    location_type = _create_location_type(client, location_admin_headers, code=f"OFFICE-{suffix}")
     location = _create_location(
-        client, headers, location_type_id=location_type["id"], code=f"HQ-{suffix}"
+        client, location_admin_headers, location_type_id=location_type["id"], code=f"HQ-{suffix}"
     )
     job_grade = _create_job_grade(
         client, headers, code=f"L1-{suffix}", level=int(suffix[:4], 16) + 1
