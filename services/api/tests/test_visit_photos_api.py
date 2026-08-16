@@ -203,7 +203,9 @@ def _create_employee(
     user_id: str | None = None,
 ) -> dict:
     suffix = uuid.uuid4().hex[:8]
-    organization = client.post("/organizations", json={"name": f"Acme Corp {suffix}"}).json()
+    organization = client.post(
+        "/organizations", json={"name": f"Acme Corp {suffix}"}, headers=headers
+    ).json()
     department = client.post(
         "/departments",
         json={
@@ -296,7 +298,9 @@ def _create_employee(
 
 def _create_store(client: TestClient, headers: dict[str, str]) -> dict:
     suffix = uuid.uuid4().hex[:8]
-    organization = client.post("/organizations", json={"name": f"Store Org {suffix}"}).json()
+    organization = client.post(
+        "/organizations", json={"name": f"Store Org {suffix}"}, headers=headers
+    ).json()
     store_type = client.post(
         "/store-types", json={"code": f"MT-{suffix}", "name": "Modern Trade"}, headers=headers
     ).json()

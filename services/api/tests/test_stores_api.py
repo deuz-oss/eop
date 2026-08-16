@@ -106,7 +106,9 @@ def member_headers(client: TestClient, member_user: User) -> dict[str, str]:
 
 def _create_org_and_store_type(client: TestClient, headers: dict[str, str]) -> tuple[str, str]:
     suffix = uuid.uuid4().hex[:8]
-    organization = client.post("/organizations", json={"name": f"Acme {suffix}"}).json()
+    organization = client.post(
+        "/organizations", json={"name": f"Acme {suffix}"}, headers=headers
+    ).json()
     store_type = client.post(
         "/store-types", json={"code": f"MT-{suffix}", "name": "Modern Trade"}, headers=headers
     ).json()

@@ -117,7 +117,9 @@ def _create_application(client: TestClient, headers: dict[str, str]) -> str:
         },
         headers=headers,
     ).json()
-    organization = client.post("/organizations", json={"name": f"Acme {suffix}"}).json()
+    organization = client.post(
+        "/organizations", json={"name": f"Acme {suffix}"}, headers=headers
+    ).json()
     department = client.post(
         "/departments",
         json={

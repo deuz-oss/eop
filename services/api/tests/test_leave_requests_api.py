@@ -143,7 +143,7 @@ def other_headers(client: TestClient, other: User) -> dict[str, str]:
 def _create_organization(
     client: TestClient, headers: dict[str, str], *, name: str = "Acme Corp"
 ) -> dict:
-    response = client.post("/organizations", json={"name": name})
+    response = client.post("/organizations", json={"name": name}, headers=headers)
     assert response.status_code == 201
     return response.json()
 

@@ -81,7 +81,7 @@ def user_headers(client: TestClient, user: User) -> dict[str, str]:
 
 @pytest.fixture
 def organization_id(client: TestClient, user_headers: dict[str, str]) -> str:
-    response = client.post("/organizations", json={"name": "Acme Corp"})
+    response = client.post("/organizations", json={"name": "Acme Corp"}, headers=user_headers)
     return response.json()["id"]
 
 

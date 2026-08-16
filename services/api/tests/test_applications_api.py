@@ -125,7 +125,9 @@ def _create_candidate(client: TestClient, headers: dict[str, str]) -> str:
 
 def _create_job_requisition(client: TestClient, headers: dict[str, str]) -> str:
     suffix = uuid.uuid4().hex[:8]
-    organization = client.post("/organizations", json={"name": f"Acme {suffix}"}).json()
+    organization = client.post(
+        "/organizations", json={"name": f"Acme {suffix}"}, headers=headers
+    ).json()
     department = client.post(
         "/departments",
         json={

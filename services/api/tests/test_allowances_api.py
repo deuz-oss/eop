@@ -116,7 +116,9 @@ def _location_admin_headers(client: TestClient) -> dict[str, str]:
 
 def _create_employee(client: TestClient, headers: dict[str, str], *, user_id: str) -> dict:
     suffix = uuid.uuid4().hex[:8]
-    organization = client.post("/organizations", json={"name": f"Acme {suffix}"}).json()
+    organization = client.post(
+        "/organizations", json={"name": f"Acme {suffix}"}, headers=headers
+    ).json()
     department = client.post(
         "/departments",
         json={
