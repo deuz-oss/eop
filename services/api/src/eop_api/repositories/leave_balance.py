@@ -29,6 +29,24 @@ class LeaveBalanceRepository(BaseRepository[LeaveBalance]):
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
+    async def get_by_employee_and_period_year(
+        self, employee_id: uuid.UUID, period_year: int
+    ) -> Sequence[LeaveBalance]:
+        """LeaveBalance rows for `employee_id` in `period_year`.
+
+        Returns a sequence, not a single row: `(employee_id, period_year)` has
+        no uniqueness constraint, so this cannot use `BaseRepository.get_by()`
+        -- that helper's `scalar_one_or_none()` would raise `MultipleResultsFound`
+        if more than one row matches. Interpreting 0/1/many matches belongs to
+        the caller (`ApprovalService`), not this repository.
+        """
+        stmt = select(LeaveBalance).where(
+            LeaveBalance.employee_id == employee_id,
+            LeaveBalance.period_year == period_year,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
     async def paginate(
         self,
         *,

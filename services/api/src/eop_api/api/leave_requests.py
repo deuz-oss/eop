@@ -15,9 +15,13 @@ from eop_api.schemas.leave_request import (
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.search import FilterParams
 from eop_api.services.approval import (
+    AmbiguousLeaveBalanceError,
     ApprovalAuthorizationDeniedError,
     ApprovalService,
+    CrossYearLeaveRequestError,
     InvalidApprovalStateError,
+    LeaveBalanceNotFoundError,
+    OverlappingLeaveRequestError,
 )
 from eop_api.services.leave_request import (
     EmployeeNotFoundError,
@@ -172,6 +176,26 @@ async def approve_leave_request(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except InvalidApprovalStateError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CrossYearLeaveRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Leave request must not span more than one calendar year",
+        ) from exc
+    except LeaveBalanceNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="No leave balance found for this employee and period",
+        ) from exc
+    except AmbiguousLeaveBalanceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Multiple leave balances found for this employee and period",
+        ) from exc
+    except OverlappingLeaveRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An approved leave request already overlaps this date range",
+        ) from exc
     if leave_request is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
     return LeaveRequestResponse.model_validate(leave_request)

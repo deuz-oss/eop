@@ -9,6 +9,7 @@ from eop_api.models.overtime_request import OvertimeRequest
 from eop_api.models.timesheet import Timesheet
 from eop_api.repositories.base import BaseRepository
 from eop_api.repositories.hr_employee import HrEmployeeRepository
+from eop_api.repositories.leave_balance import LeaveBalanceRepository
 from eop_api.repositories.leave_request import LeaveRequestRepository
 from eop_api.repositories.overtime_request import OvertimeRequestRepository
 from eop_api.repositories.timesheet import TimesheetRepository
@@ -36,6 +37,32 @@ class ApprovalAuthorizationDeniedError(Exception):
 
     Thrown only by `ApprovalService`, never by `ApprovalAuthorizationEvaluator`
     or `AuthorizationService` themselves (`decision.md`).
+    """
+
+
+class CrossYearLeaveRequestError(Exception):
+    """Raised when a `LeaveRequest` being approved spans two calendar years
+    (`start_date.year != end_date.year`) -- period-year attribution across a
+    year boundary is not supported by LeaveBalance synchronization v1.
+    """
+
+
+class LeaveBalanceNotFoundError(Exception):
+    """Raised when no `LeaveBalance` row exists for the approved
+    `LeaveRequest`'s `employee_id` and period year.
+    """
+
+
+class AmbiguousLeaveBalanceError(Exception):
+    """Raised when more than one `LeaveBalance` row exists for the approved
+    `LeaveRequest`'s `employee_id` and period year -- `(employee_id,
+    period_year)` is not database-enforced unique in v1.
+    """
+
+
+class OverlappingLeaveRequestError(Exception):
+    """Raised when another `approved` `LeaveRequest` for the same employee
+    overlaps the date range of the `LeaveRequest` being approved.
     """
 
 
@@ -91,21 +118,15 @@ class ApprovalService:
     ) -> LeaveRequest | None:
         """Approve a pending `LeaveRequest`.
 
-        `LeaveBalance` synchronization is an intentional gap here, not an
-        oversight. Per the approved architecture
-        (`docs/architecture/LEAVE_BALANCE_SYNCHRONIZATION_DESIGN.md`), this
-        method -- between `_apply_decision` and `_complete_decision`, inside
-        this same transaction -- is where that synchronization would be
-        wired in. No `LeaveBalanceRepository` call is made, and no
-        `LeaveBalanceRepository` locate method exists yet either: any such
-        method would require a `period_year` argument, and no caller can
-        supply one without deriving it from `LeaveRequest.start_date`/
-        `end_date` -- period attribution -- which the design doc's §12.3
-        leaves explicitly unresolved. Introducing the method ahead of a
-        caller that can actually invoke it would be an abstraction with no
-        valid call site. Row/uniqueness selection among located rows
-        (§12.2), missing-row handling (§12.6), and deduction calculation
-        (§12.4) are equally unresolved and are not implemented here either.
+        `LeaveBalance` synchronization (EOP Phase 8H, per
+        `docs/architecture/LEAVE_BALANCE_SYNCHRONIZATION_DESIGN.md`) runs via
+        `_sync_leave_balance`, between `_apply_decision` and
+        `_complete_decision`, inside this same transaction: both the status
+        transition and the balance deduction succeed together or roll back
+        together. See `_sync_leave_balance` for the v1 rules (cross-year
+        rejection, overlap rejection, balance row selection, day-count
+        calculation) and its explicitly deferred scope (half-day, leave
+        types, reversal, audit logging, locking).
         """
         async with self._uow_factory() as uow:
             repo = LeaveRequestRepository(uow.session)
@@ -119,6 +140,7 @@ class ApprovalService:
             )
             if leave_request is None:
                 return None
+            await self._sync_leave_balance(uow, leave_request)
             return await self._complete_decision(uow, leave_request)
 
     async def reject_leave_request(
@@ -283,3 +305,54 @@ class ApprovalService:
         await uow.session.refresh(entity)
         uow.session.expunge(entity)
         return entity
+
+    async def _sync_leave_balance(
+        self, uow: SQLAlchemyUnitOfWork, leave_request: LeaveRequest
+    ) -> None:
+        """Deducts an approved `LeaveRequest`'s day count from its employee's
+        `LeaveBalance` for that period year. Called only from
+        `approve_leave_request`, between `_apply_decision` and
+        `_complete_decision` -- never commits, so a raised exception here
+        leaves the whole `uow` uncommitted and it rolls back on exit,
+        undoing the already-staged status transition along with it.
+
+        v1 rules (EOP Phase 8H, `LEAVE_BALANCE_SYNCHRONIZATION_DESIGN.md`):
+        cross-year requests are rejected; an approved, overlapping
+        `LeaveRequest` for the same employee rejects this approval; the
+        matching `LeaveBalance` row must be exactly one (no database
+        uniqueness constraint exists for `(employee_id, period_year)` in
+        v1, so zero or multiple matches are both rejected here instead);
+        the day count is calendar days, inclusive, with no half-day
+        support. Half-day handling, leave types, reversal, audit logging,
+        and locking are explicitly out of scope for v1.
+        """
+        if leave_request.start_date.year != leave_request.end_date.year:
+            raise CrossYearLeaveRequestError(str(leave_request.id))
+
+        leave_request_repo = LeaveRequestRepository(uow.session)
+        overlapping = await leave_request_repo.find_overlapping(
+            leave_request.employee_id,
+            leave_request.start_date,
+            leave_request.end_date,
+            exclude_id=leave_request.id,
+        )
+        if any(other.status == "approved" for other in overlapping):
+            raise OverlappingLeaveRequestError(str(leave_request.id))
+
+        period_year = leave_request.start_date.year
+        balance_repo = LeaveBalanceRepository(uow.session)
+        balances = await balance_repo.get_by_employee_and_period_year(
+            leave_request.employee_id, period_year
+        )
+        if len(balances) == 0:
+            raise LeaveBalanceNotFoundError(str(leave_request.employee_id))
+        if len(balances) > 1:
+            raise AmbiguousLeaveBalanceError(str(leave_request.employee_id))
+
+        balance = balances[0]
+        day_count = (leave_request.end_date - leave_request.start_date).days + 1
+        await balance_repo.update(
+            balance.id,
+            used_days=balance.used_days + day_count,
+            remaining_days=balance.remaining_days - day_count,
+        )

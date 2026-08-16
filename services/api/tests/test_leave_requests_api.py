@@ -431,6 +431,31 @@ def _create_leave_request(
     return response.json()
 
 
+def _create_leave_balance(
+    client: TestClient,
+    headers: dict[str, str],
+    employee_id: str,
+    *,
+    period_year: int = 2026,
+    allocated_days: int = 10,
+    used_days: int = 0,
+    remaining_days: int = 10,
+) -> dict:
+    response = client.post(
+        "/hr/leave-balances",
+        json={
+            "employee_id": employee_id,
+            "period_year": period_year,
+            "allocated_days": allocated_days,
+            "used_days": used_days,
+            "remaining_days": remaining_days,
+        },
+        headers=headers,
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
 def test_create_leave_request_requires_authentication(client: TestClient):
     response = client.post("/hr/leave-requests", json=_leave_request_payload(str(uuid.uuid4())))
 
@@ -941,6 +966,7 @@ def test_approve_leave_request(
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
     )
+    _create_leave_balance(client, user_headers, requester_employee["id"])
     created = _create_leave_request(client, requester_headers, requester_employee["id"])
 
     response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
@@ -991,6 +1017,7 @@ def test_approve_leave_request_rejects_non_pending(
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
     )
+    _create_leave_balance(client, user_headers, requester_employee["id"])
     created = _create_leave_request(client, requester_headers, requester_employee["id"])
     client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
 
@@ -1059,6 +1086,142 @@ def test_approve_leave_request_forbidden_for_non_manager(
         ]
         == "pending"
     )
+
+
+# --- LeaveBalance synchronization (EOP Phase 8H) ------------------------
+
+
+def test_approve_leave_request_deducts_balance(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
+):
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    _create_leave_balance(client, user_headers, requester_employee["id"])
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
+
+    response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "approved"
+    assert set(body.keys()) == {
+        "id",
+        "employee_id",
+        "start_date",
+        "end_date",
+        "status",
+        "reason",
+        "approved_by",
+        "approved_at",
+        "rejection_reason",
+        "created_at",
+        "updated_at",
+    }
+
+    balances = client.get(
+        "/hr/leave-balances/paginated",
+        params={"employee_id": requester_employee["id"]},
+        headers=user_headers,
+    ).json()
+    assert balances["total"] == 1
+    assert balances["items"][0]["used_days"] == 3
+    assert balances["items"][0]["remaining_days"] == 7
+
+
+def test_approve_leave_request_rejects_cross_year(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
+):
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    _create_leave_balance(client, user_headers, requester_employee["id"])
+    created = _create_leave_request(
+        client,
+        requester_headers,
+        requester_employee["id"],
+        start_date="2026-12-30",
+        end_date="2027-01-02",
+    )
+
+    response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
+
+    assert response.status_code == 422
+
+
+def test_approve_leave_request_rejects_missing_balance(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
+):
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
+
+    response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
+
+    assert response.status_code == 422
+
+
+def test_approve_leave_request_rejects_ambiguous_balance(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
+):
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    _create_leave_balance(client, user_headers, requester_employee["id"])
+    _create_leave_balance(client, user_headers, requester_employee["id"])
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
+
+    response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
+
+    assert response.status_code == 409
+
+
+def test_approve_leave_request_rejects_overlapping_approved_request(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
+):
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    _create_leave_balance(client, user_headers, requester_employee["id"])
+    first = _create_leave_request(client, requester_headers, requester_employee["id"])
+    client.post(f"/hr/leave-requests/{first['id']}/approve", headers=manager_headers)
+    second = _create_leave_request(
+        client,
+        requester_headers,
+        requester_employee["id"],
+        start_date="2026-02-11",
+        end_date="2026-02-13",
+    )
+
+    response = client.post(f"/hr/leave-requests/{second['id']}/approve", headers=manager_headers)
+
+    assert response.status_code == 409
 
 
 def test_reject_leave_request_forbidden_for_non_manager(

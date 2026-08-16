@@ -232,6 +232,100 @@ async def test_get_by_employee_returns_only_that_employees_balances(
     assert [item.id for item in items] == [mine.id]
 
 
+async def test_get_by_employee_and_period_year_returns_matching_row(
+    repo: LeaveBalanceRepository, employee_id: uuid.UUID
+):
+    balance = await repo.create(employee_id=employee_id, period_year=2026)
+
+    items = await repo.get_by_employee_and_period_year(employee_id, 2026)
+
+    assert [item.id for item in items] == [balance.id]
+
+
+async def test_get_by_employee_and_period_year_excludes_different_year(
+    repo: LeaveBalanceRepository, employee_id: uuid.UUID
+):
+    await repo.create(employee_id=employee_id, period_year=2026)
+
+    items = await repo.get_by_employee_and_period_year(employee_id, 2027)
+
+    assert items == []
+
+
+async def test_get_by_employee_and_period_year_excludes_different_employee(
+    repo: LeaveBalanceRepository, session: AsyncSession, employee_id: uuid.UUID
+):
+    other_organization = await OrganizationRepository(session).create(name="Other Corp")
+    other_department = await DepartmentRepository(session).create(
+        organization_id=other_organization.id, code="SLS", name="Sales"
+    )
+    other_position = await PositionRepository(session).create(
+        organization_id=other_organization.id,
+        department_id=other_department.id,
+        code="SLS-1",
+        name="Salesperson",
+    )
+    other_team = await TeamRepository(session).create(
+        organization_id=other_organization.id,
+        department_id=other_department.id,
+        code="FIELD",
+        name="Field Team",
+    )
+    location_type = await LocationTypeRepository(session).create(code="REMOTE", name="Remote")
+    location = await LocationRepository(session).create(
+        code="RMT", name="Remote", location_type_id=location_type.id
+    )
+    job_grade = await JobGradeRepository(session).create(code="L2", name="Mid", level=2)
+    employment_type = await EmploymentTypeRepository(session).create(code="PT", name="Part-Time")
+    employment_status = await EmploymentStatusRepository(session).create(
+        code="ACTIVE2", name="Active"
+    )
+    shift = await ShiftRepository(session).create(
+        code="NIGHT",
+        name="Night Shift",
+        start_time=datetime(2024, 1, 1, 22, 0).time(),
+        end_time=datetime(2024, 1, 2, 6, 0).time(),
+    )
+    other_employee = await HrEmployeeRepository(session).create(
+        employee_number="EMP-2",
+        first_name="Grace",
+        last_name="Hopper",
+        full_name="Grace Hopper",
+        email="grace2@example.com",
+        organization_id=other_organization.id,
+        department_id=other_department.id,
+        position_id=other_position.id,
+        team_id=other_team.id,
+        location_id=location.id,
+        job_grade_id=job_grade.id,
+        employment_type_id=employment_type.id,
+        employment_status_id=employment_status.id,
+        shift_id=shift.id,
+        hire_date=datetime(2024, 1, 15).date(),
+        employment_status="active",
+    )
+
+    mine = await repo.create(employee_id=employee_id, period_year=2026)
+    await repo.create(employee_id=other_employee.id, period_year=2026)
+
+    items = await repo.get_by_employee_and_period_year(employee_id, 2026)
+
+    assert [item.id for item in items] == [mine.id]
+
+
+async def test_get_by_employee_and_period_year_returns_multiple_rows(
+    repo: LeaveBalanceRepository, employee_id: uuid.UUID
+):
+    """No uniqueness constraint on `(employee_id, period_year)` in v1 -- if
+    more than one row matches, all of them are returned as a `Sequence`."""
+    first = await repo.create(employee_id=employee_id, period_year=2026)
+    second = await repo.create(employee_id=employee_id, period_year=2026)
+
+    items = await repo.get_by_employee_and_period_year(employee_id, 2026)
+
+    assert {item.id for item in items} == {first.id, second.id}
+
+
 async def test_update_existing(repo: LeaveBalanceRepository, employee_id: uuid.UUID):
     leave_balance = await repo.create(employee_id=employee_id, period_year=2026)
 
