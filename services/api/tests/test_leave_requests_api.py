@@ -869,6 +869,42 @@ def test_update_leave_request_forbidden(
     )
 
 
+def test_update_leave_request_rejected_when_approved(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_leave_request(client, user_headers, employee["id"])
+    client.put(
+        f"/hr/leave-requests/{created['id']}", json={"status": "approved"}, headers=user_headers
+    )
+
+    response = client.put(
+        f"/hr/leave-requests/{created['id']}",
+        json={"reason": "New reason"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
+
+
+def test_update_leave_request_rejected_when_rejected(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_leave_request(client, user_headers, employee["id"])
+    client.put(
+        f"/hr/leave-requests/{created['id']}", json={"status": "rejected"}, headers=user_headers
+    )
+
+    response = client.put(
+        f"/hr/leave-requests/{created['id']}",
+        json={"reason": "New reason"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
+
+
 def test_delete_leave_request(client: TestClient, user: User, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_leave_request(client, user_headers, employee["id"])
@@ -914,6 +950,37 @@ def test_delete_leave_request_forbidden(
     response = client.delete(f"/hr/leave-requests/{created['id']}", headers=other_headers)
 
     assert response.status_code == 403
+    assert (
+        client.get(f"/hr/leave-requests/{created['id']}", headers=user_headers).status_code == 200
+    )
+
+
+def test_delete_leave_request_rejected_succeeds(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_leave_request(client, user_headers, employee["id"])
+    client.put(
+        f"/hr/leave-requests/{created['id']}", json={"status": "rejected"}, headers=user_headers
+    )
+
+    response = client.delete(f"/hr/leave-requests/{created['id']}", headers=user_headers)
+
+    assert response.status_code == 204
+
+
+def test_delete_leave_request_rejected_when_approved(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_leave_request(client, user_headers, employee["id"])
+    client.put(
+        f"/hr/leave-requests/{created['id']}", json={"status": "approved"}, headers=user_headers
+    )
+
+    response = client.delete(f"/hr/leave-requests/{created['id']}", headers=user_headers)
+
+    assert response.status_code == 409
     assert (
         client.get(f"/hr/leave-requests/{created['id']}", headers=user_headers).status_code == 200
     )

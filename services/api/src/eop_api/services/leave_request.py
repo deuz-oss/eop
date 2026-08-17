@@ -23,6 +23,17 @@ class InvalidLeaveDateRangeError(Exception):
     """Raised when a LeaveRequest's `end_date` is earlier than its `start_date`."""
 
 
+class InvalidLeaveRequestStateError(Exception):
+    """Raised when `update`/`delete` is attempted on a `LeaveRequest` whose
+    persisted status doesn't permit that operation: `update` requires
+    `pending` (no exceptions per field -- a client cannot use a generic
+    field update, including `status`, to reach `approved` outside
+    `ApprovalService`); `delete` rejects `approved`. Mirrors
+    `ApprovalService.InvalidApprovalStateError`'s precedent for the same
+    class of workflow-state invariant.
+    """
+
+
 class LeaveAuthorizationDeniedError(Exception):
     """Raised when the Leave Authorization Policy (Owner Only,
     `docs/architecture/capabilities/leave-authorization/decision.md`) denies
@@ -38,15 +49,18 @@ class LeaveRequestService:
     """Business logic for `LeaveRequest`. Owns the transaction boundary via a UoW.
 
     `LeaveRequest` is a single employee's request for a dated span -- not a
-    balance or entitlement record. Only the existence of `employee_id` and
-    `start_date <= end_date` are validated on `create`/`update`. `status`,
-    `approved_by`, `approved_at`, and `rejection_reason` are storage-only
-    columns here -- no transition validation, audit logging, or
-    event/notification dispatch is performed by this service. Which
-    component orchestrates an approval decision is an intentionally
-    unresolved architectural question (per
-    `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md` §10) and is deferred to a
-    future PR, not decided here.
+    balance or entitlement record. `ApprovalService` (`services/approval.py`)
+    owns approve/reject orchestration -- the `pending -> approved`/
+    `pending -> rejected` transitions, their authorization, and `LeaveBalance`
+    synchronization -- and is the only path to those transitions.
+    `LeaveRequestService` owns `LeaveRequest` CRUD and the `pending`-only
+    mutation rule enforced here: `create` needs only `employee_id` existence
+    and `start_date <= end_date`; `update` additionally requires the
+    persisted entity's `status` to be `pending` (no field is exempt --
+    including `status` itself, which closes the generic-update path as a way
+    to reach `approved` outside `ApprovalService`); `delete` rejects
+    `approved`. No audit logging or event/notification dispatch is
+    performed by this service.
 
     Every `create`/`get`/`update`/`delete` call is gated by the Leave
     Authorization Policy (Owner Only): authorization is delegated to
@@ -167,6 +181,11 @@ class LeaveRequestService:
 
             await self._authorize(leave_request, request_context)
 
+            if leave_request.status != "pending":
+                raise InvalidLeaveRequestStateError(
+                    f"LeaveRequest {leave_request_id} is '{leave_request.status}', not 'pending'"
+                )
+
             values = data.model_dump(exclude_unset=True)
 
             if "employee_id" in values:
@@ -196,6 +215,11 @@ class LeaveRequestService:
                 return False
 
             await self._authorize(leave_request, request_context)
+
+            if leave_request.status == "approved":
+                raise InvalidLeaveRequestStateError(
+                    f"LeaveRequest {leave_request_id} is 'approved' and cannot be deleted"
+                )
 
             deleted = await repo.delete(leave_request_id)
             if deleted:

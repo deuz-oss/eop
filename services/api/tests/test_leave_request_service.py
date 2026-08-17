@@ -29,6 +29,7 @@ from eop_api.services.employee_context import EmployeeContext, RequestContext
 from eop_api.services.leave_request import (
     EmployeeNotFoundError,
     InvalidLeaveDateRangeError,
+    InvalidLeaveRequestStateError,
     LeaveAuthorizationDeniedError,
     LeaveRequestService,
 )
@@ -364,6 +365,63 @@ async def test_update_denied_for_non_owner(
         )
 
 
+async def test_update_pending_succeeds(service: LeaveRequestService, employee_id: uuid.UUID):
+    context = _request_context(employee_id)
+    leave_request = await service.create(_create(employee_id), context)
+
+    updated = await service.update(
+        leave_request.id, LeaveRequestUpdate(reason="Updated reason"), context
+    )
+
+    assert updated is not None
+    assert updated.reason == "Updated reason"
+
+
+async def test_update_rejected_when_approved(service: LeaveRequestService, employee_id: uuid.UUID):
+    context = _request_context(employee_id)
+    leave_request = await service.create(_create(employee_id), context)
+    await service.update(leave_request.id, LeaveRequestUpdate(status="approved"), context)
+
+    with pytest.raises(InvalidLeaveRequestStateError):
+        await service.update(leave_request.id, LeaveRequestUpdate(reason="New reason"), context)
+
+
+async def test_update_rejected_when_rejected(service: LeaveRequestService, employee_id: uuid.UUID):
+    context = _request_context(employee_id)
+    leave_request = await service.create(_create(employee_id), context)
+    await service.update(leave_request.id, LeaveRequestUpdate(status="rejected"), context)
+
+    with pytest.raises(InvalidLeaveRequestStateError):
+        await service.update(leave_request.id, LeaveRequestUpdate(reason="New reason"), context)
+
+
+async def test_update_status_to_approved_rejected_when_already_approved(
+    service: LeaveRequestService, employee_id: uuid.UUID
+):
+    """`{"status": "approved"}` must no longer be able to reach `approved`
+    a second time (or mutate at all) once a request is already decided --
+    the only path to a first `approved` transition remains this same
+    generic update, from `pending`; ApprovalService.approve_leave_request
+    is unaffected either way (it never calls LeaveRequestService)."""
+    context = _request_context(employee_id)
+    leave_request = await service.create(_create(employee_id), context)
+    await service.update(leave_request.id, LeaveRequestUpdate(status="approved"), context)
+
+    with pytest.raises(InvalidLeaveRequestStateError):
+        await service.update(leave_request.id, LeaveRequestUpdate(status="approved"), context)
+
+
+async def test_update_status_to_approved_rejected_when_already_rejected(
+    service: LeaveRequestService, employee_id: uuid.UUID
+):
+    context = _request_context(employee_id)
+    leave_request = await service.create(_create(employee_id), context)
+    await service.update(leave_request.id, LeaveRequestUpdate(status="rejected"), context)
+
+    with pytest.raises(InvalidLeaveRequestStateError):
+        await service.update(leave_request.id, LeaveRequestUpdate(status="approved"), context)
+
+
 async def test_delete_existing(service: LeaveRequestService, employee_id: uuid.UUID):
     context = _request_context(employee_id)
     leave_request = await service.create(_create(employee_id), context)
@@ -388,6 +446,27 @@ async def test_delete_denied_for_non_owner(
         await service.delete(leave_request.id, _request_context(other_employee_id))
 
     assert await service.get(leave_request.id, owner_context) is not None
+
+
+async def test_delete_rejected_succeeds(service: LeaveRequestService, employee_id: uuid.UUID):
+    context = _request_context(employee_id)
+    leave_request = await service.create(_create(employee_id), context)
+    await service.update(leave_request.id, LeaveRequestUpdate(status="rejected"), context)
+
+    deleted = await service.delete(leave_request.id, context)
+
+    assert deleted is True
+
+
+async def test_delete_rejected_when_approved(service: LeaveRequestService, employee_id: uuid.UUID):
+    context = _request_context(employee_id)
+    leave_request = await service.create(_create(employee_id), context)
+    await service.update(leave_request.id, LeaveRequestUpdate(status="approved"), context)
+
+    with pytest.raises(InvalidLeaveRequestStateError):
+        await service.delete(leave_request.id, context)
+
+    assert await service.get(leave_request.id, context) is not None
 
 
 async def test_list_paginated_passes_through_offset_and_limit(
