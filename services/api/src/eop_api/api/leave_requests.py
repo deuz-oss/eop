@@ -26,6 +26,7 @@ from eop_api.services.approval import (
 from eop_api.services.leave_request import (
     EmployeeNotFoundError,
     InvalidLeaveDateRangeError,
+    InvalidLeaveRequestStateError,
     LeaveAuthorizationDeniedError,
     LeaveRequestService,
 )
@@ -145,6 +146,8 @@ async def update_leave_request(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="end_date must not be before start_date",
         ) from exc
+    except InvalidLeaveRequestStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if leave_request is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
     return LeaveRequestResponse.model_validate(leave_request)
@@ -160,6 +163,8 @@ async def delete_leave_request(
         deleted = await service.delete(leave_request_id, request_context)
     except LeaveAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except InvalidLeaveRequestStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
 
