@@ -18,19 +18,33 @@ class InvalidOvertimeTimeRangeError(Exception):
     """Raised when an OvertimeRequest's `end_time` is not after its `start_time`."""
 
 
+class InvalidOvertimeRequestStateError(Exception):
+    """Raised when `update` is attempted on an `OvertimeRequest` whose
+    persisted status isn't `pending` (no exceptions per field -- a client
+    cannot use a generic field update, including `status`, to reach
+    `approved` outside `ApprovalService`). Mirrors
+    `ApprovalService.InvalidApprovalStateError`'s precedent for the same
+    class of workflow-state invariant.
+    """
+
+
 class OvertimeRequestService:
     """Business logic for `OvertimeRequest`. Owns the transaction boundary via a UoW.
 
     `OvertimeRequest` is a single employee's request for overtime on one
-    date -- not a calculation or payroll record. Only the existence of
-    `employee_id` and `end_time > start_time` are validated on `create`/
-    `update`. `status`, `approved_by`, `approved_at`, and `rejection_reason`
-    are storage-only columns here -- no transition validation, authorization,
-    audit logging, or event/notification dispatch is performed by this
-    service. Which component orchestrates an approval decision is an
-    intentionally unresolved architectural question (per
-    `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md` §10) and is deferred to a
-    future PR, not decided here.
+    date -- not a calculation or payroll record. `ApprovalService`
+    (`services/approval.py`) owns approve/reject orchestration -- the
+    `pending -> approved`/`pending -> rejected` transitions and their
+    authorization -- and is the only path to those transitions.
+    `OvertimeRequestService` owns `OvertimeRequest` CRUD and the
+    `pending`-only mutation rule enforced here: `create` needs only
+    `employee_id` existence and `end_time > start_time`, and always forces
+    the new row's `status` to `pending` regardless of any client-supplied
+    value; `update` additionally requires the persisted entity's `status` to
+    be `pending` (no field is exempt -- including `status` itself, which
+    closes the generic-update path as a way to reach `approved` outside
+    `ApprovalService`). No audit logging or event/notification dispatch is
+    performed by this service.
 
     Returned entities are expunged from the unit-of-work's session before it
     closes: the UoW always rolls back (and thus expires all attributes) on
@@ -62,7 +76,7 @@ class OvertimeRequestService:
                     f"end_time {data.end_time} is not after start_time {data.start_time}"
                 )
 
-            overtime_request = await repo.create(**data.model_dump())
+            overtime_request = await repo.create(**data.model_dump(), status="pending")
             await uow.commit()
             uow.session.expunge(overtime_request)
             return overtime_request
@@ -104,6 +118,12 @@ class OvertimeRequestService:
             overtime_request = await repo.get(overtime_request_id)
             if overtime_request is None:
                 return None
+
+            if overtime_request.status != "pending":
+                raise InvalidOvertimeRequestStateError(
+                    f"OvertimeRequest {overtime_request_id} is "
+                    f"'{overtime_request.status}', not 'pending'"
+                )
 
             values = data.model_dump(exclude_unset=True)
 

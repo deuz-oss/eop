@@ -444,6 +444,20 @@ def test_create_timesheet(client: TestClient, user_headers: dict[str, str]):
     uuid.UUID(body["id"])
 
 
+def test_create_timesheet_ignores_client_supplied_status(
+    client: TestClient, user_headers: dict[str, str]
+):
+    """A client-supplied `status` in the create payload must not bypass
+    `ApprovalService` -- `TimesheetCreate` has no `status` field, so it's
+    silently dropped during validation and the new row always starts
+    `pending`."""
+    employee = _create_employee(client, user_headers)
+
+    body = _create_timesheet(client, user_headers, employee["id"], status="approved")
+
+    assert body["status"] == "pending"
+
+
 def test_create_timesheet_rejects_missing_employee(
     client: TestClient, user_headers: dict[str, str]
 ):
@@ -544,17 +558,23 @@ def test_list_timesheets_paginated_custom_offset(client: TestClient, user_header
 
 
 def test_list_timesheets_paginated_filter_by_status(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
 ):
-    employee = _create_employee(client, user_headers)
-    _create_timesheet(client, user_headers, employee["id"], status="approved")
+    """The `approved` row must come from the real approval flow, not a
+    create-time `status` override -- `TimesheetCreate` has no `status`
+    field, so it can no longer be set at creation."""
+    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    approved = _create_timesheet(client, user_headers, requester["id"])
+    client.post(f"/hr/timesheets/{approved['id']}/approve", headers=manager_headers)
     _create_timesheet(
         client,
         user_headers,
-        employee["id"],
+        requester["id"],
         start_date="2026-03-01",
         end_date="2026-03-07",
-        status="pending",
     )
 
     response = client.get(
@@ -679,6 +699,34 @@ def test_update_timesheet_rejects_end_date_before_start_date(
     )
 
     assert response.status_code == 422
+
+
+def test_update_timesheet_rejected_when_approved(client: TestClient, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers)
+    created = _create_timesheet(client, user_headers, employee["id"])
+    client.put(f"/hr/timesheets/{created['id']}", json={"status": "approved"}, headers=user_headers)
+
+    response = client.put(
+        f"/hr/timesheets/{created['id']}",
+        json={"start_date": "2026-02-11"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
+
+
+def test_update_timesheet_rejected_when_rejected(client: TestClient, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers)
+    created = _create_timesheet(client, user_headers, employee["id"])
+    client.put(f"/hr/timesheets/{created['id']}", json={"status": "rejected"}, headers=user_headers)
+
+    response = client.put(
+        f"/hr/timesheets/{created['id']}",
+        json={"start_date": "2026-02-11"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
 
 
 def test_delete_timesheet(client: TestClient, user_headers: dict[str, str]):

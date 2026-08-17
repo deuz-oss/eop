@@ -25,6 +25,7 @@ from eop_api.schemas.pagination import PaginationParams
 from eop_api.schemas.search import SearchParams
 from eop_api.services.overtime_request import (
     EmployeeNotFoundError,
+    InvalidOvertimeRequestStateError,
     InvalidOvertimeTimeRangeError,
     OvertimeRequestService,
 )
@@ -155,6 +156,28 @@ async def test_create_and_get(service: OvertimeRequestService, employee_id: uuid
     assert fetched.status == "pending"
 
 
+async def test_create_always_starts_pending(
+    service: OvertimeRequestService, employee_id: uuid.UUID
+):
+    """`OvertimeRequestCreate` has no `status` field at all, so a
+    client-supplied `status` in the raw payload is dropped during validation
+    before it ever reaches the service -- enforced structurally, not just by
+    convention."""
+    data = OvertimeRequestCreate.model_validate(
+        {
+            "employee_id": employee_id,
+            "overtime_date": date(2026, 2, 10),
+            "start_time": time(18, 0),
+            "end_time": time(20, 0),
+            "status": "approved",
+        }
+    )
+
+    overtime_request = await service.create(data)
+
+    assert overtime_request.status == "pending"
+
+
 async def test_create_rejects_missing_employee(service: OvertimeRequestService):
     with pytest.raises(EmployeeNotFoundError):
         await service.create(_create(uuid.uuid4()))
@@ -229,6 +252,51 @@ async def test_update_partial_payload_validated_against_effective_start_time(
 
     with pytest.raises(InvalidOvertimeTimeRangeError):
         await service.update(overtime_request.id, OvertimeRequestUpdate(end_time=time(17, 0)))
+
+
+async def test_update_rejected_when_approved(
+    service: OvertimeRequestService, employee_id: uuid.UUID
+):
+    overtime_request = await service.create(_create(employee_id))
+    await service.update(overtime_request.id, OvertimeRequestUpdate(status="approved"))
+
+    with pytest.raises(InvalidOvertimeRequestStateError):
+        await service.update(overtime_request.id, OvertimeRequestUpdate(reason="New reason"))
+
+
+async def test_update_rejected_when_rejected(
+    service: OvertimeRequestService, employee_id: uuid.UUID
+):
+    overtime_request = await service.create(_create(employee_id))
+    await service.update(overtime_request.id, OvertimeRequestUpdate(status="rejected"))
+
+    with pytest.raises(InvalidOvertimeRequestStateError):
+        await service.update(overtime_request.id, OvertimeRequestUpdate(reason="New reason"))
+
+
+async def test_update_status_to_approved_rejected_when_already_approved(
+    service: OvertimeRequestService, employee_id: uuid.UUID
+):
+    """`{"status": "approved"}` must no longer be able to reach `approved` a
+    second time (or mutate at all) once a request is already decided -- the
+    only path to a first `approved` transition remains this same generic
+    update, from `pending`; `ApprovalService.approve_overtime_request` is
+    unaffected either way (it never calls `OvertimeRequestService`)."""
+    overtime_request = await service.create(_create(employee_id))
+    await service.update(overtime_request.id, OvertimeRequestUpdate(status="approved"))
+
+    with pytest.raises(InvalidOvertimeRequestStateError):
+        await service.update(overtime_request.id, OvertimeRequestUpdate(status="approved"))
+
+
+async def test_update_status_to_approved_rejected_when_already_rejected(
+    service: OvertimeRequestService, employee_id: uuid.UUID
+):
+    overtime_request = await service.create(_create(employee_id))
+    await service.update(overtime_request.id, OvertimeRequestUpdate(status="rejected"))
+
+    with pytest.raises(InvalidOvertimeRequestStateError):
+        await service.update(overtime_request.id, OvertimeRequestUpdate(status="approved"))
 
 
 async def test_delete_existing(service: OvertimeRequestService, employee_id: uuid.UUID):

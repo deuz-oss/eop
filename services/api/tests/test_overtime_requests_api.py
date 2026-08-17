@@ -452,6 +452,20 @@ def test_create_overtime_request(client: TestClient, user_headers: dict[str, str
     uuid.UUID(body["id"])
 
 
+def test_create_overtime_request_ignores_client_supplied_status(
+    client: TestClient, user_headers: dict[str, str]
+):
+    """A client-supplied `status` in the create payload must not bypass
+    `ApprovalService` -- `OvertimeRequestCreate` has no `status` field, so
+    it's silently dropped during validation and the new row always starts
+    `pending`."""
+    employee = _create_employee(client, user_headers)
+
+    body = _create_overtime_request(client, user_headers, employee["id"], status="approved")
+
+    assert body["status"] == "pending"
+
+
 def test_create_overtime_request_rejects_missing_employee(
     client: TestClient, user_headers: dict[str, str]
 ):
@@ -569,13 +583,18 @@ def test_list_overtime_requests_paginated_search_by_reason(
 
 
 def test_list_overtime_requests_paginated_filter_by_status(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
 ):
-    employee = _create_employee(client, user_headers)
-    _create_overtime_request(client, user_headers, employee["id"], status="approved")
-    _create_overtime_request(
-        client, user_headers, employee["id"], overtime_date="2026-03-01", status="pending"
-    )
+    """The `approved` row must come from the real approval flow, not a
+    create-time `status` override -- `OvertimeRequestCreate` has no `status`
+    field, so it can no longer be set at creation."""
+    _, requester = _create_manager_and_requester(client, user_headers, str(manager.id))
+    approved = _create_overtime_request(client, user_headers, requester["id"])
+    client.post(f"/hr/overtime-requests/{approved['id']}/approve", headers=manager_headers)
+    _create_overtime_request(client, user_headers, requester["id"], overtime_date="2026-03-01")
 
     response = client.get(
         "/hr/overtime-requests/paginated", headers=user_headers, params={"status": "approved"}
@@ -657,6 +676,42 @@ def test_update_overtime_request_rejects_end_time_before_start_time(
     )
 
     assert response.status_code == 422
+
+
+def test_update_overtime_request_rejected_when_approved(
+    client: TestClient, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers)
+    created = _create_overtime_request(client, user_headers, employee["id"])
+    client.put(
+        f"/hr/overtime-requests/{created['id']}", json={"status": "approved"}, headers=user_headers
+    )
+
+    response = client.put(
+        f"/hr/overtime-requests/{created['id']}",
+        json={"reason": "New reason"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
+
+
+def test_update_overtime_request_rejected_when_rejected(
+    client: TestClient, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers)
+    created = _create_overtime_request(client, user_headers, employee["id"])
+    client.put(
+        f"/hr/overtime-requests/{created['id']}", json={"status": "rejected"}, headers=user_headers
+    )
+
+    response = client.put(
+        f"/hr/overtime-requests/{created['id']}",
+        json={"reason": "New reason"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
 
 
 def test_delete_overtime_request(client: TestClient, user_headers: dict[str, str]):

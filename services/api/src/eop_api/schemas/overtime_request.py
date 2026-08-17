@@ -5,11 +5,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class OvertimeRequestCreate(BaseModel):
+    """`status` is deliberately absent -- every new `OvertimeRequest` starts
+    `pending`, enforced by `OvertimeRequestService.create`. Subsequent
+    `approved`/`rejected` transitions go through `ApprovalService` only,
+    never a client-supplied starting value.
+    """
+
     employee_id: uuid.UUID
     overtime_date: date
     start_time: time
     end_time: time
-    status: str = Field(default="pending", min_length=1, max_length=50)
     reason: str | None = Field(default=None, max_length=2000)
 
 

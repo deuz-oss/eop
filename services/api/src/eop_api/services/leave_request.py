@@ -105,7 +105,7 @@ class LeaveRequestService:
                     f"end_date {data.end_date} is before start_date {data.start_date}"
                 )
 
-            leave_request = await repo.create(**data.model_dump())
+            leave_request = await repo.create(**data.model_dump(), status="pending")
             await uow.commit()
             uow.session.expunge(leave_request)
             return leave_request

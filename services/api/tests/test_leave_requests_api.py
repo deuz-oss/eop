@@ -499,6 +499,20 @@ def test_create_leave_request(client: TestClient, user: User, user_headers: dict
     uuid.UUID(body["id"])
 
 
+def test_create_leave_request_ignores_client_supplied_status(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """A client-supplied `status` in the create payload must not bypass
+    `ApprovalService` -- `LeaveRequestCreate` has no `status` field, so it's
+    silently dropped during validation and the new row always starts
+    `pending`."""
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+
+    body = _create_leave_request(client, user_headers, employee["id"], status="approved")
+
+    assert body["status"] == "pending"
+
+
 def test_create_leave_request_rejects_missing_employee(
     client: TestClient, user: User, user_headers: dict[str, str]
 ):
@@ -708,21 +722,32 @@ def test_list_leave_requests_paginated_search_by_reason(
 
 
 def test_list_leave_requests_paginated_filter_by_status(
-    client: TestClient, user: User, user_headers: dict[str, str]
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
 ):
-    employee = _create_employee(client, user_headers, user_id=str(user.id))
-    _create_leave_request(client, user_headers, employee["id"], status="approved")
+    """The `approved` row must come from the real approval flow, not a
+    create-time `status` override -- `LeaveRequestCreate` has no `status`
+    field, so it can no longer be set at creation."""
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    _create_leave_balance(client, user_headers, requester_employee["id"])
+    approved = _create_leave_request(client, requester_headers, requester_employee["id"])
+    client.post(f"/hr/leave-requests/{approved['id']}/approve", headers=manager_headers)
     _create_leave_request(
         client,
-        user_headers,
-        employee["id"],
+        requester_headers,
+        requester_employee["id"],
         start_date="2026-03-01",
         end_date="2026-03-03",
-        status="pending",
     )
 
     response = client.get(
-        "/hr/leave-requests/paginated", headers=user_headers, params={"status": "approved"}
+        "/hr/leave-requests/paginated", headers=requester_headers, params={"status": "approved"}
     )
 
     assert response.status_code == 200
