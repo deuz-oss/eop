@@ -22,6 +22,7 @@ from eop_api.services.approval import (
 )
 from eop_api.services.overtime_request import (
     EmployeeNotFoundError,
+    InvalidOvertimeRequestStateError,
     InvalidOvertimeTimeRangeError,
     OvertimeRequestService,
 )
@@ -132,6 +133,8 @@ async def update_overtime_request(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="end_time must be after start_time",
         ) from exc
+    except InvalidOvertimeRequestStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if overtime_request is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Overtime request not found"

@@ -25,6 +25,7 @@ from eop_api.schemas.timesheet import TimesheetCreate, TimesheetUpdate
 from eop_api.services.timesheet import (
     EmployeeNotFoundError,
     InvalidTimesheetDateRangeError,
+    InvalidTimesheetStateError,
     TimesheetService,
 )
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
@@ -152,6 +153,24 @@ async def test_create_and_get(service: TimesheetService, employee_id: uuid.UUID)
     assert fetched.status == "pending"
 
 
+async def test_create_always_starts_pending(service: TimesheetService, employee_id: uuid.UUID):
+    """`TimesheetCreate` has no `status` field at all, so a client-supplied
+    `status` in the raw payload is dropped during validation before it ever
+    reaches the service -- enforced structurally, not just by convention."""
+    data = TimesheetCreate.model_validate(
+        {
+            "employee_id": employee_id,
+            "start_date": date(2026, 2, 10),
+            "end_date": date(2026, 2, 16),
+            "status": "approved",
+        }
+    )
+
+    timesheet = await service.create(data)
+
+    assert timesheet.status == "pending"
+
+
 async def test_create_rejects_missing_employee(service: TimesheetService):
     with pytest.raises(EmployeeNotFoundError):
         await service.create(_create(uuid.uuid4()))
@@ -233,6 +252,47 @@ async def test_update_partial_payload_validated_against_effective_start_date(
 
     with pytest.raises(InvalidTimesheetDateRangeError):
         await service.update(timesheet.id, TimesheetUpdate(end_date=date(2026, 2, 5)))
+
+
+async def test_update_rejected_when_approved(service: TimesheetService, employee_id: uuid.UUID):
+    timesheet = await service.create(_create(employee_id))
+    await service.update(timesheet.id, TimesheetUpdate(status="approved"))
+
+    with pytest.raises(InvalidTimesheetStateError):
+        await service.update(timesheet.id, TimesheetUpdate(start_date=date(2026, 2, 11)))
+
+
+async def test_update_rejected_when_rejected(service: TimesheetService, employee_id: uuid.UUID):
+    timesheet = await service.create(_create(employee_id))
+    await service.update(timesheet.id, TimesheetUpdate(status="rejected"))
+
+    with pytest.raises(InvalidTimesheetStateError):
+        await service.update(timesheet.id, TimesheetUpdate(start_date=date(2026, 2, 11)))
+
+
+async def test_update_status_to_approved_rejected_when_already_approved(
+    service: TimesheetService, employee_id: uuid.UUID
+):
+    """`{"status": "approved"}` must no longer be able to reach `approved` a
+    second time (or mutate at all) once a request is already decided -- the
+    only path to a first `approved` transition remains this same generic
+    update, from `pending`; `ApprovalService.approve_timesheet` is
+    unaffected either way (it never calls `TimesheetService`)."""
+    timesheet = await service.create(_create(employee_id))
+    await service.update(timesheet.id, TimesheetUpdate(status="approved"))
+
+    with pytest.raises(InvalidTimesheetStateError):
+        await service.update(timesheet.id, TimesheetUpdate(status="approved"))
+
+
+async def test_update_status_to_approved_rejected_when_already_rejected(
+    service: TimesheetService, employee_id: uuid.UUID
+):
+    timesheet = await service.create(_create(employee_id))
+    await service.update(timesheet.id, TimesheetUpdate(status="rejected"))
+
+    with pytest.raises(InvalidTimesheetStateError):
+        await service.update(timesheet.id, TimesheetUpdate(status="approved"))
 
 
 async def test_delete_existing(service: TimesheetService, employee_id: uuid.UUID):

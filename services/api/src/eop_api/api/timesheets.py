@@ -24,6 +24,7 @@ from eop_api.services.approval import (
 from eop_api.services.timesheet import (
     EmployeeNotFoundError,
     InvalidTimesheetDateRangeError,
+    InvalidTimesheetStateError,
     TimesheetService,
 )
 
@@ -136,6 +137,8 @@ async def update_timesheet(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="end_date must not be before start_date",
         ) from exc
+    except InvalidTimesheetStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if timesheet is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet not found")
     return TimesheetResponse.model_validate(timesheet)

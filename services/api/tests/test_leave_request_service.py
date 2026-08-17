@@ -199,6 +199,24 @@ def _create(employee_id: uuid.UUID, **overrides) -> LeaveRequestCreate:
     return LeaveRequestCreate(**values)
 
 
+async def test_create_always_starts_pending(service: LeaveRequestService, employee_id: uuid.UUID):
+    """`LeaveRequestCreate` has no `status` field at all, so a client-supplied
+    `status` in the raw payload is dropped during validation before it ever
+    reaches the service -- enforced structurally, not just by convention."""
+    data = LeaveRequestCreate.model_validate(
+        {
+            "employee_id": employee_id,
+            "start_date": date(2026, 2, 10),
+            "end_date": date(2026, 2, 12),
+            "status": "approved",
+        }
+    )
+
+    leave_request = await service.create(data, _request_context(employee_id))
+
+    assert leave_request.status == "pending"
+
+
 async def test_create_and_get(service: LeaveRequestService, employee_id: uuid.UUID):
     context = _request_context(employee_id)
     leave_request = await service.create(_create(employee_id), context)

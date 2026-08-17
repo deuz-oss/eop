@@ -18,22 +18,34 @@ class InvalidTimesheetDateRangeError(Exception):
     """Raised when a Timesheet's `end_date` is earlier than its `start_date`."""
 
 
+class InvalidTimesheetStateError(Exception):
+    """Raised when `update` is attempted on a `Timesheet` whose persisted
+    status isn't `pending` (no exceptions per field -- a client cannot use a
+    generic field update, including `status`, to reach `approved` outside
+    `ApprovalService`). Mirrors `ApprovalService.InvalidApprovalStateError`'s
+    precedent for the same class of workflow-state invariant.
+    """
+
+
 class TimesheetService:
     """Business logic for `Timesheet`. Owns the transaction boundary via a UoW.
 
     `Timesheet` is a single employee's submission for a dated span -- not a
-    calculation or reconciliation record. Only the existence of `employee_id`
-    and `start_date <= end_date` are validated on `create`/`update`. `status`,
-    `approved_by`, `approved_at`, and `rejection_reason` are storage-only
-    columns here -- no transition validation, authorization, audit logging,
-    or event/notification dispatch is performed by this service. Which
-    component orchestrates an approval decision is an intentionally
-    unresolved architectural question (per
-    `docs/architecture/APPROVAL_WORKFLOW_DESIGN.md` §10) and is deferred to a
-    future PR, not decided here. Attendance/overtime/leave/holiday
-    reconciliation, computed hour totals, overlap detection, duplicate
-    detection, and payroll integration remain out of scope per
-    `docs/architecture/TIMESHEET_DESIGN.md`.
+    calculation or reconciliation record. `ApprovalService`
+    (`services/approval.py`) owns approve/reject orchestration -- the
+    `pending -> approved`/`pending -> rejected` transitions and their
+    authorization -- and is the only path to those transitions.
+    `TimesheetService` owns `Timesheet` CRUD and the `pending`-only mutation
+    rule enforced here: `create` needs only `employee_id` existence and
+    `start_date <= end_date`, and always forces the new row's `status` to
+    `pending` regardless of any client-supplied value; `update` additionally
+    requires the persisted entity's `status` to be `pending` (no field is
+    exempt -- including `status` itself, which closes the generic-update
+    path as a way to reach `approved` outside `ApprovalService`). No audit
+    logging or event/notification dispatch is performed by this service.
+    Attendance/overtime/leave/holiday reconciliation, computed hour totals,
+    overlap detection, duplicate detection, and payroll integration remain
+    out of scope per `docs/architecture/TIMESHEET_DESIGN.md`.
 
     Returned entities are expunged from the unit-of-work's session before it
     closes: the UoW always rolls back (and thus expires all attributes) on
@@ -65,7 +77,7 @@ class TimesheetService:
                     f"end_date {data.end_date} is before start_date {data.start_date}"
                 )
 
-            timesheet = await repo.create(**data.model_dump())
+            timesheet = await repo.create(**data.model_dump(), status="pending")
             await uow.commit()
             uow.session.expunge(timesheet)
             return timesheet
@@ -105,6 +117,11 @@ class TimesheetService:
             timesheet = await repo.get(timesheet_id)
             if timesheet is None:
                 return None
+
+            if timesheet.status != "pending":
+                raise InvalidTimesheetStateError(
+                    f"Timesheet {timesheet_id} is '{timesheet.status}', not 'pending'"
+                )
 
             values = data.model_dump(exclude_unset=True)
 
