@@ -52,6 +52,29 @@ class PayrollRunRepository(BaseRepository[PayrollRun]):
         result = await self.session.execute(stmt)
         return result.scalars().all()
 
+    async def find_covering_date(self, target_date: date) -> Sequence[PayrollRun]:
+        """Existing `PayrollRun` rows (any `currency`, any `status`) whose
+        `period_start`/`period_end` covers `target_date`.
+
+        Persistence-only: returns every raw match, unresolved -- interpreting
+        `status` (e.g. rejecting a lock check only when a match is not
+        `DRAFT`) is the caller's job (`AttendanceEventService`), not this
+        repository's. Rows with `period_start`/`period_end` still `NULL`
+        (the pre-Iteration-2 historical gap noted on the model) never match,
+        since a `NULL` bound cannot cover any date. Mirrors
+        `find_overlapping_period`'s range shape, without the `currency`
+        segmentation that method's own overlap rule needs -- an attendance
+        event's lock boundary does not depend on `PayrollRun.currency`.
+        """
+        stmt = select(PayrollRun).where(
+            PayrollRun.period_start.is_not(None),
+            PayrollRun.period_end.is_not(None),
+            PayrollRun.period_start <= target_date,
+            PayrollRun.period_end >= target_date,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
     async def paginate(
         self,
         *,

@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 from collections.abc import Generator
+from datetime import date
 
 import pytest
 from conftest import clean_database
@@ -9,9 +10,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
+from eop_api.core.payroll import PayrollRunStatus
 from eop_api.core.security import hash_password
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.payroll_run import PayrollRunRepository
 from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
 
@@ -336,6 +339,28 @@ def _create_attendance_event(
     return response.json()
 
 
+async def _seed_payroll_run(
+    *, code: str, status: PayrollRunStatus, period_start: str, period_end: str
+) -> None:
+    """Seeds a `PayrollRun` directly via the repository -- no route exists to
+    create one already `PROCESSING`/`COMPLETED` without a real calculation
+    run, so this mirrors the direct-repository-seeding pattern already used
+    for `LeaveBalance` (`test_leave_requests_api.py`'s `_seed_leave_balance`)."""
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        await PayrollRunRepository(session).create(
+            code=code,
+            name=code,
+            status=status,
+            period_start=date.fromisoformat(period_start),
+            period_end=date.fromisoformat(period_end),
+            currency="USD",
+        )
+        await session.commit()
+    await engine.dispose()
+
+
 def test_create_attendance_event_requires_authentication(client: TestClient):
     response = client.post(
         "/hr/attendance-events",
@@ -358,7 +383,17 @@ def test_get_attendance_event_requires_authentication(client: TestClient):
 
 
 def test_update_attendance_event_requires_authentication(client: TestClient):
-    response = client.put(f"/hr/attendance-events/{uuid.uuid4()}", json={"remarks": "Corrected"})
+    response = client.put(
+        f"/hr/attendance-events/{uuid.uuid4()}", json={"shift_id": str(uuid.uuid4())}
+    )
+
+    assert response.status_code == 401
+
+
+def test_correct_attendance_event_requires_authentication(client: TestClient):
+    response = client.post(
+        f"/hr/attendance-events/{uuid.uuid4()}/correct", json={"remarks": "Corrected"}
+    )
 
     assert response.status_code == 401
 
@@ -460,6 +495,29 @@ def test_create_attendance_event_forbidden_for_non_owner(
     )
 
     assert response.status_code == 403
+
+
+def test_create_attendance_event_rejected_when_payroll_period_locked(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """`create` is locked too, not just `correct`/`update`/`delete`."""
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    asyncio.run(
+        _seed_payroll_run(
+            code="PR-API-LOCK-CREATE",
+            status=PayrollRunStatus.PROCESSING,
+            period_start="2026-01-01",
+            period_end="2026-01-31",
+        )
+    )
+
+    response = client.post(
+        "/hr/attendance-events",
+        json=_attendance_event_payload(employee["id"], employee["shift_id"]),
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
 
 
 def test_get_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
@@ -697,17 +755,49 @@ def test_list_attendance_events_paginated_filter_by_employee_id_is_ignored(
 
 
 def test_update_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
+    """`shift_id` is the only field still updatable through generic CRUD."""
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
+    new_shift = _create_shift(client, user_headers, code="EVENING")
+
+    response = client.put(
+        f"/hr/attendance-events/{created['id']}",
+        json={"shift_id": new_shift["id"]},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["shift_id"] == new_shift["id"]
+
+
+def test_update_attendance_event_ignores_client_supplied_historical_fields(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """`event_time`/`event_type`/`source`/`remarks`/`employee_id`/`corrects_id`
+    are not accepted by the generic update payload -- silently dropped, and
+    the persisted historical fields are left untouched."""
     employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
 
     response = client.put(
         f"/hr/attendance-events/{created['id']}",
-        json={"remarks": "Corrected"},
+        json={
+            "event_time": "2099-01-01T00:00:00Z",
+            "event_type": "CLOCK_OUT",
+            "remarks": "tampered",
+            "employee_id": str(uuid.uuid4()),
+            "corrects_id": str(uuid.uuid4()),
+        },
         headers=user_headers,
     )
 
     assert response.status_code == 200
-    assert response.json()["remarks"] == "Corrected"
+    body = response.json()
+    assert body["event_time"] == created["event_time"]
+    assert body["event_type"] == created["event_type"]
+    assert body["remarks"] == created["remarks"]
+    assert body["employee_id"] == created["employee_id"]
+    assert body["corrects_id"] is None
 
 
 def test_update_attendance_event_not_found(
@@ -717,22 +807,7 @@ def test_update_attendance_event_not_found(
 
     response = client.put(
         f"/hr/attendance-events/{uuid.uuid4()}",
-        json={"remarks": "Corrected"},
-        headers=user_headers,
-    )
-
-    assert response.status_code == 404
-
-
-def test_update_attendance_event_rejects_missing_employee(
-    client: TestClient, user: User, user_headers: dict[str, str]
-):
-    employee = _create_employee(client, user_headers, user_id=str(user.id))
-    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
-
-    response = client.put(
-        f"/hr/attendance-events/{created['id']}",
-        json={"employee_id": str(uuid.uuid4())},
+        json={"shift_id": str(uuid.uuid4())},
         headers=user_headers,
     )
 
@@ -776,23 +851,141 @@ def test_update_attendance_event_forbidden(
 
     response = client.put(
         f"/hr/attendance-events/{created['id']}",
-        json={"remarks": "Corrected"},
+        json={"shift_id": str(uuid.uuid4())},
         headers=other_headers,
     )
 
     assert response.status_code == 403
 
 
-def test_delete_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
+def test_update_attendance_event_rejected_when_payroll_period_locked(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
+    asyncio.run(
+        _seed_payroll_run(
+            code="PR-API-LOCK-UPDATE",
+            status=PayrollRunStatus.PROCESSING,
+            period_start="2026-01-01",
+            period_end="2026-01-31",
+        )
+    )
+
+    response = client.put(
+        f"/hr/attendance-events/{created['id']}",
+        json={"shift_id": str(uuid.uuid4())},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
+
+
+def test_correct_attendance_event(client: TestClient, user: User, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
+
+    response = client.post(
+        f"/hr/attendance-events/{created['id']}/correct",
+        json={"remarks": "Actually clocked in at 9:05"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] != created["id"]
+    assert body["corrects_id"] == created["id"]
+    assert body["remarks"] == "Actually clocked in at 9:05"
+    # unchanged fields carried over from the original
+    assert body["employee_id"] == created["employee_id"]
+    assert body["shift_id"] == created["shift_id"]
+    assert body["event_type"] == created["event_type"]
+    assert body["event_time"] == created["event_time"]
+
+    original = client.get(f"/hr/attendance-events/{created['id']}", headers=user_headers).json()
+    assert original["remarks"] == created["remarks"]
+    assert original["corrects_id"] is None
+
+
+def test_correct_attendance_event_not_found(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
+    response = client.post(
+        f"/hr/attendance-events/{uuid.uuid4()}/correct",
+        json={"remarks": "Corrected"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 404
+
+
+def test_correct_attendance_event_forbidden(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
+    _create_employee(
+        client,
+        user_headers,
+        employee_number="OTH-1",
+        email="other.employee@example.com",
+        first_name="Bob",
+        last_name="Smith",
+        full_name="Bob Smith",
+        user_id=str(other.id),
+    )
+
+    response = client.post(
+        f"/hr/attendance-events/{created['id']}/correct",
+        json={"remarks": "not mine to correct"},
+        headers=other_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_correct_attendance_event_rejected_when_payroll_period_locked(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
+    asyncio.run(
+        _seed_payroll_run(
+            code="PR-API-LOCK-CORRECT",
+            status=PayrollRunStatus.COMPLETED,
+            period_start="2026-01-01",
+            period_end="2026-01-31",
+        )
+    )
+
+    response = client.post(
+        f"/hr/attendance-events/{created['id']}/correct",
+        json={"remarks": "too late"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 409
+
+
+def test_delete_attendance_event_rejected(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """Historical attendance events cannot be deleted; use `/correct` instead."""
     employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
 
     response = client.delete(f"/hr/attendance-events/{created['id']}", headers=user_headers)
 
-    assert response.status_code == 204
+    assert response.status_code == 409
     assert (
         client.get(f"/hr/attendance-events/{created['id']}", headers=user_headers).status_code
-        == 404
+        == 200
     )
 
 

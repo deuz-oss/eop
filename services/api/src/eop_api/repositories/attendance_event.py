@@ -37,6 +37,14 @@ class AttendanceEventRepository(BaseRepository[AttendanceEvent]):
         or any other calendar interpretation -- that belongs entirely to the
         orchestration layer (`ReconciliationService`), per
         `docs/architecture/ATTENDANCE_RECONCILIATION_DESIGN.md` §5/§12.4.
+
+        Not called by `ReconciliationService` (AttendanceEvent Integrity
+        workstream, correction lineage): a plain existence check cannot
+        distinguish a superseded event from an authoritative one, so
+        `reconcile()` uses `list_between`/`find_corrected_ids` instead. Kept
+        here, unused but still tested, as a general-purpose primitive -- not
+        removed, since no evidence requires removing a working, documented
+        method beyond its one former caller no longer needing it.
         """
         stmt = (
             select(AttendanceEvent.id)
@@ -49,6 +57,45 @@ class AttendanceEventRepository(BaseRepository[AttendanceEvent]):
         )
         result = await self.session.execute(stmt)
         return result.first() is not None
+
+    async def list_between(
+        self, employee_id: uuid.UUID, start: datetime, end: datetime
+    ) -> Sequence[AttendanceEvent]:
+        """Every `AttendanceEvent` within `[start, end]` for `employee_id`.
+
+        Persistence-only: returns every raw match, unresolved -- mirrors
+        `CompensationRepository.list_effective_as_of`'s exact precedent
+        ("returns every raw match, unresolved... resolving that down to one
+        answer is [the service]'s job, not this repository's"). Whether a
+        returned row has since been superseded by a correction is not
+        determined here; the caller (`ReconciliationService`) resolves that
+        via `find_corrected_ids`.
+        """
+        stmt = select(AttendanceEvent).where(
+            AttendanceEvent.employee_id == employee_id,
+            AttendanceEvent.event_time >= start,
+            AttendanceEvent.event_time <= end,
+        )
+        result = await self.session.execute(stmt)
+        return result.scalars().all()
+
+    async def find_corrected_ids(self, event_ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:
+        """The subset of `event_ids` that are referenced as some *other*
+        `AttendanceEvent`'s `corrects_id` -- i.e. have since been corrected.
+
+        Purely structural (which ids have an incoming self-reference), not
+        an interpretation of what that means -- mirrors `exists_between`'s
+        own "no interpretation" boundary. Works for a correction chain of
+        any depth: each corrected id in the chain is excluded independently,
+        the same way `CompensationService._exclude_corrected_targets`
+        excludes every corrected id from its own candidate set regardless
+        of chain depth.
+        """
+        if not event_ids:
+            return set()
+        stmt = select(AttendanceEvent.corrects_id).where(AttendanceEvent.corrects_id.in_(event_ids))
+        result = await self.session.execute(stmt)
+        return {row for row in result.scalars().all() if row is not None}
 
     async def paginate(
         self,

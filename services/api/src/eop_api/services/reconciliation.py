@@ -2,6 +2,8 @@ import uuid
 from collections.abc import Callable, Sequence
 from datetime import UTC, date, datetime, time, timedelta
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from eop_api.repositories.attendance_event import AttendanceEventRepository
 from eop_api.repositories.holiday import HolidayRepository
 from eop_api.repositories.hr_employee import HrEmployeeRepository
@@ -38,13 +40,27 @@ class ReconciliationService:
 
     Both repositories this service reads from are deliberately neutral:
     `LeaveRequestRepository.find_for_employee_on_date` returns matching rows
-    regardless of `status`, and `AttendanceEventRepository.exists_between`
+    regardless of `status`, and `AttendanceEventRepository.list_between`
     takes an explicit `[start, end]` range with no day/timezone
     interpretation of its own. Filtering by `status == "approved"` and
-    computing the day boundary passed to `exists_between` are both business/
+    computing the day boundary passed to `list_between` are both business/
     orchestration decisions performed here, in this service, not in either
     repository -- repositories must not encode approval-workflow semantics or
     calendar/timezone interpretation (design doc §5).
+
+    AttendanceEvent Integrity workstream (correction lineage): a day is
+    `"present"` only if it has at least one *authoritative* attendance
+    event -- one that is not itself referenced as another event's
+    `corrects_id`. `list_between` returns every raw match, unresolved;
+    `find_corrected_ids` (both `AttendanceEventRepository`, persistence-only)
+    reports which of those are superseded; `_has_uncorrected_event` applies
+    the exclusion, mirroring `CompensationService._exclude_corrected_targets`
+    exactly -- a corrected event contributes nothing to presence, regardless
+    of which day its correction landed on. This resolves the day-boundary
+    accumulation that a plain existence check would otherwise produce (a
+    correction moving an event from day A to day B previously left both A
+    and B reading `"present"`, since the untouched original on A was never
+    excluded).
 
     v1 scope is deliberately narrow -- single employee, single date, exactly
     four rules, evaluated in order (design doc's implementation scope):
@@ -52,7 +68,8 @@ class ReconciliationService:
     1. The employee must exist, or `EmployeeNotFoundError` is raised.
     2. If `target_date` is a `Holiday` -> `"holiday"`.
     3. Else if an `approved` `LeaveRequest` covers `target_date` -> `"leave"`.
-    4. Else if any `AttendanceEvent` falls on `target_date` -> `"present"`.
+    4. Else if an authoritative (uncorrected) `AttendanceEvent` falls on
+       `target_date` -> `"present"`.
     5. Else -> `"absent"`.
 
     Overtime, lateness, early departure, grace periods, shift schedules,
@@ -87,8 +104,8 @@ class ReconciliationService:
                 )
 
             day_start, day_end = self._day_bounds(target_date)
-            has_attendance = await AttendanceEventRepository(uow.session).exists_between(
-                employee_id, day_start, day_end
+            has_attendance = await self._has_uncorrected_event(
+                uow.session, employee_id, day_start, day_end
             )
             if has_attendance:
                 return AttendanceReconciliationResponse(
@@ -119,6 +136,29 @@ class ReconciliationService:
             results.append(await self.reconcile(employee_id, current))
             current += timedelta(days=1)
         return results
+
+    @staticmethod
+    async def _has_uncorrected_event(
+        session: AsyncSession, employee_id: uuid.UUID, start: datetime, end: datetime
+    ) -> bool:
+        """Whether `[start, end]` has at least one authoritative (uncorrected)
+        `AttendanceEvent` for `employee_id`.
+
+        Correction-precedence policy, applied here rather than in
+        `AttendanceEventRepository` (which returns raw, unresolved matches)
+        -- mirrors `CompensationService._exclude_corrected_targets`'s exact
+        placement rationale: this is Reconciliation's own interpretation of
+        what a correction means for presence, not a generic repository
+        capability. Works for a correction chain of any depth: every id
+        referenced by *any* other event's `corrects_id` is excluded,
+        regardless of how many links away the final correction is.
+        """
+        repo = AttendanceEventRepository(session)
+        candidates = await repo.list_between(employee_id, start, end)
+        if not candidates:
+            return False
+        corrected_ids = await repo.find_corrected_ids([event.id for event in candidates])
+        return any(event.id not in corrected_ids for event in candidates)
 
     @staticmethod
     def _day_bounds(target_date: date) -> tuple[datetime, datetime]:

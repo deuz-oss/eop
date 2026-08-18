@@ -32,6 +32,13 @@ class AttendanceEvent(BaseEntity):
     Both `employee_id` and `shift_id` are `ON DELETE RESTRICT`, matching every
     other FK into `HrEmployee`/`Shift` from HR data: attendance history must
     be preserved, not silently cascaded away.
+
+    `corrects_id` is a nullable self-reference identifying the event a
+    correction event corrects (AttendanceEvent Integrity workstream) --
+    mirrors `Compensation.corrects_id`'s exact shape (nullable, `ON DELETE
+    RESTRICT`). `NULL` means an ordinary event; non-`NULL` means a
+    correction. The corrected row is never mutated or deleted --
+    `AttendanceEventService` enforces this; nothing here does.
     """
 
     __tablename__ = "attendance_events"
@@ -39,6 +46,7 @@ class AttendanceEvent(BaseEntity):
         Index("ix_attendance_events_employee_id", "employee_id"),
         Index("ix_attendance_events_shift_id", "shift_id"),
         Index("ix_attendance_events_event_time", "event_time"),
+        Index("ix_attendance_events_corrects_id", "corrects_id"),
     )
 
     employee_id: Mapped[uuid.UUID] = mapped_column(
@@ -55,6 +63,9 @@ class AttendanceEvent(BaseEntity):
         SqlEnum(EventSource, name="attendance_event_source", native_enum=False, length=20),
     )
     remarks: Mapped[str | None] = mapped_column(String(2000), default=None)
+    corrects_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("attendance_events.id", ondelete="RESTRICT"), default=None
+    )
 
     employee: Mapped[HrEmployee] = relationship()
     shift: Mapped[Shift] = relationship()

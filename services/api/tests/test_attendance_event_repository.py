@@ -234,6 +234,38 @@ async def test_delete_missing_returns_false(repo: AttendanceEventRepository):
     assert await repo.delete(uuid.uuid4()) is False
 
 
+async def test_create_persists_corrects_id(
+    repo: AttendanceEventRepository, employee_id: uuid.UUID, shift_id: uuid.UUID
+):
+    """Persistence-only: `corrects_id` round-trips like any other column --
+    lineage validation (AttendanceEvent Integrity workstream) is
+    `AttendanceEventService`'s job, not this repository's."""
+    original = await repo.create(
+        employee_id=employee_id,
+        shift_id=shift_id,
+        event_type=EventType.CLOCK_IN,
+        event_time=datetime(2026, 1, 5, 9, 0, tzinfo=UTC),
+        source=EventSource.SYSTEM,
+    )
+
+    correction = await repo.create(
+        employee_id=employee_id,
+        shift_id=shift_id,
+        event_type=EventType.CLOCK_IN,
+        event_time=datetime(2026, 1, 5, 9, 5, tzinfo=UTC),
+        source=EventSource.MANUAL,
+        corrects_id=original.id,
+    )
+
+    fetched = await repo.get(correction.id)
+    assert fetched is not None
+    assert fetched.corrects_id == original.id
+
+    fetched_original = await repo.get(original.id)
+    assert fetched_original is not None
+    assert fetched_original.corrects_id is None
+
+
 async def test_paginate_returns_total_and_page_slice(
     repo: AttendanceEventRepository, employee_id: uuid.UUID, shift_id: uuid.UUID
 ):

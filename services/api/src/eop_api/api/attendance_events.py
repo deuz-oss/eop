@@ -8,6 +8,7 @@ from eop_api.dependencies.employee_context import CurrentRequestContext
 from eop_api.dependencies.pagination import Pagination
 from eop_api.dependencies.search import Search
 from eop_api.schemas.attendance_event import (
+    AttendanceEventCorrectionRequest,
     AttendanceEventCreate,
     AttendanceEventResponse,
     AttendanceEventUpdate,
@@ -16,6 +17,8 @@ from eop_api.schemas.pagination import Page
 from eop_api.schemas.search import FilterParams
 from eop_api.services.attendance_event import (
     AttendanceAuthorizationDeniedError,
+    AttendanceEventDeletionNotAllowedError,
+    AttendanceEventLockedError,
     AttendanceEventService,
     EmployeeNotFoundError,
     ShiftNotFoundError,
@@ -72,6 +75,11 @@ async def create_attendance_event(
         ) from exc
     except AttendanceAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except AttendanceEventLockedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Attendance event date is locked by a payroll run in progress",
+        ) from exc
     return AttendanceEventResponse.model_validate(event)
 
 
@@ -136,11 +144,39 @@ async def update_attendance_event(
         ) from exc
     except AttendanceAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except AttendanceEventLockedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Attendance event date is locked by a payroll run in progress",
+        ) from exc
     if event is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Attendance event not found"
         )
     return AttendanceEventResponse.model_validate(event)
+
+
+@router.post("/{event_id}/correct", response_model=AttendanceEventResponse)
+async def correct_attendance_event(
+    event_id: uuid.UUID,
+    data: AttendanceEventCorrectionRequest,
+    service: AttendanceEventServiceDep,
+    request_context: CurrentRequestContext,
+) -> AttendanceEventResponse:
+    try:
+        correction = await service.correct(event_id, data, request_context)
+    except AttendanceAuthorizationDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except AttendanceEventLockedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Attendance event date is locked by a payroll run in progress",
+        ) from exc
+    if correction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Attendance event not found"
+        )
+    return AttendanceEventResponse.model_validate(correction)
 
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -153,6 +189,11 @@ async def delete_attendance_event(
         deleted = await service.delete(event_id, request_context)
     except AttendanceAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except AttendanceEventDeletionNotAllowedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Attendance events cannot be deleted; use the correction operation instead",
+        ) from exc
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Attendance event not found"

@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import date
 
 import pytest
 from sqlalchemy.ext.asyncio import (
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import (
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
+from eop_api.core.payroll import PayrollRunStatus
 from eop_api.db.base import Base
 from eop_api.repositories.payroll_run import PayrollRunRepository
 from eop_api.schemas.search import SearchParams
@@ -98,6 +100,49 @@ async def test_delete_existing(repo: PayrollRunRepository):
 
     assert deleted is True
     assert await repo.get(payroll_run.id) is None
+
+
+async def test_find_covering_date_returns_matching_period(repo: PayrollRunRepository):
+    """Persistence-only: returns every raw match, any `status` -- interpreting
+    `status` (AttendanceEvent Integrity workstream's lock rule) is the
+    caller's job, not this repository's."""
+    payroll_run = await repo.create(
+        code="RUN-COVER",
+        name="January",
+        status=PayrollRunStatus.PROCESSING,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        currency="USD",
+    )
+
+    matches = await repo.find_covering_date(date(2026, 1, 15))
+
+    assert {m.id for m in matches} == {payroll_run.id}
+
+
+async def test_find_covering_date_excludes_non_matching_period(repo: PayrollRunRepository):
+    await repo.create(
+        code="RUN-FEB",
+        name="February",
+        status=PayrollRunStatus.PROCESSING,
+        period_start=date(2026, 2, 1),
+        period_end=date(2026, 2, 28),
+        currency="USD",
+    )
+
+    matches = await repo.find_covering_date(date(2026, 1, 15))
+
+    assert matches == []
+
+
+async def test_find_covering_date_excludes_rows_with_null_period(repo: PayrollRunRepository):
+    """A `PayrollRun` with `period_start`/`period_end` still `NULL` (the
+    pre-Iteration-2 historical gap) never matches any date."""
+    await repo.create(code="RUN-LEGACY", name="Legacy")
+
+    matches = await repo.find_covering_date(date(2026, 1, 15))
+
+    assert matches == []
 
 
 async def test_delete_missing_returns_false(repo: PayrollRunRepository):

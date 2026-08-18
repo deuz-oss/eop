@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.attendance import EventSource, EventType
 from eop_api.core.config import settings
+from eop_api.core.payroll import PayrollRunStatus
 from eop_api.db.base import Base
 from eop_api.models.hr_employee import HrEmployee
 from eop_api.models.user import User
@@ -20,14 +21,21 @@ from eop_api.repositories.job_grade import JobGradeRepository
 from eop_api.repositories.location import LocationRepository
 from eop_api.repositories.location_type import LocationTypeRepository
 from eop_api.repositories.organization import OrganizationRepository
+from eop_api.repositories.payroll_run import PayrollRunRepository
 from eop_api.repositories.position import PositionRepository
 from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
-from eop_api.schemas.attendance_event import AttendanceEventCreate, AttendanceEventUpdate
+from eop_api.schemas.attendance_event import (
+    AttendanceEventCorrectionRequest,
+    AttendanceEventCreate,
+    AttendanceEventUpdate,
+)
 from eop_api.schemas.pagination import PaginationParams
 from eop_api.schemas.search import FilterParams, SearchParams
 from eop_api.services.attendance_event import (
     AttendanceAuthorizationDeniedError,
+    AttendanceEventDeletionNotAllowedError,
+    AttendanceEventLockedError,
     AttendanceEventService,
     EmployeeNotFoundError,
     ShiftNotFoundError,
@@ -64,7 +72,8 @@ async def session_factory() -> AsyncGenerator[Callable[[], AsyncSession]]:
             await conn.execute(
                 text(
                     "TRUNCATE TABLE organizations, locations, location_types, "
-                    "job_grades, employment_types, employment_statuses, shifts CASCADE"
+                    "job_grades, employment_types, employment_statuses, shifts, "
+                    "payroll_runs CASCADE"
                 )
             )
         await engine.dispose()
@@ -202,6 +211,27 @@ def _request_context(employee_id: uuid.UUID) -> RequestContext:
     return RequestContext(user=user, employee_context=EmployeeContext(user=user, employee=employee))
 
 
+async def _create_payroll_run(
+    session_factory: Callable[[], AsyncSession],
+    *,
+    code: str,
+    status: PayrollRunStatus,
+    period_start: date,
+    period_end: date,
+) -> uuid.UUID:
+    async with session_factory() as session:
+        payroll_run = await PayrollRunRepository(session).create(
+            code=code,
+            name=code,
+            status=status,
+            period_start=period_start,
+            period_end=period_end,
+            currency="USD",
+        )
+        await session.commit()
+        return payroll_run.id
+
+
 def _create(employee_id: uuid.UUID, shift_id: uuid.UUID, **overrides) -> AttendanceEventCreate:
     values = {
         "employee_id": employee_id,
@@ -252,6 +282,28 @@ async def test_create_denied_for_non_owner(
     """`employee_id` on the payload does not belong to the calling employee."""
     with pytest.raises(AttendanceAuthorizationDeniedError):
         await service.create(_create(employee_id, shift_id), _request_context(other_employee_id))
+
+
+async def test_create_rejected_when_payroll_period_locked(
+    service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+    session_factory: Callable[[], AsyncSession],
+):
+    """`create` is locked too, not just `correct`/`update`/`delete` -- closes
+    the gap a create-only exploit would otherwise leave: backdating a new,
+    favorable event into an already-processed period."""
+    context = _request_context(employee_id)
+    await _create_payroll_run(
+        session_factory,
+        code="PR-LOCK-CREATE",
+        status=PayrollRunStatus.PROCESSING,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+    )
+
+    with pytest.raises(AttendanceEventLockedError):
+        await service.create(_create(employee_id, shift_id), context)
 
 
 async def test_get_missing_returns_none(service: AttendanceEventService, employee_id: uuid.UUID):
@@ -308,36 +360,70 @@ async def test_list_returns_only_owned(
 
 
 async def test_update_existing(
+    service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+    session_factory: Callable[[], AsyncSession],
+):
+    """`shift_id` is the only field still updatable through generic CRUD."""
+    context = _request_context(employee_id)
+    event = await service.create(_create(employee_id, shift_id), context)
+    async with session_factory() as session:
+        new_shift = await ShiftRepository(session).create(
+            code="EVENING",
+            name="Evening Shift",
+            start_time=datetime(2024, 1, 1, 14, 0).time(),
+            end_time=datetime(2024, 1, 1, 22, 0).time(),
+        )
+        await session.commit()
+        new_shift_id = new_shift.id
+
+    updated = await service.update(event.id, AttendanceEventUpdate(shift_id=new_shift_id), context)
+
+    assert updated is not None
+    assert updated.shift_id == new_shift_id
+
+
+async def test_update_ignores_client_supplied_historical_fields(
     service: AttendanceEventService, employee_id: uuid.UUID, shift_id: uuid.UUID
 ):
+    """`AttendanceEventUpdate` has no `event_time`/`event_type`/`source`/
+    `remarks`/`employee_id`/`corrects_id` fields at all -- a client-supplied
+    value in the raw payload is dropped during validation before it ever
+    reaches the service, enforced structurally."""
     context = _request_context(employee_id)
     event = await service.create(_create(employee_id, shift_id), context)
 
-    updated = await service.update(event.id, AttendanceEventUpdate(remarks="Corrected"), context)
+    data = AttendanceEventUpdate.model_validate(
+        {
+            "event_time": datetime(2099, 1, 1, tzinfo=UTC).isoformat(),
+            "event_type": EventType.CLOCK_OUT,
+            "source": EventSource.MANUAL,
+            "remarks": "tampered",
+            "employee_id": str(uuid.uuid4()),
+            "corrects_id": str(uuid.uuid4()),
+        }
+    )
+    updated = await service.update(event.id, data, context)
 
     assert updated is not None
-    assert updated.remarks == "Corrected"
+    assert updated.event_time == event.event_time
+    assert updated.event_type == event.event_type
+    assert updated.source == event.source
+    assert updated.remarks == event.remarks
+    assert updated.employee_id == event.employee_id
+    assert updated.corrects_id is None
 
 
 async def test_update_missing_returns_none(service: AttendanceEventService, employee_id: uuid.UUID):
     assert (
         await service.update(
             uuid.uuid4(),
-            AttendanceEventUpdate(remarks="Corrected"),
+            AttendanceEventUpdate(shift_id=uuid.uuid4()),
             _request_context(employee_id),
         )
         is None
     )
-
-
-async def test_update_rejects_missing_employee(
-    service: AttendanceEventService, employee_id: uuid.UUID, shift_id: uuid.UUID
-):
-    context = _request_context(employee_id)
-    event = await service.create(_create(employee_id, shift_id), context)
-
-    with pytest.raises(EmployeeNotFoundError):
-        await service.update(event.id, AttendanceEventUpdate(employee_id=uuid.uuid4()), context)
 
 
 async def test_update_rejects_missing_shift(
@@ -362,21 +448,169 @@ async def test_update_denied_for_non_owner(
     with pytest.raises(AttendanceAuthorizationDeniedError):
         await service.update(
             event.id,
-            AttendanceEventUpdate(remarks="Corrected"),
+            AttendanceEventUpdate(shift_id=uuid.uuid4()),
             _request_context(other_employee_id),
         )
 
 
-async def test_delete_existing(
-    service: AttendanceEventService, employee_id: uuid.UUID, shift_id: uuid.UUID
+async def test_update_rejected_when_payroll_period_locked(
+    service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+    session_factory: Callable[[], AsyncSession],
 ):
     context = _request_context(employee_id)
     event = await service.create(_create(employee_id, shift_id), context)
+    await _create_payroll_run(
+        session_factory,
+        code="PR-LOCK-UPDATE",
+        status=PayrollRunStatus.PROCESSING,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+    )
 
-    deleted = await service.delete(event.id, context)
+    with pytest.raises(AttendanceEventLockedError):
+        await service.update(event.id, AttendanceEventUpdate(shift_id=uuid.uuid4()), context)
 
-    assert deleted is True
-    assert await service.get(event.id, context) is None
+
+async def test_correct_creates_new_row_and_preserves_original(
+    service: AttendanceEventService, employee_id: uuid.UUID, shift_id: uuid.UUID
+):
+    context = _request_context(employee_id)
+    original = await service.create(_create(employee_id, shift_id), context)
+
+    correction = await service.correct(
+        original.id,
+        AttendanceEventCorrectionRequest(event_time=datetime(2026, 1, 5, 9, 5, tzinfo=UTC)),
+        context,
+    )
+
+    assert correction is not None
+    assert correction.id != original.id
+    assert correction.corrects_id == original.id
+    assert correction.event_time == datetime(2026, 1, 5, 9, 5, tzinfo=UTC)
+    # unchanged fields carried over from the original
+    assert correction.employee_id == original.employee_id
+    assert correction.shift_id == original.shift_id
+    assert correction.event_type == original.event_type
+    assert correction.source == original.source
+
+    unchanged_original = await service.get(original.id, context)
+    assert unchanged_original is not None
+    assert unchanged_original.event_time == original.event_time
+    assert unchanged_original.corrects_id is None
+
+
+async def test_correct_missing_returns_none(
+    service: AttendanceEventService, employee_id: uuid.UUID
+):
+    assert (
+        await service.correct(
+            uuid.uuid4(), AttendanceEventCorrectionRequest(), _request_context(employee_id)
+        )
+        is None
+    )
+
+
+async def test_correct_denied_for_non_owner(
+    service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    other_employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+):
+    owner_context = _request_context(employee_id)
+    event = await service.create(_create(employee_id, shift_id), owner_context)
+
+    with pytest.raises(AttendanceAuthorizationDeniedError):
+        await service.correct(
+            event.id,
+            AttendanceEventCorrectionRequest(remarks="not mine to correct"),
+            _request_context(other_employee_id),
+        )
+
+
+async def test_correct_rejected_when_payroll_period_locked(
+    service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+    session_factory: Callable[[], AsyncSession],
+):
+    context = _request_context(employee_id)
+    event = await service.create(_create(employee_id, shift_id), context)
+    await _create_payroll_run(
+        session_factory,
+        code="PR-LOCK-CORRECT",
+        status=PayrollRunStatus.COMPLETED,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+    )
+
+    with pytest.raises(AttendanceEventLockedError):
+        await service.correct(
+            event.id, AttendanceEventCorrectionRequest(remarks="too late"), context
+        )
+
+
+async def test_correct_allowed_when_payroll_period_still_draft(
+    service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+    session_factory: Callable[[], AsyncSession],
+):
+    """A `DRAFT` `PayrollRun` covering the date does not lock it."""
+    context = _request_context(employee_id)
+    event = await service.create(_create(employee_id, shift_id), context)
+    await _create_payroll_run(
+        session_factory,
+        code="PR-DRAFT",
+        status=PayrollRunStatus.DRAFT,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+    )
+
+    correction = await service.correct(
+        event.id, AttendanceEventCorrectionRequest(remarks="still editable"), context
+    )
+
+    assert correction is not None
+
+
+async def test_correct_chain_does_not_create_a_cycle(
+    service: AttendanceEventService, employee_id: uuid.UUID, shift_id: uuid.UUID
+):
+    """Correcting a correction is permitted and produces a clean, acyclic
+    chain: original <- correction1 <- correction2."""
+    context = _request_context(employee_id)
+    original = await service.create(_create(employee_id, shift_id), context)
+
+    correction1 = await service.correct(
+        original.id, AttendanceEventCorrectionRequest(remarks="first correction"), context
+    )
+    assert correction1 is not None
+
+    correction2 = await service.correct(
+        correction1.id, AttendanceEventCorrectionRequest(remarks="second correction"), context
+    )
+    assert correction2 is not None
+
+    assert original.corrects_id is None
+    assert correction1.corrects_id == original.id
+    assert correction2.corrects_id == correction1.id
+    assert correction2.id != original.id
+    assert correction1.id != original.id
+
+
+async def test_delete_existing_is_rejected(
+    service: AttendanceEventService, employee_id: uuid.UUID, shift_id: uuid.UUID
+):
+    """Historical attendance events cannot be deleted; use `correct` instead."""
+    context = _request_context(employee_id)
+    event = await service.create(_create(employee_id, shift_id), context)
+
+    with pytest.raises(AttendanceEventDeletionNotAllowedError):
+        await service.delete(event.id, context)
+
+    assert await service.get(event.id, context) is not None
 
 
 async def test_delete_missing_returns_false(
@@ -398,6 +632,28 @@ async def test_delete_denied_for_non_owner(
         await service.delete(event.id, _request_context(other_employee_id))
 
     assert await service.get(event.id, owner_context) is not None
+
+
+async def test_delete_rejected_when_payroll_period_locked(
+    service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+    session_factory: Callable[[], AsyncSession],
+):
+    """Delete is unconditionally rejected regardless of lock status -- this
+    confirms the lock doesn't change delete's behavior to something else."""
+    context = _request_context(employee_id)
+    event = await service.create(_create(employee_id, shift_id), context)
+    await _create_payroll_run(
+        session_factory,
+        code="PR-LOCK-DELETE",
+        status=PayrollRunStatus.PROCESSING,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+    )
+
+    with pytest.raises(AttendanceEventDeletionNotAllowedError):
+        await service.delete(event.id, context)
 
 
 async def test_list_paginated_passes_through_offset_and_limit(

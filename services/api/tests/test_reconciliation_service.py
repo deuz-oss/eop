@@ -23,7 +23,7 @@ from eop_api.repositories.organization import OrganizationRepository
 from eop_api.repositories.position import PositionRepository
 from eop_api.repositories.shift import ShiftRepository
 from eop_api.repositories.team import TeamRepository
-from eop_api.schemas.attendance_event import AttendanceEventCreate
+from eop_api.schemas.attendance_event import AttendanceEventCorrectionRequest, AttendanceEventCreate
 from eop_api.schemas.holiday import HolidayCreate
 from eop_api.schemas.leave_request import LeaveRequestCreate, LeaveRequestUpdate
 from eop_api.services.attendance_event import AttendanceEventService
@@ -364,3 +364,146 @@ async def test_reconcile_precedence_leave_beats_attendance(
     result = await service.reconcile(employee_id, TARGET_DATE)
 
     assert result.status == "leave"
+
+
+# --- Correction lineage interaction (AttendanceEvent Integrity workstream) ----
+#
+# `ReconciliationService` is correction-lineage-aware: a day reads
+# `"present"` only if it has at least one *authoritative* (uncorrected)
+# `AttendanceEvent`. `reconcile()` calls `_has_uncorrected_event`, which
+# fetches every raw match via `AttendanceEventRepository.list_between` and
+# excludes any id that appears as another event's `corrects_id` via
+# `find_corrected_ids` -- mirroring `CompensationService.
+# _exclude_corrected_targets`'s exact placement (service-side interpretation
+# of a persistence-only repository read, not a repository capability). The
+# original row is never mutated or deleted; it is simply excluded from the
+# authoritative set once something else's `corrects_id` points at it. These
+# tests verify that exclusion end-to-end through the real service/repository
+# stack.
+
+
+async def test_reconcile_present_unaffected_by_same_day_correction(
+    service: ReconciliationService,
+    attendance_event_service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+):
+    """A correction that keeps `event_time` within the same UTC day changes
+    nothing about that day's classification: the original becomes
+    corrected (excluded), but the new correction row is itself uncorrected
+    and lands on the same day, so the day still reads "present" exactly
+    once."""
+    event_id = await _attendance_event(attendance_event_service, employee_id, shift_id)
+    await attendance_event_service.correct(
+        event_id,
+        AttendanceEventCorrectionRequest(remarks="clocked in a few minutes later"),
+        _owner_request_context(employee_id),
+    )
+
+    result = await service.reconcile(employee_id, TARGET_DATE)
+
+    assert result.status == "present"
+
+
+async def test_reconcile_original_day_not_present_after_cross_day_correction(
+    service: ReconciliationService,
+    attendance_event_service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+):
+    """Correcting `event_time` to a *different* calendar day supersedes the
+    original day's presence fact: the original row is retained (audit/
+    history) but is now referenced by the correction's `corrects_id`, so it
+    is excluded as non-authoritative. Day A must no longer read "present";
+    day B reads "present" per the correction. This is the corrected
+    semantics required by the CTO's REQUEST CHANGES -- correction must
+    supersede, not accumulate."""
+    event_id = await _attendance_event(
+        attendance_event_service,
+        employee_id,
+        shift_id,
+        event_time=datetime(2026, 3, 2, 9, 0, tzinfo=UTC),
+    )
+    await attendance_event_service.correct(
+        event_id,
+        AttendanceEventCorrectionRequest(event_time=datetime(2026, 3, 3, 9, 0, tzinfo=UTC)),
+        _owner_request_context(employee_id),
+    )
+
+    original_day = await service.reconcile(employee_id, date(2026, 3, 2))
+    corrected_day = await service.reconcile(employee_id, date(2026, 3, 3))
+
+    assert original_day.status == "absent"
+    assert corrected_day.status == "present"
+
+
+async def test_reconcile_correction_chain_only_final_day_is_present(
+    service: ReconciliationService,
+    attendance_event_service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+):
+    """A correction chain A -> B -> C, each on a different day, leaves only
+    the final, uncorrected day (C) reading "present". A is referenced by
+    B's `corrects_id`; B is referenced by C's `corrects_id`; C is
+    referenced by nobody. Verifies the exclusion works transitively across
+    a chain of depth two, not just a single correction."""
+    event_a = await _attendance_event(
+        attendance_event_service,
+        employee_id,
+        shift_id,
+        event_time=datetime(2026, 3, 2, 9, 0, tzinfo=UTC),
+    )
+    event_b = await attendance_event_service.correct(
+        event_a,
+        AttendanceEventCorrectionRequest(event_time=datetime(2026, 3, 3, 9, 0, tzinfo=UTC)),
+        _owner_request_context(employee_id),
+    )
+    await attendance_event_service.correct(
+        event_b.id,
+        AttendanceEventCorrectionRequest(event_time=datetime(2026, 3, 4, 9, 0, tzinfo=UTC)),
+        _owner_request_context(employee_id),
+    )
+
+    day_a = await service.reconcile(employee_id, date(2026, 3, 2))
+    day_b = await service.reconcile(employee_id, date(2026, 3, 3))
+    day_c = await service.reconcile(employee_id, date(2026, 3, 4))
+
+    assert day_a.status == "absent"
+    assert day_b.status == "absent"
+    assert day_c.status == "present"
+
+
+async def test_reconcile_unrelated_attendance_event_unaffected_by_other_lineage(
+    service: ReconciliationService,
+    attendance_event_service: AttendanceEventService,
+    employee_id: uuid.UUID,
+    shift_id: uuid.UUID,
+):
+    """An independent, never-corrected `AttendanceEvent` keeps its own day
+    "present" regardless of a separate correction lineage existing for the
+    same employee on other days -- `find_corrected_ids` only excludes ids
+    that literally appear as some row's `corrects_id`, so an unrelated
+    event's id is never touched."""
+    unrelated_day = date(2026, 3, 10)
+    await _attendance_event(
+        attendance_event_service,
+        employee_id,
+        shift_id,
+        event_time=datetime(2026, 3, 10, 9, 0, tzinfo=UTC),
+    )
+    original_event_id = await _attendance_event(
+        attendance_event_service,
+        employee_id,
+        shift_id,
+        event_time=datetime(2026, 3, 2, 9, 0, tzinfo=UTC),
+    )
+    await attendance_event_service.correct(
+        original_event_id,
+        AttendanceEventCorrectionRequest(event_time=datetime(2026, 3, 3, 9, 0, tzinfo=UTC)),
+        _owner_request_context(employee_id),
+    )
+
+    result = await service.reconcile(employee_id, unrelated_day)
+
+    assert result.status == "present"
