@@ -5,15 +5,14 @@ from contextlib import asynccontextmanager
 from datetime import date, time
 
 import pytest
+from conftest import clean_database
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
 from eop_api.core.security import create_access_token, hash_password
-from eop_api.db.base import Base
 from eop_api.db.engine import engine as app_engine
 from eop_api.dependencies.employee_context import CurrentEmployeeContext, CurrentRequestContext
 from eop_api.models.user import User
@@ -62,36 +61,7 @@ async def read_request_context(request_context: CurrentRequestContext) -> dict:
     }
 
 
-@pytest.fixture(autouse=True)
-def _tables() -> Generator[None]:
-    """Ensures all tables needed to build an `HrEmployee` exist and are empty
-    for each test.
-
-    Runs against the real (default) database engine, so state is reset via
-    TRUNCATE rather than dropping the migration-managed tables.
-    """
-
-    async def _create() -> None:
-        engine = create_async_engine(settings.database_url)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        await engine.dispose()
-
-    async def _truncate() -> None:
-        engine = create_async_engine(settings.database_url)
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "TRUNCATE TABLE hr_employees, teams, positions, locations, "
-                    "location_types, departments, organizations, job_grades, "
-                    "employment_types, employment_statuses, shifts, users CASCADE"
-                )
-            )
-        await engine.dispose()
-
-    asyncio.run(_create())
-    yield
-    asyncio.run(_truncate())
+_tables = pytest.fixture(autouse=True)(clean_database)
 
 
 @pytest.fixture

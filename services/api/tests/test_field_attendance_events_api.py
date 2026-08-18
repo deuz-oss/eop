@@ -5,15 +5,14 @@ from collections.abc import AsyncIterator, Generator
 from typing import BinaryIO
 
 import pytest
+from conftest import clean_database
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.api.files import get_file_service
 from eop_api.core.config import settings
 from eop_api.core.security import hash_password
-from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
 from eop_api.repositories.role import RoleRepository
@@ -69,29 +68,7 @@ def _override_file_service(fake_storage: FakeStorageProvider) -> Generator[None]
     app.dependency_overrides.pop(get_file_service, None)
 
 
-@pytest.fixture(autouse=True)
-def _tables() -> Generator[None]:
-    async def _create() -> None:
-        engine = create_async_engine(settings.database_url)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        await engine.dispose()
-
-    async def _truncate() -> None:
-        engine = create_async_engine(settings.database_url)
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "TRUNCATE TABLE organizations, locations, location_types, "
-                    "job_grades, employment_types, employment_statuses, shifts, "
-                    "file_objects, users CASCADE"
-                )
-            )
-        await engine.dispose()
-
-    asyncio.run(_create())
-    yield
-    asyncio.run(_truncate())
+_tables = pytest.fixture(autouse=True)(clean_database)
 
 
 @pytest.fixture
