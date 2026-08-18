@@ -696,7 +696,7 @@ def test_update_timesheet_rejected_when_rejected(client: TestClient, user_header
     assert response.status_code == 409
 
 
-def test_delete_timesheet(client: TestClient, user_headers: dict[str, str]):
+def test_delete_pending_timesheet_succeeds(client: TestClient, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers)
     created = _create_timesheet(client, user_headers, employee["id"])
 
@@ -710,6 +710,28 @@ def test_delete_timesheet_not_found(client: TestClient, user_headers: dict[str, 
     response = client.delete(f"/hr/timesheets/{uuid.uuid4()}", headers=user_headers)
 
     assert response.status_code == 404
+
+
+def test_delete_approved_timesheet_rejected(client: TestClient, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers)
+    created = _create_timesheet(client, user_headers, employee["id"])
+    client.put(f"/hr/timesheets/{created['id']}", json={"status": "approved"}, headers=user_headers)
+
+    response = client.delete(f"/hr/timesheets/{created['id']}", headers=user_headers)
+
+    assert response.status_code == 409
+    assert client.get(f"/hr/timesheets/{created['id']}", headers=user_headers).status_code == 200
+
+
+def test_delete_rejected_timesheet_rejected(client: TestClient, user_headers: dict[str, str]):
+    employee = _create_employee(client, user_headers)
+    created = _create_timesheet(client, user_headers, employee["id"])
+    client.put(f"/hr/timesheets/{created['id']}", json={"status": "rejected"}, headers=user_headers)
+
+    response = client.delete(f"/hr/timesheets/{created['id']}", headers=user_headers)
+
+    assert response.status_code == 409
+    assert client.get(f"/hr/timesheets/{created['id']}", headers=user_headers).status_code == 200
 
 
 def test_approve_timesheet_requires_authentication(client: TestClient):

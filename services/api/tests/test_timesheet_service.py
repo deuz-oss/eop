@@ -295,7 +295,7 @@ async def test_update_status_to_approved_rejected_when_already_rejected(
         await service.update(timesheet.id, TimesheetUpdate(status="approved"))
 
 
-async def test_delete_existing(service: TimesheetService, employee_id: uuid.UUID):
+async def test_delete_pending_succeeds(service: TimesheetService, employee_id: uuid.UUID):
     timesheet = await service.create(_create(employee_id))
 
     deleted = await service.delete(timesheet.id)
@@ -306,6 +306,32 @@ async def test_delete_existing(service: TimesheetService, employee_id: uuid.UUID
 
 async def test_delete_missing_returns_false(service: TimesheetService):
     assert await service.delete(uuid.uuid4()) is False
+
+
+async def test_delete_approved_is_rejected(service: TimesheetService, employee_id: uuid.UUID):
+    """An `approved` Timesheet -- an already-decided workflow fact -- can
+    never be deleted, mirroring `update()`'s own already-established
+    `pending`-only invariant. `repo.delete()` is never reached: the row
+    remains exactly as it was, provable by `get()` still returning it."""
+    timesheet = await service.create(_create(employee_id))
+    await service.update(timesheet.id, TimesheetUpdate(status="approved"))
+
+    with pytest.raises(InvalidTimesheetStateError):
+        await service.delete(timesheet.id)
+
+    assert await service.get(timesheet.id) is not None
+
+
+async def test_delete_rejected_is_rejected(service: TimesheetService, employee_id: uuid.UUID):
+    """A `rejected` Timesheet -- already a workflow-decided fact -- can
+    never be deleted, for the same reason an `approved` one can't."""
+    timesheet = await service.create(_create(employee_id))
+    await service.update(timesheet.id, TimesheetUpdate(status="rejected"))
+
+    with pytest.raises(InvalidTimesheetStateError):
+        await service.delete(timesheet.id)
+
+    assert await service.get(timesheet.id) is not None
 
 
 async def test_list_paginated_passes_through_offset_and_limit(

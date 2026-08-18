@@ -148,7 +148,10 @@ async def update_timesheet(
 async def delete_timesheet(
     timesheet_id: uuid.UUID, service: TimesheetServiceDep, _: CurrentUser
 ) -> None:
-    deleted = await service.delete(timesheet_id)
+    try:
+        deleted = await service.delete(timesheet_id)
+    except InvalidTimesheetStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Timesheet not found")
 

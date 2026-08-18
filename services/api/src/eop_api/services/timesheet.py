@@ -145,8 +145,23 @@ class TimesheetService:
             return updated
 
     async def delete(self, timesheet_id: uuid.UUID) -> bool:
+        """Only a `pending` Timesheet may be deleted -- the same invariant
+        `update()` already enforces (no exceptions per field there either).
+        An `approved`/`rejected` Timesheet has already been decided;
+        deleting it would erase a workflow-decided fact the same way a
+        generic field update already isn't permitted to.
+        """
         async with self._uow_factory() as uow:
             repo = TimesheetRepository(uow.session)
+            timesheet = await repo.get(timesheet_id)
+            if timesheet is None:
+                return False
+
+            if timesheet.status != "pending":
+                raise InvalidTimesheetStateError(
+                    f"Timesheet {timesheet_id} is '{timesheet.status}', not 'pending'"
+                )
+
             deleted = await repo.delete(timesheet_id)
             if deleted:
                 await uow.commit()
