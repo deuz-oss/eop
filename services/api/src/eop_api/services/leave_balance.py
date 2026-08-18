@@ -23,10 +23,18 @@ class LeaveBalanceService:
 
     `LeaveBalance` is a persisted allocation/usage snapshot for one employee
     and one `period_year` -- not a calculation, ledger, or accrual record.
-    Only the existence of `employee_id` and non-negative `allocated_days`,
-    `used_days`, and `remaining_days` are validated here. Automatic
-    remaining-days calculation, deduction, accrual, carry-forward,
-    expiration, leave reconciliation, payroll synchronization, and
+    `used_days`/`remaining_days` are controlled fields: `ApprovalService.
+    _sync_leave_balance` is their only writer (deduction on `LeaveRequest`
+    approval); this service never accepts a client-supplied value for
+    either (`LeaveBalanceCreate`/`LeaveBalanceUpdate` have no such fields).
+    `create` always starts a new row at `used_days=0`,
+    `remaining_days=allocated_days`; `update` treats `allocated_days` as
+    plain admin/HR allocation data -- generic-CRUD-writable -- and, when
+    present in the payload, recomputes `remaining_days` against the
+    persisted `used_days` so `remaining_days = allocated_days - used_days`
+    always holds after this call. `allocated_days` and the effective
+    `used_days`/`remaining_days` are validated non-negative. Accrual,
+    carry-forward, expiration, leave-eligibility gating, and
     duplicate-period prevention are all explicitly out of scope for this
     module and belong to future PRs.
 
@@ -55,9 +63,11 @@ class LeaveBalanceService:
             if not await HrEmployeeRepository(uow.session).exists(data.employee_id):
                 raise EmployeeNotFoundError(str(data.employee_id))
 
-            _validate_non_negative(data.allocated_days, data.used_days, data.remaining_days)
+            _validate_non_negative(data.allocated_days, 0, data.allocated_days)
 
-            leave_balance = await repo.create(**data.model_dump())
+            leave_balance = await repo.create(
+                **data.model_dump(), used_days=0, remaining_days=data.allocated_days
+            )
             await uow.commit()
             uow.session.expunge(leave_balance)
             return leave_balance
@@ -106,8 +116,12 @@ class LeaveBalanceService:
                 if not await HrEmployeeRepository(uow.session).exists(values["employee_id"]):
                     raise EmployeeNotFoundError(str(values["employee_id"]))
 
+            used_days = leave_balance.used_days
+
+            if "allocated_days" in values:
+                values["remaining_days"] = values["allocated_days"] - used_days
+
             allocated_days = values.get("allocated_days", leave_balance.allocated_days)
-            used_days = values.get("used_days", leave_balance.used_days)
             remaining_days = values.get("remaining_days", leave_balance.remaining_days)
 
             _validate_non_negative(allocated_days, used_days, remaining_days)

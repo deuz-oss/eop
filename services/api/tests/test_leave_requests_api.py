@@ -3,55 +3,23 @@ import uuid
 from collections.abc import Generator
 
 import pytest
+from conftest import clean_database
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
 from eop_api.core.security import hash_password
-from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.leave_balance import LeaveBalanceRepository
 from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
 
 DEFAULT_DATES = {"start_date": "2026-02-10", "end_date": "2026-02-12"}
 
 
-@pytest.fixture(autouse=True)
-def _tables() -> Generator[None]:
-    """Ensures all tables exist and are empty for each test.
-
-    The API runs against the real app and its real (default) database engine,
-    so state is reset via TRUNCATE rather than dropping the migration-managed
-    tables. Truncating `organizations` and `shifts` with CASCADE also clears
-    `departments`, `positions`, `teams`, `hr_employees`, and `leave_requests`.
-    `locations`, `location_types`, `job_grades`, `employment_types`, and
-    `employment_statuses` don't depend on `organizations`, so they're
-    truncated explicitly.
-    """
-
-    async def _create() -> None:
-        engine = create_async_engine(settings.database_url)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        await engine.dispose()
-
-    async def _truncate() -> None:
-        engine = create_async_engine(settings.database_url)
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "TRUNCATE TABLE organizations, locations, location_types, "
-                    "job_grades, employment_types, employment_statuses, shifts, users CASCADE"
-                )
-            )
-        await engine.dispose()
-
-    asyncio.run(_create())
-    yield
-    asyncio.run(_truncate())
+_tables = pytest.fixture(autouse=True)(clean_database)
 
 
 @pytest.fixture
@@ -438,22 +406,43 @@ def _create_leave_balance(
     *,
     period_year: int = 2026,
     allocated_days: int = 10,
-    used_days: int = 0,
-    remaining_days: int = 10,
 ) -> dict:
+    """`used_days`/`remaining_days` are not accepted by `LeaveBalanceCreate`
+    -- every new balance starts `used_days=0`, `remaining_days=allocated_days`."""
     response = client.post(
         "/hr/leave-balances",
         json={
             "employee_id": employee_id,
             "period_year": period_year,
             "allocated_days": allocated_days,
-            "used_days": used_days,
-            "remaining_days": remaining_days,
         },
         headers=headers,
     )
     assert response.status_code == 201
     return response.json()
+
+
+async def _seed_leave_balance(
+    *, employee_id: uuid.UUID, period_year: int, allocated_days: int, used_days: int
+) -> uuid.UUID:
+    """Seeds a `LeaveBalance` with a specific `used_days`/`remaining_days`
+    directly via the repository -- the state `ApprovalService.
+    _sync_leave_balance` would produce over time, not reachable through
+    generic CRUD anymore."""
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        balance = await LeaveBalanceRepository(session).create(
+            employee_id=employee_id,
+            period_year=period_year,
+            allocated_days=allocated_days,
+            used_days=used_days,
+            remaining_days=allocated_days - used_days,
+        )
+        await session.commit()
+        balance_id = balance.id
+    await engine.dispose()
+    return balance_id
 
 
 def test_create_leave_request_requires_authentication(client: TestClient):
@@ -1261,6 +1250,35 @@ def test_approve_leave_request_rejects_missing_balance(
 ):
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
+    )
+    created = _create_leave_request(client, requester_headers, requester_employee["id"])
+
+    response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
+
+    assert response.status_code == 422
+
+
+def test_approve_leave_request_rejects_negative_balance(
+    client: TestClient,
+    user_headers: dict[str, str],
+    manager: User,
+    manager_headers: dict[str, str],
+    requester: User,
+    requester_headers: dict[str, str],
+):
+    """A 3-day request against a balance with only 2 `remaining_days` must
+    not silently drive the balance negative -- data-integrity guard, not a
+    leave-eligibility rule."""
+    _, requester_employee = _create_manager_and_requester(
+        client, user_headers, str(manager.id), str(requester.id)
+    )
+    asyncio.run(
+        _seed_leave_balance(
+            employee_id=uuid.UUID(requester_employee["id"]),
+            period_year=2026,
+            allocated_days=10,
+            used_days=8,
+        )
     )
     created = _create_leave_request(client, requester_headers, requester_employee["id"])
 

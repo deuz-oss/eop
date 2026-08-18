@@ -3,14 +3,13 @@ import uuid
 from collections.abc import Generator
 
 import pytest
+from conftest import clean_database
 from fastapi.testclient import TestClient
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
 from eop_api.core.config import settings
 from eop_api.core.security import hash_password
-from eop_api.db.base import Base
 from eop_api.main import app
 from eop_api.models.user import User
 from eop_api.repositories.role import RoleRepository
@@ -19,44 +18,10 @@ from eop_api.repositories.user import UserRepository
 DEFAULT_BALANCE = {
     "period_year": 2026,
     "allocated_days": 12,
-    "used_days": 2,
-    "remaining_days": 10,
 }
 
 
-@pytest.fixture(autouse=True)
-def _tables() -> Generator[None]:
-    """Ensures all tables exist and are empty for each test.
-
-    The API runs against the real app and its real (default) database engine,
-    so state is reset via TRUNCATE rather than dropping the migration-managed
-    tables. Truncating `organizations` and `shifts` with CASCADE also clears
-    `departments`, `positions`, `teams`, `hr_employees`, and `leave_balances`.
-    `locations`, `location_types`, `job_grades`, `employment_types`, and
-    `employment_statuses` don't depend on `organizations`, so they're
-    truncated explicitly.
-    """
-
-    async def _create() -> None:
-        engine = create_async_engine(settings.database_url)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        await engine.dispose()
-
-    async def _truncate() -> None:
-        engine = create_async_engine(settings.database_url)
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "TRUNCATE TABLE organizations, locations, location_types, "
-                    "job_grades, employment_types, employment_statuses, shifts, users CASCADE"
-                )
-            )
-        await engine.dispose()
-
-    asyncio.run(_create())
-    yield
-    asyncio.run(_truncate())
+_tables = pytest.fixture(autouse=True)(clean_database)
 
 
 @pytest.fixture
@@ -345,7 +310,7 @@ def test_get_leave_balance_requires_authentication(client: TestClient):
 
 
 def test_update_leave_balance_requires_authentication(client: TestClient):
-    response = client.put(f"/hr/leave-balances/{uuid.uuid4()}", json={"used_days": 3})
+    response = client.put(f"/hr/leave-balances/{uuid.uuid4()}", json={"allocated_days": 3})
 
     assert response.status_code == 401
 
@@ -364,9 +329,26 @@ def test_create_leave_balance(client: TestClient, user_headers: dict[str, str]):
     assert body["employee_id"] == employee["id"]
     assert body["period_year"] == 2026
     assert body["allocated_days"] == 12
-    assert body["used_days"] == 2
-    assert body["remaining_days"] == 10
+    assert body["used_days"] == 0
+    assert body["remaining_days"] == 12
     uuid.UUID(body["id"])
+
+
+def test_create_leave_balance_ignores_client_supplied_used_days(
+    client: TestClient, user_headers: dict[str, str]
+):
+    """A client-supplied `used_days`/`remaining_days` in the create payload
+    must not bypass `ApprovalService._sync_leave_balance` -- `LeaveBalanceCreate`
+    has neither field, so both are silently dropped and the new row always
+    starts `used_days=0`, `remaining_days=allocated_days`."""
+    employee = _create_employee(client, user_headers)
+
+    body = _create_leave_balance(
+        client, user_headers, employee["id"], used_days=99, remaining_days=1
+    )
+
+    assert body["used_days"] == 0
+    assert body["remaining_days"] == 12
 
 
 def test_create_leave_balance_rejects_missing_employee(
@@ -499,20 +481,39 @@ def test_update_leave_balance(client: TestClient, user_headers: dict[str, str]):
 
     response = client.put(
         f"/hr/leave-balances/{created['id']}",
-        json={"used_days": 5, "remaining_days": 7},
+        json={"allocated_days": 20},
         headers=user_headers,
     )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["used_days"] == 5
-    assert body["remaining_days"] == 7
+    assert body["allocated_days"] == 20
+    assert body["used_days"] == 0
+    assert body["remaining_days"] == 20
+
+
+def test_update_leave_balance_ignores_client_supplied_used_days(
+    client: TestClient, user_headers: dict[str, str]
+):
+    employee = _create_employee(client, user_headers)
+    created = _create_leave_balance(client, user_headers, employee["id"])
+
+    response = client.put(
+        f"/hr/leave-balances/{created['id']}",
+        json={"used_days": 99, "remaining_days": 1},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["used_days"] == 0
+    assert body["remaining_days"] == 12
 
 
 def test_update_leave_balance_not_found(client: TestClient, user_headers: dict[str, str]):
     response = client.put(
         f"/hr/leave-balances/{uuid.uuid4()}",
-        json={"used_days": 5},
+        json={"allocated_days": 5},
         headers=user_headers,
     )
 
@@ -534,7 +535,7 @@ def test_update_leave_balance_rejects_missing_employee(
     assert response.status_code == 404
 
 
-def test_update_leave_balance_rejects_negative_used_days(
+def test_update_leave_balance_rejects_negative_allocated_days(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
@@ -542,7 +543,7 @@ def test_update_leave_balance_rejects_negative_used_days(
 
     response = client.put(
         f"/hr/leave-balances/{created['id']}",
-        json={"used_days": -1},
+        json={"allocated_days": -1},
         headers=user_headers,
     )
 

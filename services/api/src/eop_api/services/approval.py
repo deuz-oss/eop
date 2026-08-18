@@ -66,6 +66,21 @@ class OverlappingLeaveRequestError(Exception):
     """
 
 
+class NegativeLeaveBalanceError(Exception):
+    """Raised when deducting an approved `LeaveRequest`'s day count would
+    drive the matching `LeaveBalance.remaining_days` below zero.
+
+    `_sync_leave_balance` writes via `LeaveBalanceRepository` directly, not
+    `LeaveBalanceService`, so `LeaveBalanceService._validate_non_negative`
+    does not run for this write path -- this check closes that gap,
+    applying the same non-negative rule generic `LeaveBalance` CRUD already
+    enforces, consistently, to this path too. It is a data-integrity check,
+    not a leave-eligibility/sufficient-balance business rule: it does not
+    evaluate whether the request *should* be approved, only whether the
+    resulting balance row would be internally valid.
+    """
+
+
 class ApprovalService:
     """Orchestrates approve/reject decisions for `LeaveRequest`, `OvertimeRequest`,
     and `Timesheet`.
@@ -323,8 +338,11 @@ class ApprovalService:
         uniqueness constraint exists for `(employee_id, period_year)` in
         v1, so zero or multiple matches are both rejected here instead);
         the day count is calendar days, inclusive, with no half-day
-        support. Half-day handling, leave types, reversal, audit logging,
-        and locking are explicitly out of scope for v1.
+        support; a deduction that would drive `remaining_days` negative is
+        rejected (`NegativeLeaveBalanceError`) -- a data-integrity check,
+        not a leave-sufficiency/eligibility rule (LeaveBalance Integrity
+        workstream). Half-day handling, leave types, reversal, audit
+        logging, and locking are explicitly out of scope for v1.
         """
         if leave_request.start_date.year != leave_request.end_date.year:
             raise CrossYearLeaveRequestError(str(leave_request.id))
@@ -351,8 +369,12 @@ class ApprovalService:
 
         balance = balances[0]
         day_count = (leave_request.end_date - leave_request.start_date).days + 1
+        new_remaining_days = balance.remaining_days - day_count
+        if new_remaining_days < 0:
+            raise NegativeLeaveBalanceError(str(balance.id))
+
         await balance_repo.update(
             balance.id,
             used_days=balance.used_days + day_count,
-            remaining_days=balance.remaining_days - day_count,
+            remaining_days=new_remaining_days,
         )

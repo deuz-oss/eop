@@ -14,6 +14,7 @@ from eop_api.repositories.employment_status import EmploymentStatusRepository
 from eop_api.repositories.employment_type import EmploymentTypeRepository
 from eop_api.repositories.hr_employee import HrEmployeeRepository
 from eop_api.repositories.job_grade import JobGradeRepository
+from eop_api.repositories.leave_balance import LeaveBalanceRepository
 from eop_api.repositories.location import LocationRepository
 from eop_api.repositories.location_type import LocationTypeRepository
 from eop_api.repositories.organization import OrganizationRepository
@@ -135,14 +136,15 @@ def _create(employee_id: uuid.UUID, **overrides) -> LeaveBalanceCreate:
         "employee_id": employee_id,
         "period_year": 2026,
         "allocated_days": 12,
-        "used_days": 2,
-        "remaining_days": 10,
     }
     values.update(overrides)
     return LeaveBalanceCreate(**values)
 
 
 async def test_create_and_get(service: LeaveBalanceService, employee_id: uuid.UUID):
+    """A freshly allocated balance always starts `used_days=0`,
+    `remaining_days=allocated_days` -- there is no other value it could
+    start at, since `used_days`/`remaining_days` are not client-settable."""
     leave_balance = await service.create(_create(employee_id))
 
     fetched = await service.get(leave_balance.id)
@@ -151,8 +153,40 @@ async def test_create_and_get(service: LeaveBalanceService, employee_id: uuid.UU
     assert fetched.employee_id == employee_id
     assert fetched.period_year == 2026
     assert fetched.allocated_days == 12
-    assert fetched.used_days == 2
-    assert fetched.remaining_days == 10
+    assert fetched.used_days == 0
+    assert fetched.remaining_days == 12
+
+
+async def test_create_ignores_client_supplied_used_days(
+    service: LeaveBalanceService, employee_id: uuid.UUID
+):
+    """`LeaveBalanceCreate` has no `used_days` field at all, so a
+    client-supplied value in the raw payload is dropped during validation
+    before it ever reaches the service -- enforced structurally."""
+    data = LeaveBalanceCreate.model_validate(
+        {"employee_id": employee_id, "period_year": 2026, "allocated_days": 12, "used_days": 99}
+    )
+
+    leave_balance = await service.create(data)
+
+    assert leave_balance.used_days == 0
+
+
+async def test_create_ignores_client_supplied_remaining_days(
+    service: LeaveBalanceService, employee_id: uuid.UUID
+):
+    data = LeaveBalanceCreate.model_validate(
+        {
+            "employee_id": employee_id,
+            "period_year": 2026,
+            "allocated_days": 12,
+            "remaining_days": 1,
+        }
+    )
+
+    leave_balance = await service.create(data)
+
+    assert leave_balance.remaining_days == 12
 
 
 async def test_create_rejects_missing_employee(service: LeaveBalanceService):
@@ -165,20 +199,6 @@ async def test_create_rejects_negative_allocated_days(
 ):
     with pytest.raises(InvalidLeaveBalanceError):
         await service.create(_create(employee_id, allocated_days=-1))
-
-
-async def test_create_rejects_negative_used_days(
-    service: LeaveBalanceService, employee_id: uuid.UUID
-):
-    with pytest.raises(InvalidLeaveBalanceError):
-        await service.create(_create(employee_id, used_days=-1))
-
-
-async def test_create_rejects_negative_remaining_days(
-    service: LeaveBalanceService, employee_id: uuid.UUID
-):
-    with pytest.raises(InvalidLeaveBalanceError):
-        await service.create(_create(employee_id, remaining_days=-1))
 
 
 async def test_get_missing_returns_none(service: LeaveBalanceService):
@@ -195,19 +215,21 @@ async def test_list_returns_created(service: LeaveBalanceService, employee_id: u
 
 
 async def test_update_existing(service: LeaveBalanceService, employee_id: uuid.UUID):
-    leave_balance = await service.create(_create(employee_id))
+    """`allocated_days` is the only field generic CRUD can still change;
+    changing it recomputes `remaining_days` against the persisted
+    (untouched) `used_days` server-side."""
+    leave_balance = await service.create(_create(employee_id, allocated_days=12))
 
-    updated = await service.update(
-        leave_balance.id, LeaveBalanceUpdate(used_days=5, remaining_days=7)
-    )
+    updated = await service.update(leave_balance.id, LeaveBalanceUpdate(allocated_days=20))
 
     assert updated is not None
-    assert updated.used_days == 5
-    assert updated.remaining_days == 7
+    assert updated.allocated_days == 20
+    assert updated.used_days == 0
+    assert updated.remaining_days == 20
 
 
 async def test_update_missing_returns_none(service: LeaveBalanceService):
-    assert await service.update(uuid.uuid4(), LeaveBalanceUpdate(used_days=5)) is None
+    assert await service.update(uuid.uuid4(), LeaveBalanceUpdate(allocated_days=5)) is None
 
 
 async def test_update_rejects_missing_employee(
@@ -219,28 +241,82 @@ async def test_update_rejects_missing_employee(
         await service.update(leave_balance.id, LeaveBalanceUpdate(employee_id=uuid.uuid4()))
 
 
-async def test_update_rejects_negative_used_days(
+async def test_update_ignores_client_supplied_used_days(
     service: LeaveBalanceService, employee_id: uuid.UUID
 ):
-    leave_balance = await service.create(_create(employee_id))
+    """`LeaveBalanceUpdate` has no `used_days` field at all -- a
+    client-supplied value in the raw payload is dropped during validation,
+    and the persisted `used_days` is left untouched."""
+    leave_balance = await service.create(_create(employee_id, allocated_days=12))
 
-    with pytest.raises(InvalidLeaveBalanceError):
-        await service.update(leave_balance.id, LeaveBalanceUpdate(used_days=-1))
-
-
-async def test_update_partial_payload_validated_against_effective_values(
-    service: LeaveBalanceService, employee_id: uuid.UUID
-):
-    """Only `remaining_days` is sent, but the effective-value merge still
-    validates the persisted `allocated_days`/`used_days` alongside it."""
-    leave_balance = await service.create(_create(employee_id))
-
-    updated = await service.update(leave_balance.id, LeaveBalanceUpdate(remaining_days=3))
+    data = LeaveBalanceUpdate.model_validate({"used_days": 99})
+    updated = await service.update(leave_balance.id, data)
 
     assert updated is not None
-    assert updated.allocated_days == 12
-    assert updated.used_days == 2
-    assert updated.remaining_days == 3
+    assert updated.used_days == 0
+
+
+async def test_update_ignores_client_supplied_remaining_days(
+    service: LeaveBalanceService, employee_id: uuid.UUID
+):
+    leave_balance = await service.create(_create(employee_id, allocated_days=12))
+
+    data = LeaveBalanceUpdate.model_validate({"remaining_days": 1})
+    updated = await service.update(leave_balance.id, data)
+
+    assert updated is not None
+    assert updated.remaining_days == 12
+
+
+async def test_update_allocated_days_recomputes_remaining_days_against_persisted_used_days(
+    service: LeaveBalanceService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+):
+    """`used_days` can no longer be set through generic CRUD, so a nonzero
+    starting `used_days` is seeded directly via the repository -- exactly
+    the state `ApprovalService._sync_leave_balance` would produce -- to
+    verify `update` recomputes `remaining_days` against it correctly."""
+    async with session_factory() as session:
+        balance = await LeaveBalanceRepository(session).create(
+            employee_id=employee_id,
+            period_year=2026,
+            allocated_days=12,
+            used_days=4,
+            remaining_days=8,
+        )
+        await session.commit()
+        balance_id = balance.id
+
+    updated = await service.update(balance_id, LeaveBalanceUpdate(allocated_days=20))
+
+    assert updated is not None
+    assert updated.allocated_days == 20
+    assert updated.used_days == 4
+    assert updated.remaining_days == 16
+
+
+async def test_update_rejects_allocated_days_below_persisted_used_days(
+    service: LeaveBalanceService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+):
+    """Lowering `allocated_days` below the persisted `used_days` would drive
+    the recomputed `remaining_days` negative -- rejected by the same
+    non-negative validation generic CRUD already applies."""
+    async with session_factory() as session:
+        balance = await LeaveBalanceRepository(session).create(
+            employee_id=employee_id,
+            period_year=2026,
+            allocated_days=12,
+            used_days=4,
+            remaining_days=8,
+        )
+        await session.commit()
+        balance_id = balance.id
+
+    with pytest.raises(InvalidLeaveBalanceError):
+        await service.update(balance_id, LeaveBalanceUpdate(allocated_days=2))
 
 
 async def test_delete_existing(service: LeaveBalanceService, employee_id: uuid.UUID):

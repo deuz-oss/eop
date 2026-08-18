@@ -35,6 +35,7 @@ from eop_api.services.approval import (
     CrossYearLeaveRequestError,
     InvalidApprovalStateError,
     LeaveBalanceNotFoundError,
+    NegativeLeaveBalanceError,
     OverlappingLeaveRequestError,
 )
 from eop_api.services.employee_context import EmployeeContext, RequestContext
@@ -769,6 +770,73 @@ async def test_approve_leave_request_rolls_back_on_balance_failure(
     assert second_balance is not None
     assert second_balance.used_days == 0
     assert second_balance.remaining_days == 8
+
+
+async def test_approve_leave_request_preserves_balance_invariant(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    """After a successful sync, `remaining_days == allocated_days - used_days`
+    must still hold -- the deduction applies the identical delta to both
+    fields."""
+    balance_id = await _create_leave_balance(
+        session_factory,
+        employee_id=employee_id,
+        period_year=2026,
+        allocated_days=10,
+        used_days=0,
+        remaining_days=10,
+    )
+    leave_request_id = await _leave_request_id(leave_request_service, employee_id)
+
+    approved = await service.approve_leave_request(leave_request_id, manager_request_context)
+
+    assert approved is not None
+    async with session_factory() as session:
+        balance = await LeaveBalanceRepository(session).get(balance_id)
+    assert balance is not None
+    assert balance.used_days == 3
+    assert balance.remaining_days == 7
+    assert balance.remaining_days == balance.allocated_days - balance.used_days
+
+
+async def test_approve_leave_request_rejects_when_balance_would_go_negative(
+    service: ApprovalService,
+    leave_request_service: LeaveRequestService,
+    session_factory: Callable[[], AsyncSession],
+    employee_id: uuid.UUID,
+    manager_request_context: RequestContext,
+):
+    """`_sync_leave_balance` writes via `LeaveBalanceRepository` directly, not
+    `LeaveBalanceService`, so it must apply its own non-negative check --
+    this is not a leave-eligibility rule, only a data-integrity guard."""
+    balance_id = await _create_leave_balance(
+        session_factory,
+        employee_id=employee_id,
+        period_year=2026,
+        allocated_days=10,
+        used_days=8,
+        remaining_days=2,
+    )
+    leave_request_id = await _leave_request_id(leave_request_service, employee_id)
+
+    with pytest.raises(NegativeLeaveBalanceError):
+        await service.approve_leave_request(leave_request_id, manager_request_context)
+
+    async with session_factory() as session:
+        balance = await LeaveBalanceRepository(session).get(balance_id)
+    assert balance is not None
+    assert balance.used_days == 8
+    assert balance.remaining_days == 2
+
+    unchanged = await leave_request_service.get(
+        leave_request_id, _owner_request_context(employee_id)
+    )
+    assert unchanged is not None
+    assert unchanged.status == "pending"
 
 
 async def test_reject_leave_request_denied_for_non_manager(

@@ -21,6 +21,7 @@ from eop_api.services.approval import (
     CrossYearLeaveRequestError,
     InvalidApprovalStateError,
     LeaveBalanceNotFoundError,
+    NegativeLeaveBalanceError,
     OverlappingLeaveRequestError,
 )
 from eop_api.services.leave_request import (
@@ -200,6 +201,11 @@ async def approve_leave_request(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An approved leave request already overlaps this date range",
+        ) from exc
+    except NegativeLeaveBalanceError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Approving this request would leave a negative leave balance",
         ) from exc
     if leave_request is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
