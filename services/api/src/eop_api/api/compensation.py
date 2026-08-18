@@ -16,6 +16,7 @@ from eop_api.schemas.compensation import (
 from eop_api.schemas.pagination import Page
 from eop_api.services.compensation import (
     CompensationAuthorizationDeniedError,
+    CompensationDeletionNotAllowedError,
     CompensationService,
     CorrectionTargetEmployeeMismatchError,
     CorrectionTargetNotFoundError,
@@ -155,5 +156,10 @@ async def delete_compensation(
         deleted = await service.delete(compensation_id, request_context)
     except CompensationAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except CompensationDeletionNotAllowedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Compensation records cannot be deleted; use the correction operation instead",
+        ) from exc
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Compensation not found")

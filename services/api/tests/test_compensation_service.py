@@ -5,7 +5,6 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
@@ -29,6 +28,7 @@ from eop_api.repositories.team import TeamRepository
 from eop_api.schemas.compensation import CompensationCreate, CompensationUpdate
 from eop_api.services.compensation import (
     CompensationAuthorizationDeniedError,
+    CompensationDeletionNotAllowedError,
     CompensationService,
     CorrectionTargetEmployeeMismatchError,
     CorrectionTargetNotFoundError,
@@ -645,26 +645,34 @@ async def test_update_can_deactivate(service: CompensationService, employee_id: 
     assert updated.is_active is False
 
 
-async def test_delete_existing(service: CompensationService, employee_id: uuid.UUID):
+async def test_delete_existing_leaf_row_is_rejected(
+    service: CompensationService, employee_id: uuid.UUID
+):
+    """Compensation Delete Integrity: an uncorrected/leaf row -- including
+    the currently-effective row a real payroll calculation would read --
+    can never be deleted. `repo.delete()` is never called; the row remains
+    exactly as it was."""
     context = _request_context(employee_id)
     compensation = await service.create(_create(employee_id), context)
 
-    deleted = await service.delete(compensation.id, context)
+    with pytest.raises(CompensationDeletionNotAllowedError):
+        await service.delete(compensation.id, context)
 
-    assert deleted is True
-    assert await service.get(compensation.id, context) is None
+    assert await service.get(compensation.id, context) is not None
 
 
 async def test_delete_missing_returns_false(service: CompensationService, employee_id: uuid.UUID):
     assert await service.delete(uuid.uuid4(), _request_context(employee_id)) is False
 
 
-async def test_delete_target_with_correction_is_restricted(
+async def test_delete_target_already_referenced_by_correction_is_rejected(
     service: CompensationService, employee_id: uuid.UUID
 ):
-    """`corrects_id` is `ON DELETE RESTRICT` (mirrors `Department.parent_id`/
-    `HrEmployee.manager_id`): a corrected row cannot be deleted while a
-    correction still references it, protecting correction lineage."""
+    """A row already referenced by another row's `corrects_id` is rejected
+    the same clean way as any other row -- not via the raw `IntegrityError`
+    the `ON DELETE RESTRICT` FK on `corrects_id` would otherwise surface,
+    since `delete()` now never reaches `repo.delete()` for any existing
+    row."""
     context = _request_context(employee_id)
     target = await service.create(
         _create(employee_id, effective_from=date(2026, 1, 1), effective_to=date(2026, 6, 30)),
@@ -680,8 +688,10 @@ async def test_delete_target_with_correction_is_restricted(
         context,
     )
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(CompensationDeletionNotAllowedError):
         await service.delete(target.id, context)
+
+    assert await service.get(target.id, context) is not None
 
 
 async def test_delete_denied_for_non_owner(

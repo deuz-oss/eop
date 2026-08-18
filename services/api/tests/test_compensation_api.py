@@ -716,14 +716,56 @@ def test_update_compensation_forbidden_for_non_owner(
     assert response.status_code == 403
 
 
-def test_delete_compensation(client: TestClient, user: User, user_headers: dict[str, str]):
+def test_delete_compensation_leaf_row_rejected(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """Compensation Delete Integrity: an uncorrected/leaf row is rejected
+    with 409, and the row is left untouched."""
     employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_compensation(client, user_headers, employee_id=employee["id"])
 
     response = client.delete(f"/hr/compensation/{created['id']}", headers=user_headers)
 
-    assert response.status_code == 204
-    assert client.get(f"/hr/compensation/{created['id']}", headers=user_headers).status_code == 404
+    assert response.status_code == 409
+    assert client.get(f"/hr/compensation/{created['id']}", headers=user_headers).status_code == 200
+
+
+def test_delete_compensation_already_referenced_by_correction_rejected(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """A row already referenced by another row's `corrects_id` is rejected
+    the same clean 409 way, not a raw `IntegrityError`/500."""
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    target = _create_compensation(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+    )
+    _create_compensation(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+        corrects_id=target["id"],
+    )
+
+    response = client.delete(f"/hr/compensation/{target['id']}", headers=user_headers)
+
+    assert response.status_code == 409
+    assert client.get(f"/hr/compensation/{target['id']}", headers=user_headers).status_code == 200
+
+
+def test_delete_compensation_not_found(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
+    response = client.delete(f"/hr/compensation/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 404
 
 
 def test_delete_compensation_forbidden_for_non_owner(

@@ -53,6 +53,26 @@ class CompensationAuthorizationDeniedError(Exception):
     """
 
 
+class CompensationDeletionNotAllowedError(Exception):
+    """Raised whenever `delete()` is attempted against an existing Compensation.
+
+    Compensation Delete Integrity: `decision.md` §7/§17/§19 establish that a
+    Compensation row, once it represents a real historical or currently
+    effective business fact, may only be changed via a compensating
+    correction (`corrects_id`, C2b) -- never overwritten, and (by the same
+    principle, since permanent deletion destroys a historical business fact
+    exactly as overwriting would) never deleted. Mirrors
+    `AttendanceEventService`'s `AttendanceEventDeletionNotAllowedError`
+    exactly: deletion is unconditionally rejected for every existing row,
+    whether or not it has since been referenced by another row's
+    `corrects_id`. This also replaces the previous behavior for a
+    corrected row, which failed with a raw, unhandled `IntegrityError` from
+    the `ON DELETE RESTRICT` FK on `corrects_id` -- that row is now
+    rejected the same clean way as any other, before `repo.delete()` is
+    ever called.
+    """
+
+
 class CompensationService:
     """Business logic for `Compensation`. Owns the transaction boundary via a UoW.
 
@@ -344,6 +364,13 @@ class CompensationService:
             return updated
 
     async def delete(self, compensation_id: uuid.UUID, request_context: RequestContext) -> bool:
+        """Never succeeds for an existing row -- see `CompensationDeletionNotAllowedError`.
+
+        Fetches and authorizes first, matching every other method's
+        existing ordering (not-found before authorization; authorization
+        before the delete-not-allowed rejection). `repo.delete()` is never
+        called.
+        """
         async with self._uow_factory() as uow:
             repo = CompensationRepository(uow.session)
             compensation = await repo.get(compensation_id)
@@ -352,10 +379,7 @@ class CompensationService:
 
             await self._authorize(compensation, request_context)
 
-            deleted = await repo.delete(compensation_id)
-            if deleted:
-                await uow.commit()
-            return deleted
+            raise CompensationDeletionNotAllowedError(str(compensation_id))
 
     async def _authorize(self, resource: Any, request_context: RequestContext) -> None:
         """Evaluate the Compensation Authorization Policy (Owner Only) for `resource`.
