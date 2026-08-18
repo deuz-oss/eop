@@ -44,6 +44,25 @@ class AllowanceAuthorizationDeniedError(Exception):
     create/get/update/delete call."""
 
 
+class AllowanceDeletionNotAllowedError(Exception):
+    """Raised whenever `delete()` is attempted against an existing Allowance.
+
+    Allowance Delete Integrity: mirrors `CompensationDeletionNotAllowedError`
+    exactly, for the same reason (`payroll-calculation/implementation-plan.md`:
+    "`corrects_id` mirrors Compensation's C2b correction shape exactly, for
+    the same reason (auditable correction of a financial record)"). An
+    Allowance row, once it represents a real historical or currently
+    effective financial fact, may only be changed via a compensating
+    correction (`corrects_id`) -- never overwritten, and never deleted, since
+    permanent deletion destroys a historical business fact exactly as
+    overwriting would. Deletion is unconditionally rejected for every
+    existing row, whether or not it has since been referenced by another
+    row's `corrects_id` -- a corrected row is now rejected the same clean
+    way as any other, instead of failing with a raw, unhandled
+    `IntegrityError` from the `ON DELETE RESTRICT` FK on `corrects_id`.
+    """
+
+
 class AllowanceService:
     """Business logic for `Allowance`. Owns the transaction boundary via a UoW.
 
@@ -228,6 +247,13 @@ class AllowanceService:
             return updated
 
     async def delete(self, allowance_id: uuid.UUID, request_context: RequestContext) -> bool:
+        """Never succeeds for an existing row -- see `AllowanceDeletionNotAllowedError`.
+
+        Fetches and authorizes first, matching every other method's
+        existing ordering (not-found before authorization; authorization
+        before the delete-not-allowed rejection). `repo.delete()` is never
+        called.
+        """
         async with self._uow_factory() as uow:
             repo = AllowanceRepository(uow.session)
             allowance = await repo.get(allowance_id)
@@ -236,10 +262,7 @@ class AllowanceService:
 
             await self._authorize(allowance, request_context)
 
-            deleted = await repo.delete(allowance_id)
-            if deleted:
-                await uow.commit()
-            return deleted
+            raise AllowanceDeletionNotAllowedError(str(allowance_id))
 
     async def _authorize(self, resource: Any, request_context: RequestContext) -> None:
         authorization_request = AuthorizationRequest(context=request_context, resource=resource)

@@ -5,7 +5,6 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
@@ -29,6 +28,7 @@ from eop_api.repositories.team import TeamRepository
 from eop_api.schemas.allowance import AllowanceCreate, AllowanceUpdate
 from eop_api.services.allowance import (
     AllowanceAuthorizationDeniedError,
+    AllowanceDeletionNotAllowedError,
     AllowanceService,
     CorrectionTargetEmployeeMismatchError,
     CorrectionTargetNotFoundError,
@@ -424,19 +424,34 @@ async def test_update_denied_for_non_owner(
         )
 
 
-async def test_delete_existing(service: AllowanceService, employee_id: uuid.UUID):
+async def test_delete_existing_leaf_row_is_rejected(
+    service: AllowanceService, employee_id: uuid.UUID
+):
+    """Allowance Delete Integrity: an uncorrected/leaf row -- including the
+    currently-effective row a real payroll calculation would read -- can
+    never be deleted. `repo.delete()` is never called; the row remains
+    exactly as it was."""
     context = _request_context(employee_id)
     allowance = await service.create(_create(employee_id), context)
 
-    deleted = await service.delete(allowance.id, context)
+    with pytest.raises(AllowanceDeletionNotAllowedError):
+        await service.delete(allowance.id, context)
 
-    assert deleted is True
-    assert await service.get(allowance.id, context) is None
+    assert await service.get(allowance.id, context) is not None
 
 
-async def test_delete_target_with_correction_is_restricted(
+async def test_delete_missing_returns_false(service: AllowanceService, employee_id: uuid.UUID):
+    assert await service.delete(uuid.uuid4(), _request_context(employee_id)) is False
+
+
+async def test_delete_target_already_referenced_by_correction_is_rejected(
     service: AllowanceService, employee_id: uuid.UUID
 ):
+    """A row already referenced by another row's `corrects_id` is rejected
+    the same clean way as any other row -- not via the raw `IntegrityError`
+    the `ON DELETE RESTRICT` FK on `corrects_id` would otherwise surface,
+    since `delete()` now never reaches `repo.delete()` for any existing
+    row."""
     context = _request_context(employee_id)
     target = await service.create(
         _create(employee_id, effective_from=date(2026, 1, 1), effective_to=date(2026, 6, 30)),
@@ -452,8 +467,21 @@ async def test_delete_target_with_correction_is_restricted(
         context,
     )
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(AllowanceDeletionNotAllowedError):
         await service.delete(target.id, context)
+
+    assert await service.get(target.id, context) is not None
+
+
+async def test_delete_denied_for_non_owner(
+    service: AllowanceService, employee_id: uuid.UUID, other_employee_id: uuid.UUID
+):
+    """Authorization failure occurs before the deletion-prohibited check is
+    ever reached."""
+    allowance = await service.create(_create(employee_id), _request_context(employee_id))
+
+    with pytest.raises(AllowanceAuthorizationDeniedError):
+        await service.delete(allowance.id, _request_context(other_employee_id))
 
 
 async def test_list_returns_only_owned(

@@ -193,18 +193,22 @@ def _create_allowance(
     *,
     employee_id: str,
     allowance_type: str = "TRANSPORT",
+    effective_from: str = "2026-01-01",
+    effective_to: str | None = None,
+    corrects_id: str | None = None,
 ) -> dict:
-    response = client.post(
-        "/hr/allowances",
-        json={
-            "employee_id": employee_id,
-            "allowance_type": allowance_type,
-            "allowance_amount": "500000.00",
-            "allowance_currency": "IDR",
-            "effective_from": "2026-01-01",
-        },
-        headers=headers,
-    )
+    payload = {
+        "employee_id": employee_id,
+        "allowance_type": allowance_type,
+        "allowance_amount": "500000.00",
+        "allowance_currency": "IDR",
+        "effective_from": effective_from,
+    }
+    if effective_to is not None:
+        payload["effective_to"] = effective_to
+    if corrects_id is not None:
+        payload["corrects_id"] = corrects_id
+    response = client.post("/hr/allowances", json=payload, headers=headers)
     assert response.status_code == 201
     return response.json()
 
@@ -316,14 +320,70 @@ def test_update_allowance_deactivate(client: TestClient, user: User, user_header
     assert response.json()["is_active"] is False
 
 
-def test_delete_allowance(client: TestClient, user: User, user_headers: dict[str, str]):
+def test_delete_allowance_leaf_row_rejected(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """Allowance Delete Integrity: an uncorrected/leaf row is rejected with
+    409, and the row is left untouched."""
     employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_allowance(client, user_headers, employee_id=employee["id"])
 
     response = client.delete(f"/hr/allowances/{created['id']}", headers=user_headers)
 
-    assert response.status_code == 204
-    assert client.get(f"/hr/allowances/{created['id']}", headers=user_headers).status_code == 404
+    assert response.status_code == 409
+    assert client.get(f"/hr/allowances/{created['id']}", headers=user_headers).status_code == 200
+
+
+def test_delete_allowance_already_referenced_by_correction_rejected(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """A row already referenced by another row's `corrects_id` is rejected
+    the same clean 409 way, not a raw `IntegrityError`/500."""
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    target = _create_allowance(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+    )
+    _create_allowance(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+        corrects_id=target["id"],
+    )
+
+    response = client.delete(f"/hr/allowances/{target['id']}", headers=user_headers)
+
+    assert response.status_code == 409
+    assert client.get(f"/hr/allowances/{target['id']}", headers=user_headers).status_code == 200
+
+
+def test_delete_allowance_not_found(client: TestClient, user: User, user_headers: dict[str, str]):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
+    response = client.delete(f"/hr/allowances/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 404
+
+
+def test_delete_allowance_forbidden_for_non_owner(
+    client: TestClient,
+    user: User,
+    user_headers: dict[str, str],
+    other: User,
+    other_headers: dict[str, str],
+):
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    created = _create_allowance(client, user_headers, employee_id=employee["id"])
+    _create_employee(client, user_headers, user_id=str(other.id))
+
+    response = client.delete(f"/hr/allowances/{created['id']}", headers=other_headers)
+
+    assert response.status_code == 403
 
 
 def test_list_allowances_returns_only_owned(
