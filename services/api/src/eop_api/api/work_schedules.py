@@ -21,6 +21,7 @@ from eop_api.services.work_schedule import (
     OverlappingWorkSchedulePeriodError,
     ShiftNotFoundError,
     WorkScheduleAuthorizationDeniedError,
+    WorkScheduleDeletionNotAllowedError,
     WorkScheduleService,
 )
 
@@ -150,5 +151,10 @@ async def delete_work_schedule(
         deleted = await service.delete(work_schedule_id, request_context)
     except WorkScheduleAuthorizationDeniedError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except WorkScheduleDeletionNotAllowedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Work schedule records cannot be deleted; use the correction operation instead",
+        ) from exc
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Work schedule not found")

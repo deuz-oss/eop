@@ -4,7 +4,6 @@ from datetime import date, datetime
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from eop_api import models  # noqa: F401 -- registers all models on Base.metadata
@@ -34,6 +33,7 @@ from eop_api.services.work_schedule import (
     OverlappingWorkSchedulePeriodError,
     ShiftNotFoundError,
     WorkScheduleAuthorizationDeniedError,
+    WorkScheduleDeletionNotAllowedError,
     WorkScheduleService,
 )
 from eop_api.uow.sqlalchemy import SQLAlchemyUnitOfWork
@@ -611,25 +611,34 @@ async def test_update_denied_for_non_owner(
         )
 
 
-async def test_delete_existing(
+async def test_delete_existing_leaf_row_is_rejected(
     service: WorkScheduleService, employee_id: uuid.UUID, shift_id: uuid.UUID
 ):
+    """Work Schedule Delete Integrity: an uncorrected/leaf row -- including
+    the currently-effective row a real payroll deduction calculation would
+    read -- can never be deleted. `repo.delete()` is never called: the row
+    remains exactly as it was, provable by `get()` still returning it."""
     context = _request_context(employee_id)
     work_schedule = await service.create(_create(employee_id, shift_id), context)
 
-    deleted = await service.delete(work_schedule.id, context)
+    with pytest.raises(WorkScheduleDeletionNotAllowedError):
+        await service.delete(work_schedule.id, context)
 
-    assert deleted is True
-    assert await service.get(work_schedule.id, context) is None
+    assert await service.get(work_schedule.id, context) is not None
 
 
 async def test_delete_missing_returns_false(service: WorkScheduleService, employee_id: uuid.UUID):
     assert await service.delete(uuid.uuid4(), _request_context(employee_id)) is False
 
 
-async def test_delete_target_with_correction_is_restricted(
+async def test_delete_target_already_referenced_by_correction_is_rejected(
     service: WorkScheduleService, employee_id: uuid.UUID, shift_id: uuid.UUID
 ):
+    """A row already referenced by another row's `corrects_id` is rejected
+    the same clean way as any other row -- not via the raw `IntegrityError`
+    the `ON DELETE RESTRICT` FK on `corrects_id` would otherwise surface,
+    since `delete()` now never reaches `repo.delete()` for any existing
+    row."""
     context = _request_context(employee_id)
     target = await service.create(
         _create(
@@ -648,8 +657,10 @@ async def test_delete_target_with_correction_is_restricted(
         context,
     )
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(WorkScheduleDeletionNotAllowedError):
         await service.delete(target.id, context)
+
+    assert await service.get(target.id, context) is not None
 
 
 async def test_delete_denied_for_non_owner(

@@ -589,7 +589,11 @@ def test_update_work_schedule_forbidden_for_non_owner(
     assert response.status_code == 403
 
 
-def test_delete_work_schedule(client: TestClient, user: User, user_headers: dict[str, str]):
+def test_delete_work_schedule_leaf_row_rejected(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """Work Schedule Delete Integrity: an uncorrected/leaf row is rejected
+    with 409, and the row is left untouched."""
     employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_work_schedule(
         client, user_headers, employee_id=employee["id"], shift_id=employee["shift_id"]
@@ -597,10 +601,50 @@ def test_delete_work_schedule(client: TestClient, user: User, user_headers: dict
 
     response = client.delete(f"/hr/work-schedules/{created['id']}", headers=user_headers)
 
-    assert response.status_code == 204
+    assert response.status_code == 409
     assert (
-        client.get(f"/hr/work-schedules/{created['id']}", headers=user_headers).status_code == 404
+        client.get(f"/hr/work-schedules/{created['id']}", headers=user_headers).status_code == 200
     )
+
+
+def test_delete_work_schedule_already_referenced_by_correction_rejected(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    """A row already referenced by another row's `corrects_id` is rejected
+    the same clean 409 way, not a raw `IntegrityError`/500."""
+    employee = _create_employee(client, user_headers, user_id=str(user.id))
+    target = _create_work_schedule(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        shift_id=employee["shift_id"],
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+    )
+    _create_work_schedule(
+        client,
+        user_headers,
+        employee_id=employee["id"],
+        shift_id=employee["shift_id"],
+        effective_from="2026-01-01",
+        effective_to="2026-06-30",
+        corrects_id=target["id"],
+    )
+
+    response = client.delete(f"/hr/work-schedules/{target['id']}", headers=user_headers)
+
+    assert response.status_code == 409
+    assert client.get(f"/hr/work-schedules/{target['id']}", headers=user_headers).status_code == 200
+
+
+def test_delete_work_schedule_not_found(
+    client: TestClient, user: User, user_headers: dict[str, str]
+):
+    _create_employee(client, user_headers, user_id=str(user.id))
+
+    response = client.delete(f"/hr/work-schedules/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 404
 
 
 def test_delete_work_schedule_forbidden_for_non_owner(

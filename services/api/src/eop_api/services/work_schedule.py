@@ -54,6 +54,26 @@ class WorkScheduleAuthorizationDeniedError(Exception):
     """
 
 
+class WorkScheduleDeletionNotAllowedError(Exception):
+    """Raised whenever `delete()` is attempted against an existing WorkSchedule.
+
+    Work Schedule Delete Integrity: mirrors `CompensationDeletionNotAllowedError`/
+    `AllowanceDeletionNotAllowedError` exactly, for the same reason
+    (`work-schedule/iteration-1-implementation-plan.md` §1 #11: "identical to
+    `Compensation`/`Allowance`... never an in-place mutation of historical
+    fact"; the document's own governing rule: "preserve historical
+    integrity"). A WorkSchedule row, once it represents a real historical or
+    currently effective business fact, may only be changed via a
+    compensating correction (`corrects_id`) -- never overwritten, and never
+    deleted, since permanent deletion destroys a historical business fact
+    exactly as overwriting would. Deletion is unconditionally rejected for
+    every existing row, whether or not it has since been referenced by
+    another row's `corrects_id` -- a corrected row is now rejected the same
+    clean way as any other, instead of failing with a raw, unhandled
+    `IntegrityError` from the `ON DELETE RESTRICT` FK on `corrects_id`.
+    """
+
+
 class WorkScheduleService:
     """Business logic for `WorkSchedule`. Owns the transaction boundary via a UoW.
 
@@ -254,6 +274,13 @@ class WorkScheduleService:
             return updated
 
     async def delete(self, work_schedule_id: uuid.UUID, request_context: RequestContext) -> bool:
+        """Never succeeds for an existing row -- see `WorkScheduleDeletionNotAllowedError`.
+
+        Fetches and authorizes first, matching every other method's
+        existing ordering (not-found before authorization; authorization
+        before the delete-not-allowed rejection). `repo.delete()` is never
+        called.
+        """
         async with self._uow_factory() as uow:
             repo = WorkScheduleRepository(uow.session)
             work_schedule = await repo.get(work_schedule_id)
@@ -262,10 +289,7 @@ class WorkScheduleService:
 
             await self._authorize(work_schedule, request_context)
 
-            deleted = await repo.delete(work_schedule_id)
-            if deleted:
-                await uow.commit()
-            return deleted
+            raise WorkScheduleDeletionNotAllowedError(str(work_schedule_id))
 
     async def _authorize(self, resource: Any, request_context: RequestContext) -> None:
         """Evaluate the Work Schedule Authorization Policy (Owner Only) for `resource`."""
