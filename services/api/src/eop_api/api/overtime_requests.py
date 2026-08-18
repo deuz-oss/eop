@@ -146,7 +146,10 @@ async def update_overtime_request(
 async def delete_overtime_request(
     overtime_request_id: uuid.UUID, service: OvertimeRequestServiceDep, _: CurrentUser
 ) -> None:
-    deleted = await service.delete(overtime_request_id)
+    try:
+        deleted = await service.delete(overtime_request_id)
+    except InvalidOvertimeRequestStateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Overtime request not found"

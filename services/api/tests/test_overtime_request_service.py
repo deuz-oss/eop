@@ -299,7 +299,9 @@ async def test_update_status_to_approved_rejected_when_already_rejected(
         await service.update(overtime_request.id, OvertimeRequestUpdate(status="approved"))
 
 
-async def test_delete_existing(service: OvertimeRequestService, employee_id: uuid.UUID):
+async def test_delete_pending_request_succeeds(
+    service: OvertimeRequestService, employee_id: uuid.UUID
+):
     overtime_request = await service.create(_create(employee_id))
 
     deleted = await service.delete(overtime_request.id)
@@ -310,6 +312,36 @@ async def test_delete_existing(service: OvertimeRequestService, employee_id: uui
 
 async def test_delete_missing_returns_false(service: OvertimeRequestService):
     assert await service.delete(uuid.uuid4()) is False
+
+
+async def test_delete_approved_request_is_rejected(
+    service: OvertimeRequestService, employee_id: uuid.UUID
+):
+    """An `approved` OvertimeRequest -- a real Payroll input -- can never be
+    deleted, mirroring `update()`'s own already-established `pending`-only
+    invariant. `repo.delete()` is never reached: the row remains exactly
+    as it was, provable by `get()` still returning it."""
+    overtime_request = await service.create(_create(employee_id))
+    await service.update(overtime_request.id, OvertimeRequestUpdate(status="approved"))
+
+    with pytest.raises(InvalidOvertimeRequestStateError):
+        await service.delete(overtime_request.id)
+
+    assert await service.get(overtime_request.id) is not None
+
+
+async def test_delete_rejected_request_is_rejected(
+    service: OvertimeRequestService, employee_id: uuid.UUID
+):
+    """A `rejected` OvertimeRequest -- already a workflow-decided fact --
+    can never be deleted, for the same reason an `approved` one can't."""
+    overtime_request = await service.create(_create(employee_id))
+    await service.update(overtime_request.id, OvertimeRequestUpdate(status="rejected"))
+
+    with pytest.raises(InvalidOvertimeRequestStateError):
+        await service.delete(overtime_request.id)
+
+    assert await service.get(overtime_request.id) is not None
 
 
 async def test_list_paginated_passes_through_offset_and_limit(

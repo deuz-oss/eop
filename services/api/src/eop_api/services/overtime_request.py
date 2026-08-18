@@ -147,8 +147,25 @@ class OvertimeRequestService:
             return updated
 
     async def delete(self, overtime_request_id: uuid.UUID) -> bool:
+        """Only a `pending` OvertimeRequest may be deleted -- the same
+        invariant `update()` already enforces (no exceptions per field
+        there either). An `approved`/`rejected` request has already been
+        decided; deleting it would erase a workflow-decided fact (and, for
+        `approved`, a real Payroll input) the same way a generic field
+        update already isn't permitted to.
+        """
         async with self._uow_factory() as uow:
             repo = OvertimeRequestRepository(uow.session)
+            overtime_request = await repo.get(overtime_request_id)
+            if overtime_request is None:
+                return False
+
+            if overtime_request.status != "pending":
+                raise InvalidOvertimeRequestStateError(
+                    f"OvertimeRequest {overtime_request_id} is "
+                    f"'{overtime_request.status}', not 'pending'"
+                )
+
             deleted = await repo.delete(overtime_request_id)
             if deleted:
                 await uow.commit()
