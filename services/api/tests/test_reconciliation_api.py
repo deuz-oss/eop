@@ -241,10 +241,10 @@ def _create_employee(
     location = _create_location(
         client, location_admin_headers, location_type_id=location_type["id"]
     )
-    job_grade = _create_job_grade(client, headers)
-    employment_type = _create_employment_type(client, headers)
-    employment_status = _create_employment_status(client, headers)
-    shift = _create_shift(client, headers)
+    job_grade = _create_job_grade(client, location_admin_headers)
+    employment_type = _create_employment_type(client, location_admin_headers)
+    employment_status = _create_employment_status(client, location_admin_headers)
+    shift = _create_shift(client, location_admin_headers)
 
     payload: dict = {
         "employee_number": "EMP-1",
@@ -411,7 +411,7 @@ def test_get_reconciliation_holiday_when_date_is_holiday(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
-    _create_holiday(client, user_headers)
+    _create_holiday(client, _location_admin_headers(client))
 
     response = client.get(
         "/hr/reconciliation",
@@ -427,7 +427,7 @@ def test_get_reconciliation_precedence_holiday_beats_leave_and_attendance(
     client: TestClient, user: User, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers, user_id=str(user.id))
-    _create_holiday(client, user_headers)
+    _create_holiday(client, _location_admin_headers(client))
     _create_approved_leave_request(client, user_headers, employee_id=employee["id"])
     _create_attendance_event(
         client, user_headers, employee_id=employee["id"], shift_id=employee["shift_id"]

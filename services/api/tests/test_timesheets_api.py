@@ -297,11 +297,13 @@ def _create_employee(
         client, location_admin_headers, location_type_id=location_type["id"], code=f"HQ-{suffix}"
     )
     job_grade = _create_job_grade(
-        client, headers, code=f"L1-{suffix}", level=int(suffix[:4], 16) + 1
+        client, location_admin_headers, code=f"L1-{suffix}", level=int(suffix[:4], 16) + 1
     )
-    employment_type = _create_employment_type(client, headers, code=f"FT-{suffix}")
-    employment_status = _create_employment_status(client, headers, code=f"ACTIVE-{suffix}")
-    shift = _create_shift(client, headers, code=f"DAY-{suffix}")
+    employment_type = _create_employment_type(client, location_admin_headers, code=f"FT-{suffix}")
+    employment_status = _create_employment_status(
+        client, location_admin_headers, code=f"ACTIVE-{suffix}"
+    )
+    shift = _create_shift(client, location_admin_headers, code=f"DAY-{suffix}")
 
     payload: dict = {
         "employee_number": employee_number,

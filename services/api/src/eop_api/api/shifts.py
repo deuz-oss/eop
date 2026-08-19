@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.pagination import Page
 from eop_api.schemas.shift import ShiftCreate, ShiftResponse, ShiftUpdate
@@ -24,10 +25,16 @@ def get_shift_service() -> ShiftService:
 
 ShiftServiceDep = Annotated[ShiftService, Depends(get_shift_service)]
 
+# HR Master/Reference Data Authorization Policy: Role Based (`RequireRole("admin")`)
+# for create/update/delete; reads remain open to any authenticated user.
+# Reopened per CTO decision H2 (`HOLIDAY_CALENDAR_DESIGN.md` addendum) -- see
+# `api/holidays.py`'s identical comment for the full rationale.
+RequireHrMasterDataAdmin = Annotated[CurrentUser, Depends(RequireRole("admin"))]
+
 
 @router.post("", response_model=ShiftResponse, status_code=status.HTTP_201_CREATED)
 async def create_shift(
-    data: ShiftCreate, service: ShiftServiceDep, _: CurrentUser
+    data: ShiftCreate, service: ShiftServiceDep, _: RequireHrMasterDataAdmin
 ) -> ShiftResponse:
     try:
         shift = await service.create(data)
@@ -84,7 +91,7 @@ async def update_shift(
     shift_id: uuid.UUID,
     data: ShiftUpdate,
     service: ShiftServiceDep,
-    _: CurrentUser,
+    _: RequireHrMasterDataAdmin,
 ) -> ShiftResponse:
     try:
         shift = await service.update(shift_id, data)
@@ -109,7 +116,9 @@ async def update_shift(
 
 
 @router.delete("/{shift_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_shift(shift_id: uuid.UUID, service: ShiftServiceDep, _: CurrentUser) -> None:
+async def delete_shift(
+    shift_id: uuid.UUID, service: ShiftServiceDep, _: RequireHrMasterDataAdmin
+) -> None:
     deleted = await service.delete(shift_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found")

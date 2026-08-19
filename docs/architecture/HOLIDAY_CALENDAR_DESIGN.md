@@ -446,3 +446,69 @@ Concrete decisions required before implementation can begin:
 
 **Stopping here per instructions.** No aggregate has been implemented, no migration has been
 written, no code has been changed. Awaiting direction on the ambiguities above before proceeding.
+
+---
+
+## 13. Addendum — Authorization Policy Reopened (CTO Decision H2)
+
+**Status:** Accepted — CTO Decision
+
+**Resolves:** the `CurrentUser`-only authorization decision recorded above (§0 "Patterns identified,"
+line 76-77; "Explicitly should NOT exist," line 265-266) for this document's own aggregate and, by
+the same reasoning this document originally applied, for the sibling family it named as precedent
+(`JobGrade`, `EmploymentType`, `EmploymentStatus`, `Shift`).
+
+This addendum does not reopen or modify §0-§12 above. All prior content is preserved verbatim as
+the historical record of the original decision and its reasoning.
+
+### Decision
+
+The original decision — `CurrentUser`-only authorization for `Holiday`, following the precedent
+already established by `JobGrade`/`EmploymentType`/`EmploymentStatus`/`Shift` — is explicitly
+reopened and superseded for create/update/delete only. Read access is unchanged.
+
+**Global HR master/reference data** (`Holiday`, `Shift`, `JobGrade`, `EmploymentType`,
+`EmploymentStatus`) now requires:
+
+- `POST` → `RequireRole("admin")`
+- `GET` → `CurrentUser` (unchanged)
+- `PUT` → `RequireRole("admin")`
+- `DELETE` → `RequireRole("admin")`
+
+This reuses the existing `RequireRole("admin")` mechanism already established for non-owner-scoped
+data by `Location`, `LocationType`, `Store`, `StoreType`, and `PayrollRun` — no new authorization
+framework, evaluator, or abstraction is introduced.
+
+### Why the original decision is being revisited
+
+The original reasoning (line 265-266: *"no basis for Holiday to be the first"*) was sound at the
+time it was written, but rested on two premises that have since changed:
+
+1. `Holiday` had no financial/payroll consumer when this document was written. It now does:
+   `ReconciliationService.reconcile()` classifies a matching date as `"holiday"` before evaluating
+   attendance, and `AttendanceLeaveDeductionCalculator` never deducts a `holiday`-classified day —
+   for every employee reconciled on that date, not one individually.
+2. This document's own §1 (line 49) named the missing `User` ↔ `HrEmployee` identity link as an
+   open gap. That link has since been built (`ADR-006`, `hr_employees.user_id`,
+   `EmployeeContextResolver`) and now underlies the Owner-Only authorization pattern used by five
+   other HR-domain aggregates. The absence of any stronger-than-`CurrentUser` mechanism in the HR
+   domain, part of the original reasoning, no longer holds.
+
+### Scope of this addendum
+
+Covers only the authorization dependency at the API layer for the five named aggregates. Does not
+modify: models, schemas, repositories, migrations, `ReconciliationService`,
+`AttendanceLeaveDeductionCalculator`, or any other business logic. Read access for all five
+aggregates remains `CurrentUser`-only, unchanged by this addendum.
+
+### LeaveBalance (recorded here for completeness, not part of this document's original scope)
+
+**Status:** Accepted — CTO Decision (L2)
+
+`LeaveBalance` (`docs/architecture/LEAVE_BALANCE_SYNCHRONIZATION_DESIGN.md`) had no prior governed
+authorization model — a separate, distinct gap from Holiday's (which had an explicit decision,
+now reopened). The CTO has decided `LeaveBalance` create/update/delete require `RequireRole("admin")`,
+the same mechanism as above; `LeaveBalance` is explicitly **not** Owner-Only, and no
+`LeaveBalanceAuthorizationEvaluator` is introduced. Read access remains `CurrentUser`-only. This
+does not modify `LeaveBalance`'s existing integrity protection (`used_days`/`remaining_days` remain
+excluded from all public schemas and writable only via `ApprovalService._sync_leave_balance`).

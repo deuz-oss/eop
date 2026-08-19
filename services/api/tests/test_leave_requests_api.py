@@ -317,11 +317,13 @@ def _create_employee(
         client, location_admin_headers, location_type_id=location_type["id"], code=f"HQ-{suffix}"
     )
     job_grade = _create_job_grade(
-        client, headers, code=f"L1-{suffix}", level=int(suffix[:4], 16) + 1
+        client, location_admin_headers, code=f"L1-{suffix}", level=int(suffix[:4], 16) + 1
     )
-    employment_type = _create_employment_type(client, headers, code=f"FT-{suffix}")
-    employment_status = _create_employment_status(client, headers, code=f"ACTIVE-{suffix}")
-    shift = _create_shift(client, headers, code=f"DAY-{suffix}")
+    employment_type = _create_employment_type(client, location_admin_headers, code=f"FT-{suffix}")
+    employment_status = _create_employment_status(
+        client, location_admin_headers, code=f"ACTIVE-{suffix}"
+    )
+    shift = _create_shift(client, location_admin_headers, code=f"DAY-{suffix}")
 
     payload: dict = {
         "employee_number": employee_number,
@@ -724,7 +726,7 @@ def test_list_leave_requests_paginated_filter_by_status(
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
     )
-    _create_leave_balance(client, user_headers, requester_employee["id"])
+    _create_leave_balance(client, _location_admin_headers(client), requester_employee["id"])
     approved = _create_leave_request(client, requester_headers, requester_employee["id"])
     client.post(f"/hr/leave-requests/{approved['id']}/approve", headers=manager_headers)
     _create_leave_request(
@@ -1047,7 +1049,7 @@ def test_approve_leave_request(
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
     )
-    _create_leave_balance(client, user_headers, requester_employee["id"])
+    _create_leave_balance(client, _location_admin_headers(client), requester_employee["id"])
     created = _create_leave_request(client, requester_headers, requester_employee["id"])
 
     response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
@@ -1098,7 +1100,7 @@ def test_approve_leave_request_rejects_non_pending(
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
     )
-    _create_leave_balance(client, user_headers, requester_employee["id"])
+    _create_leave_balance(client, _location_admin_headers(client), requester_employee["id"])
     created = _create_leave_request(client, requester_headers, requester_employee["id"])
     client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
 
@@ -1183,7 +1185,7 @@ def test_approve_leave_request_deducts_balance(
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
     )
-    _create_leave_balance(client, user_headers, requester_employee["id"])
+    _create_leave_balance(client, _location_admin_headers(client), requester_employee["id"])
     created = _create_leave_request(client, requester_headers, requester_employee["id"])
 
     response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
@@ -1226,7 +1228,7 @@ def test_approve_leave_request_rejects_cross_year(
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
     )
-    _create_leave_balance(client, user_headers, requester_employee["id"])
+    _create_leave_balance(client, _location_admin_headers(client), requester_employee["id"])
     created = _create_leave_request(
         client,
         requester_headers,
@@ -1298,8 +1300,8 @@ def test_approve_leave_request_rejects_ambiguous_balance(
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
     )
-    _create_leave_balance(client, user_headers, requester_employee["id"])
-    _create_leave_balance(client, user_headers, requester_employee["id"])
+    _create_leave_balance(client, _location_admin_headers(client), requester_employee["id"])
+    _create_leave_balance(client, _location_admin_headers(client), requester_employee["id"])
     created = _create_leave_request(client, requester_headers, requester_employee["id"])
 
     response = client.post(f"/hr/leave-requests/{created['id']}/approve", headers=manager_headers)
@@ -1318,7 +1320,7 @@ def test_approve_leave_request_rejects_overlapping_approved_request(
     _, requester_employee = _create_manager_and_requester(
         client, user_headers, str(manager.id), str(requester.id)
     )
-    _create_leave_balance(client, user_headers, requester_employee["id"])
+    _create_leave_balance(client, _location_admin_headers(client), requester_employee["id"])
     first = _create_leave_request(client, requester_headers, requester_employee["id"])
     client.post(f"/hr/leave-requests/{first['id']}/approve", headers=manager_headers)
     second = _create_leave_request(

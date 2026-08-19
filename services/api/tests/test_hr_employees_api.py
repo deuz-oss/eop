@@ -283,11 +283,13 @@ def _create_refs(client: TestClient, headers: dict[str, str], *, suffix: str = "
         client, location_admin_headers, code=f"HQ{suffix}", location_type_id=location_type["id"]
     )
     job_grade = _create_job_grade(
-        client, headers, code=f"L1{suffix}", level=1 if suffix == "" else 2
+        client, location_admin_headers, code=f"L1{suffix}", level=1 if suffix == "" else 2
     )
-    employment_type = _create_employment_type(client, headers, code=f"FT{suffix}")
-    employment_status = _create_employment_status(client, headers, code=f"ACTIVE{suffix}")
-    shift = _create_shift(client, headers, code=f"DAY{suffix}")
+    employment_type = _create_employment_type(client, location_admin_headers, code=f"FT{suffix}")
+    employment_status = _create_employment_status(
+        client, location_admin_headers, code=f"ACTIVE{suffix}"
+    )
+    shift = _create_shift(client, location_admin_headers, code=f"DAY{suffix}")
     return _Refs(
         organization,
         department,
@@ -973,7 +975,7 @@ def test_update_employee_rejects_department_in_different_organization(
 
 def test_update_employee_changes_job_grade(client: TestClient, user_headers: dict[str, str]):
     refs = _create_refs(client, user_headers)
-    other_job_grade = _create_job_grade(client, user_headers, code="L2", level=2)
+    other_job_grade = _create_job_grade(client, _location_admin_headers(client), code="L2", level=2)
     created = _create_employee(client, user_headers, refs)
 
     response = client.put(
@@ -1003,7 +1005,9 @@ def test_update_employee_rejects_missing_job_grade(
 
 def test_update_employee_changes_employment_type(client: TestClient, user_headers: dict[str, str]):
     refs = _create_refs(client, user_headers)
-    other_employment_type = _create_employment_type(client, user_headers, code="PT")
+    other_employment_type = _create_employment_type(
+        client, _location_admin_headers(client), code="PT"
+    )
     created = _create_employee(client, user_headers, refs)
 
     response = client.put(
@@ -1035,7 +1039,9 @@ def test_update_employee_changes_employment_status(
     client: TestClient, user_headers: dict[str, str]
 ):
     refs = _create_refs(client, user_headers)
-    other_employment_status = _create_employment_status(client, user_headers, code="LEAVE")
+    other_employment_status = _create_employment_status(
+        client, _location_admin_headers(client), code="LEAVE"
+    )
     created = _create_employee(client, user_headers, refs)
 
     response = client.put(
@@ -1065,7 +1071,7 @@ def test_update_employee_rejects_missing_employment_status(
 
 def test_update_employee_changes_shift(client: TestClient, user_headers: dict[str, str]):
     refs = _create_refs(client, user_headers)
-    other_shift = _create_shift(client, user_headers, code="NIGHT")
+    other_shift = _create_shift(client, _location_admin_headers(client), code="NIGHT")
     created = _create_employee(client, user_headers, refs)
 
     response = client.put(

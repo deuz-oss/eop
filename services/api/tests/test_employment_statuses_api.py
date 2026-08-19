@@ -12,7 +12,13 @@ from eop_api.core.config import settings
 from eop_api.core.security import hash_password
 from eop_api.main import app
 from eop_api.models.user import User
+from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
+
+# EmploymentStatus Authorization: reads remain open to any authenticated
+# user; create/update/delete are Role Based (`RequireRole("admin")`),
+# reopened per CTO decision H2 -- mirrors `test_locations_api.py`'s exact
+# fixture/test pattern.
 
 _tables = pytest.fixture(autouse=True)(clean_database)
 
@@ -48,6 +54,35 @@ def user() -> User:
 def user_headers(client: TestClient, user: User) -> dict[str, str]:
     response = client.post(
         "/auth/login", json={"email": "member@example.com", "password": "member-pass"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def admin_user() -> User:
+    return asyncio.run(_create_user(email="admin@example.com", password="admin-pass"))
+
+
+async def _seed_admin(user_id: uuid.UUID) -> None:
+    engine = create_async_engine(settings.database_url)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
+        repo = RoleRepository(session)
+        role = await repo.get_by_name("admin")
+        if role is None:
+            role = await repo.create(name="admin")
+        await repo.assign_user(role.id, user_id)
+        await session.commit()
+    await engine.dispose()
+
+
+@pytest.fixture
+def admin_headers(client: TestClient, admin_user: User) -> dict[str, str]:
+    asyncio.run(_seed_admin(admin_user.id))
+
+    response = client.post(
+        "/auth/login", json={"email": "admin@example.com", "password": "admin-pass"}
     )
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
@@ -99,8 +134,66 @@ def test_delete_employment_status_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
-def test_create_employment_status(client: TestClient, user_headers: dict[str, str]):
-    body = _create_employment_status(client, user_headers)
+# --- authorization: reads open to any authenticated user, writes admin-only ---
+
+
+def test_list_employment_statuses_allows_non_admin(
+    client: TestClient, user_headers: dict[str, str]
+):
+    response = client.get("/hr/employment-statuses", headers=user_headers)
+
+    assert response.status_code == 200
+
+
+def test_get_employment_status_allows_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.get(f"/hr/employment-statuses/{uuid.uuid4()}", headers=user_headers)
+
+    # 404 (not 403) proves the request reached the service layer -- the
+    # non-admin caller was not rejected by authorization.
+    assert response.status_code == 404
+
+
+def test_list_employment_statuses_allows_admin(client: TestClient, admin_headers: dict[str, str]):
+    response = client.get("/hr/employment-statuses", headers=admin_headers)
+
+    assert response.status_code == 200
+
+
+def test_create_employment_status_rejects_non_admin(
+    client: TestClient, user_headers: dict[str, str]
+):
+    response = client.post(
+        "/hr/employment-statuses",
+        json={"code": "ACTIVE", "name": "Active"},
+        headers=user_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_update_employment_status_rejects_non_admin(
+    client: TestClient, user_headers: dict[str, str]
+):
+    response = client.put(
+        f"/hr/employment-statuses/{uuid.uuid4()}", json={"name": "New Name"}, headers=user_headers
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_employment_status_rejects_non_admin(
+    client: TestClient, user_headers: dict[str, str]
+):
+    response = client.delete(f"/hr/employment-statuses/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 403
+
+
+# --- create ---------------------------------------------------------------
+
+
+def test_create_employment_status(client: TestClient, admin_headers: dict[str, str]):
+    body = _create_employment_status(client, admin_headers)
 
     assert body["code"] == "ACTIVE"
     assert body["name"] == "Active"
@@ -109,33 +202,33 @@ def test_create_employment_status(client: TestClient, user_headers: dict[str, st
 
 
 def test_create_employment_status_rejects_blank_name(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
     response = client.post(
-        "/hr/employment-statuses", json={"code": "ACTIVE", "name": ""}, headers=user_headers
+        "/hr/employment-statuses", json={"code": "ACTIVE", "name": ""}, headers=admin_headers
     )
 
     assert response.status_code == 422
 
 
 def test_create_employment_status_rejects_duplicate_code(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_employment_status(client, user_headers, code="ACTIVE")
+    _create_employment_status(client, admin_headers, code="ACTIVE")
 
     response = client.post(
         "/hr/employment-statuses",
         json={"code": "ACTIVE", "name": "Other"},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 409
 
 
-def test_get_employment_status(client: TestClient, user_headers: dict[str, str]):
-    created = _create_employment_status(client, user_headers, code="ACTIVE", name="Active")
+def test_get_employment_status(client: TestClient, admin_headers: dict[str, str]):
+    created = _create_employment_status(client, admin_headers, code="ACTIVE", name="Active")
 
-    response = client.get(f"/hr/employment-statuses/{created['id']}", headers=user_headers)
+    response = client.get(f"/hr/employment-statuses/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json()["name"] == "Active"
@@ -147,11 +240,11 @@ def test_get_employment_status_not_found(client: TestClient, user_headers: dict[
     assert response.status_code == 404
 
 
-def test_list_employment_statuses(client: TestClient, user_headers: dict[str, str]):
-    _create_employment_status(client, user_headers, code="ACTIVE", name="Active")
-    _create_employment_status(client, user_headers, code="TERMINATED", name="Terminated")
+def test_list_employment_statuses(client: TestClient, admin_headers: dict[str, str]):
+    _create_employment_status(client, admin_headers, code="ACTIVE", name="Active")
+    _create_employment_status(client, admin_headers, code="TERMINATED", name="Terminated")
 
-    response = client.get("/hr/employment-statuses", headers=user_headers)
+    response = client.get("/hr/employment-statuses", headers=admin_headers)
 
     assert response.status_code == 200
     names = {item["name"] for item in response.json()}
@@ -159,12 +252,12 @@ def test_list_employment_statuses(client: TestClient, user_headers: dict[str, st
 
 
 def test_list_employment_statuses_paginated_default_pagination(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
     for i in range(3):
-        _create_employment_status(client, user_headers, code=f"S{i}", name=f"Status {i}")
+        _create_employment_status(client, admin_headers, code=f"S{i}", name=f"Status {i}")
 
-    response = client.get("/hr/employment-statuses/paginated", headers=user_headers)
+    response = client.get("/hr/employment-statuses/paginated", headers=admin_headers)
 
     assert response.status_code == 200
     body = response.json()
@@ -175,13 +268,13 @@ def test_list_employment_statuses_paginated_default_pagination(
 
 
 def test_list_employment_statuses_paginated_custom_offset(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
     for i in range(5):
-        _create_employment_status(client, user_headers, code=f"S{i}", name=f"Status {i}")
+        _create_employment_status(client, admin_headers, code=f"S{i}", name=f"Status {i}")
 
     response = client.get(
-        "/hr/employment-statuses/paginated", headers=user_headers, params={"offset": 2}
+        "/hr/employment-statuses/paginated", headers=admin_headers, params={"offset": 2}
     )
 
     assert response.status_code == 200
@@ -192,13 +285,13 @@ def test_list_employment_statuses_paginated_custom_offset(
 
 
 def test_list_employment_statuses_paginated_search_by_name(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_employment_status(client, user_headers, code="ACTIVE", name="Active")
-    _create_employment_status(client, user_headers, code="TERMINATED", name="Terminated")
+    _create_employment_status(client, admin_headers, code="ACTIVE", name="Active")
+    _create_employment_status(client, admin_headers, code="TERMINATED", name="Terminated")
 
     response = client.get(
-        "/hr/employment-statuses/paginated", headers=user_headers, params={"q": "active"}
+        "/hr/employment-statuses/paginated", headers=admin_headers, params={"q": "active"}
     )
 
     assert response.status_code == 200
@@ -208,13 +301,13 @@ def test_list_employment_statuses_paginated_search_by_name(
 
 
 def test_list_employment_statuses_paginated_search_by_code(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_employment_status(client, user_headers, code="ON-LEAVE", name="On Leave")
-    _create_employment_status(client, user_headers, code="SUSPENDED", name="Suspended")
+    _create_employment_status(client, admin_headers, code="ON-LEAVE", name="On Leave")
+    _create_employment_status(client, admin_headers, code="SUSPENDED", name="Suspended")
 
     response = client.get(
-        "/hr/employment-statuses/paginated", headers=user_headers, params={"q": "leave"}
+        "/hr/employment-statuses/paginated", headers=admin_headers, params={"q": "leave"}
     )
 
     assert response.status_code == 200
@@ -224,62 +317,62 @@ def test_list_employment_statuses_paginated_search_by_code(
 
 
 def test_list_employment_statuses_paginated_no_query_returns_all(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_employment_status(client, user_headers, code="ACTIVE", name="Active")
-    _create_employment_status(client, user_headers, code="TERMINATED", name="Terminated")
+    _create_employment_status(client, admin_headers, code="ACTIVE", name="Active")
+    _create_employment_status(client, admin_headers, code="TERMINATED", name="Terminated")
 
-    response = client.get("/hr/employment-statuses/paginated", headers=user_headers)
+    response = client.get("/hr/employment-statuses/paginated", headers=admin_headers)
 
     assert response.status_code == 200
     assert response.json()["total"] == 2
 
 
-def test_update_employment_status(client: TestClient, user_headers: dict[str, str]):
-    created = _create_employment_status(client, user_headers, name="Before")
+def test_update_employment_status(client: TestClient, admin_headers: dict[str, str]):
+    created = _create_employment_status(client, admin_headers, name="Before")
 
     response = client.put(
-        f"/hr/employment-statuses/{created['id']}", json={"name": "After"}, headers=user_headers
+        f"/hr/employment-statuses/{created['id']}", json={"name": "After"}, headers=admin_headers
     )
 
     assert response.status_code == 200
     assert response.json()["name"] == "After"
 
 
-def test_update_employment_status_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_update_employment_status_not_found(client: TestClient, admin_headers: dict[str, str]):
     response = client.put(
-        f"/hr/employment-statuses/{uuid.uuid4()}", json={"name": "After"}, headers=user_headers
+        f"/hr/employment-statuses/{uuid.uuid4()}", json={"name": "After"}, headers=admin_headers
     )
 
     assert response.status_code == 404
 
 
 def test_update_employment_status_rejects_duplicate_code(
-    client: TestClient, user_headers: dict[str, str]
+    client: TestClient, admin_headers: dict[str, str]
 ):
-    _create_employment_status(client, user_headers, code="ACTIVE")
-    other = _create_employment_status(client, user_headers, code="TERMINATED")
+    _create_employment_status(client, admin_headers, code="ACTIVE")
+    other = _create_employment_status(client, admin_headers, code="TERMINATED")
 
     response = client.put(
-        f"/hr/employment-statuses/{other['id']}", json={"code": "ACTIVE"}, headers=user_headers
+        f"/hr/employment-statuses/{other['id']}", json={"code": "ACTIVE"}, headers=admin_headers
     )
 
     assert response.status_code == 409
 
 
-def test_delete_employment_status(client: TestClient, user_headers: dict[str, str]):
-    created = _create_employment_status(client, user_headers, name="To Delete")
+def test_delete_employment_status(client: TestClient, admin_headers: dict[str, str]):
+    created = _create_employment_status(client, admin_headers, name="To Delete")
 
-    response = client.delete(f"/hr/employment-statuses/{created['id']}", headers=user_headers)
+    response = client.delete(f"/hr/employment-statuses/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 204
     assert (
-        client.get(f"/hr/employment-statuses/{created['id']}", headers=user_headers).status_code
+        client.get(f"/hr/employment-statuses/{created['id']}", headers=admin_headers).status_code
         == 404
     )
 
 
-def test_delete_employment_status_not_found(client: TestClient, user_headers: dict[str, str]):
-    response = client.delete(f"/hr/employment-statuses/{uuid.uuid4()}", headers=user_headers)
+def test_delete_employment_status_not_found(client: TestClient, admin_headers: dict[str, str]):
+    response = client.delete(f"/hr/employment-statuses/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404
