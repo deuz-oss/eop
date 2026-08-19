@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.leave_balance import (
     LeaveBalanceCreate,
@@ -28,6 +29,14 @@ def get_leave_balance_service() -> LeaveBalanceService:
 
 LeaveBalanceServiceDep = Annotated[LeaveBalanceService, Depends(get_leave_balance_service)]
 
+# LeaveBalance Authorization Policy: Role Based (`RequireRole("admin")`) for
+# create/update/delete; reads remain open to any authenticated user. Per CTO
+# decision L2 -- LeaveBalance is administrative allocation data, not Owner
+# Only. Reuses the same `RequireRole("admin")` mechanism `Location`/`Store`/
+# `PayrollRun` already use; no `LeaveBalanceAuthorizationEvaluator` or other
+# new authorization abstraction is introduced.
+RequireLeaveBalanceAdmin = Annotated[CurrentUser, Depends(RequireRole("admin"))]
+
 
 def get_leave_balance_filters(
     employee_id: Annotated[uuid.UUID | None, Query()] = None,
@@ -47,7 +56,7 @@ LeaveBalanceFilters = Annotated[FilterParams, Depends(get_leave_balance_filters)
 
 @router.post("", response_model=LeaveBalanceResponse, status_code=status.HTTP_201_CREATED)
 async def create_leave_balance(
-    data: LeaveBalanceCreate, service: LeaveBalanceServiceDep, _: CurrentUser
+    data: LeaveBalanceCreate, service: LeaveBalanceServiceDep, _: RequireLeaveBalanceAdmin
 ) -> LeaveBalanceResponse:
     try:
         leave_balance = await service.create(data)
@@ -103,7 +112,7 @@ async def update_leave_balance(
     leave_balance_id: uuid.UUID,
     data: LeaveBalanceUpdate,
     service: LeaveBalanceServiceDep,
-    _: CurrentUser,
+    _: RequireLeaveBalanceAdmin,
 ) -> LeaveBalanceResponse:
     try:
         leave_balance = await service.update(leave_balance_id, data)
@@ -123,7 +132,7 @@ async def update_leave_balance(
 
 @router.delete("/{leave_balance_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_leave_balance(
-    leave_balance_id: uuid.UUID, service: LeaveBalanceServiceDep, _: CurrentUser
+    leave_balance_id: uuid.UUID, service: LeaveBalanceServiceDep, _: RequireLeaveBalanceAdmin
 ) -> None:
     deleted = await service.delete(leave_balance_id)
     if not deleted:

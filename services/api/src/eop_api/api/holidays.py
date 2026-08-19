@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.holiday import HolidayCreate, HolidayResponse, HolidayUpdate
 from eop_api.schemas.pagination import Page
@@ -23,10 +24,19 @@ def get_holiday_service() -> HolidayService:
 
 HolidayServiceDep = Annotated[HolidayService, Depends(get_holiday_service)]
 
+# HR Master/Reference Data Authorization Policy: Role Based (`RequireRole("admin")`)
+# for create/update/delete; reads remain open to any authenticated user.
+# Reopened per CTO decision H2 (`HOLIDAY_CALENDAR_DESIGN.md` addendum) -- this
+# family (`Holiday`, `Shift`, `JobGrade`, `EmploymentType`, `EmploymentStatus`)
+# previously followed a deliberate `CurrentUser`-only precedent; the same
+# `RequireRole("admin")` mechanism `Location`/`Store`/`PayrollRun` already use
+# is reused here, no new authorization framework introduced.
+RequireHrMasterDataAdmin = Annotated[CurrentUser, Depends(RequireRole("admin"))]
+
 
 @router.post("", response_model=HolidayResponse, status_code=status.HTTP_201_CREATED)
 async def create_holiday(
-    data: HolidayCreate, service: HolidayServiceDep, _: CurrentUser
+    data: HolidayCreate, service: HolidayServiceDep, _: RequireHrMasterDataAdmin
 ) -> HolidayResponse:
     try:
         holiday = await service.create(data)
@@ -80,7 +90,7 @@ async def update_holiday(
     holiday_id: uuid.UUID,
     data: HolidayUpdate,
     service: HolidayServiceDep,
-    _: CurrentUser,
+    _: RequireHrMasterDataAdmin,
 ) -> HolidayResponse:
     try:
         holiday = await service.update(holiday_id, data)
@@ -100,7 +110,9 @@ async def update_holiday(
 
 
 @router.delete("/{holiday_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_holiday(holiday_id: uuid.UUID, service: HolidayServiceDep, _: CurrentUser) -> None:
+async def delete_holiday(
+    holiday_id: uuid.UUID, service: HolidayServiceDep, _: RequireHrMasterDataAdmin
+) -> None:
     deleted = await service.delete(holiday_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Holiday not found")

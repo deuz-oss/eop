@@ -15,6 +15,13 @@ from eop_api.models.user import User
 from eop_api.repositories.role import RoleRepository
 from eop_api.repositories.user import UserRepository
 
+# LeaveBalance Authorization: reads remain open to any authenticated user;
+# create/update/delete are Role Based (`RequireRole("admin")`), per CTO
+# decision L2. Reuses `_location_admin_headers` -- the same "admin" role
+# already seeded for the Location/LocationType master-data bootstrap below --
+# for LeaveBalance's own write authorization, rather than introducing a
+# second RBAC helper.
+
 DEFAULT_BALANCE = {
     "period_year": 2026,
     "allocated_days": 12,
@@ -145,9 +152,13 @@ async def _seed_location_admin(user_id: uuid.UUID) -> None:
 
 
 def _location_admin_headers(client: TestClient) -> dict[str, str]:
-    """A throwaway admin session used only to satisfy the admin-only
-    Location/LocationType write requirement during master-data bootstrap --
-    the employee/user actually under test keeps its own identity."""
+    """A throwaway admin session, seeded with the "admin" role. Originally
+    used only for the Location/LocationType master-data bootstrap below;
+    also reused directly for JobGrade/EmploymentType/EmploymentStatus/Shift
+    bootstrap and for LeaveBalance's own write authorization (CTO decision
+    L2, `RequireRole("admin")`) -- the same role, the same mechanism, no
+    second RBAC helper introduced. The employee/user actually under test
+    keeps its own identity."""
     suffix = uuid.uuid4().hex[:8]
     email = f"location-admin-{suffix}@example.com"
     user = asyncio.run(_create_user(email=email, password="admin-pass"))
@@ -237,15 +248,18 @@ def _create_employee(client: TestClient, headers: dict[str, str]) -> dict:
     team = _create_team(
         client, headers, organization_id=organization["id"], department_id=department["id"]
     )
-    location_admin_headers = _location_admin_headers(client)
-    location_type = _create_location_type(client, location_admin_headers)
+    # All master-data bootstrap (Location/LocationType/JobGrade/
+    # EmploymentType/EmploymentStatus/Shift) now requires the "admin" role
+    # (CTO decision H2) -- one shared admin session covers all of it.
+    master_data_admin_headers = _location_admin_headers(client)
+    location_type = _create_location_type(client, master_data_admin_headers)
     location = _create_location(
-        client, location_admin_headers, location_type_id=location_type["id"]
+        client, master_data_admin_headers, location_type_id=location_type["id"]
     )
-    job_grade = _create_job_grade(client, headers)
-    employment_type = _create_employment_type(client, headers)
-    employment_status = _create_employment_status(client, headers)
-    shift = _create_shift(client, headers)
+    job_grade = _create_job_grade(client, master_data_admin_headers)
+    employment_type = _create_employment_type(client, master_data_admin_headers)
+    employment_status = _create_employment_status(client, master_data_admin_headers)
+    shift = _create_shift(client, master_data_admin_headers)
 
     response = client.post(
         "/hr/employees",
@@ -321,10 +335,63 @@ def test_delete_leave_balance_requires_authentication(client: TestClient):
     assert response.status_code == 401
 
 
+# --- authorization: reads open to any authenticated user, writes admin-only ---
+
+
+def test_list_leave_balances_allows_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.get("/hr/leave-balances", headers=user_headers)
+
+    assert response.status_code == 200
+
+
+def test_get_leave_balance_allows_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.get(f"/hr/leave-balances/{uuid.uuid4()}", headers=user_headers)
+
+    # 404 (not 403) proves the request reached the service layer -- the
+    # non-admin caller was not rejected by authorization.
+    assert response.status_code == 404
+
+
+def test_list_leave_balances_allows_admin(client: TestClient):
+    admin_headers = _location_admin_headers(client)
+
+    response = client.get("/hr/leave-balances", headers=admin_headers)
+
+    assert response.status_code == 200
+
+
+def test_create_leave_balance_rejects_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.post(
+        "/hr/leave-balances",
+        json=_leave_balance_payload(str(uuid.uuid4())),
+        headers=user_headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_update_leave_balance_rejects_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.put(
+        f"/hr/leave-balances/{uuid.uuid4()}", json={"allocated_days": 3}, headers=user_headers
+    )
+
+    assert response.status_code == 403
+
+
+def test_delete_leave_balance_rejects_non_admin(client: TestClient, user_headers: dict[str, str]):
+    response = client.delete(f"/hr/leave-balances/{uuid.uuid4()}", headers=user_headers)
+
+    assert response.status_code == 403
+
+
+# --- create ---------------------------------------------------------------
+
+
 def test_create_leave_balance(client: TestClient, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers)
+    admin_headers = _location_admin_headers(client)
 
-    body = _create_leave_balance(client, user_headers, employee["id"])
+    body = _create_leave_balance(client, admin_headers, employee["id"])
 
     assert body["employee_id"] == employee["id"]
     assert body["period_year"] == 2026
@@ -342,22 +409,23 @@ def test_create_leave_balance_ignores_client_supplied_used_days(
     has neither field, so both are silently dropped and the new row always
     starts `used_days=0`, `remaining_days=allocated_days`."""
     employee = _create_employee(client, user_headers)
+    admin_headers = _location_admin_headers(client)
 
     body = _create_leave_balance(
-        client, user_headers, employee["id"], used_days=99, remaining_days=1
+        client, admin_headers, employee["id"], used_days=99, remaining_days=1
     )
 
     assert body["used_days"] == 0
     assert body["remaining_days"] == 12
 
 
-def test_create_leave_balance_rejects_missing_employee(
-    client: TestClient, user_headers: dict[str, str]
-):
+def test_create_leave_balance_rejects_missing_employee(client: TestClient):
+    admin_headers = _location_admin_headers(client)
+
     response = client.post(
         "/hr/leave-balances",
         json=_leave_balance_payload(str(uuid.uuid4())),
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 404
@@ -367,11 +435,12 @@ def test_create_leave_balance_rejects_negative_allocated_days(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
+    admin_headers = _location_admin_headers(client)
 
     response = client.post(
         "/hr/leave-balances",
         json=_leave_balance_payload(employee["id"], allocated_days=-1),
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 422
@@ -379,7 +448,8 @@ def test_create_leave_balance_rejects_negative_allocated_days(
 
 def test_get_leave_balance(client: TestClient, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers)
-    created = _create_leave_balance(client, user_headers, employee["id"])
+    admin_headers = _location_admin_headers(client)
+    created = _create_leave_balance(client, admin_headers, employee["id"])
 
     response = client.get(f"/hr/leave-balances/{created['id']}", headers=user_headers)
 
@@ -395,8 +465,9 @@ def test_get_leave_balance_not_found(client: TestClient, user_headers: dict[str,
 
 def test_list_leave_balances(client: TestClient, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers)
-    _create_leave_balance(client, user_headers, employee["id"], period_year=2025)
-    _create_leave_balance(client, user_headers, employee["id"], period_year=2026)
+    admin_headers = _location_admin_headers(client)
+    _create_leave_balance(client, admin_headers, employee["id"], period_year=2025)
+    _create_leave_balance(client, admin_headers, employee["id"], period_year=2026)
 
     response = client.get("/hr/leave-balances", headers=user_headers)
 
@@ -409,8 +480,9 @@ def test_list_leave_balances_paginated_default_pagination(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
+    admin_headers = _location_admin_headers(client)
     for i in range(3):
-        _create_leave_balance(client, user_headers, employee["id"], period_year=2022 + i)
+        _create_leave_balance(client, admin_headers, employee["id"], period_year=2022 + i)
 
     response = client.get("/hr/leave-balances/paginated", headers=user_headers)
 
@@ -426,8 +498,9 @@ def test_list_leave_balances_paginated_custom_offset(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
+    admin_headers = _location_admin_headers(client)
     for i in range(5):
-        _create_leave_balance(client, user_headers, employee["id"], period_year=2022 + i)
+        _create_leave_balance(client, admin_headers, employee["id"], period_year=2022 + i)
 
     response = client.get(
         "/hr/leave-balances/paginated", headers=user_headers, params={"offset": 2}
@@ -444,7 +517,8 @@ def test_list_leave_balances_paginated_filter_by_employee_id(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
-    created = _create_leave_balance(client, user_headers, employee["id"])
+    admin_headers = _location_admin_headers(client)
+    created = _create_leave_balance(client, admin_headers, employee["id"])
 
     response = client.get(
         "/hr/leave-balances/paginated",
@@ -462,8 +536,9 @@ def test_list_leave_balances_paginated_filter_by_period_year(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
-    created = _create_leave_balance(client, user_headers, employee["id"], period_year=2026)
-    _create_leave_balance(client, user_headers, employee["id"], period_year=2027)
+    admin_headers = _location_admin_headers(client)
+    created = _create_leave_balance(client, admin_headers, employee["id"], period_year=2026)
+    _create_leave_balance(client, admin_headers, employee["id"], period_year=2027)
 
     response = client.get(
         "/hr/leave-balances/paginated", headers=user_headers, params={"period_year": 2026}
@@ -477,12 +552,13 @@ def test_list_leave_balances_paginated_filter_by_period_year(
 
 def test_update_leave_balance(client: TestClient, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers)
-    created = _create_leave_balance(client, user_headers, employee["id"])
+    admin_headers = _location_admin_headers(client)
+    created = _create_leave_balance(client, admin_headers, employee["id"])
 
     response = client.put(
         f"/hr/leave-balances/{created['id']}",
         json={"allocated_days": 20},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 200
@@ -496,12 +572,13 @@ def test_update_leave_balance_ignores_client_supplied_used_days(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
-    created = _create_leave_balance(client, user_headers, employee["id"])
+    admin_headers = _location_admin_headers(client)
+    created = _create_leave_balance(client, admin_headers, employee["id"])
 
     response = client.put(
         f"/hr/leave-balances/{created['id']}",
         json={"used_days": 99, "remaining_days": 1},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 200
@@ -510,11 +587,13 @@ def test_update_leave_balance_ignores_client_supplied_used_days(
     assert body["remaining_days"] == 12
 
 
-def test_update_leave_balance_not_found(client: TestClient, user_headers: dict[str, str]):
+def test_update_leave_balance_not_found(client: TestClient):
+    admin_headers = _location_admin_headers(client)
+
     response = client.put(
         f"/hr/leave-balances/{uuid.uuid4()}",
         json={"allocated_days": 5},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 404
@@ -524,12 +603,13 @@ def test_update_leave_balance_rejects_missing_employee(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
-    created = _create_leave_balance(client, user_headers, employee["id"])
+    admin_headers = _location_admin_headers(client)
+    created = _create_leave_balance(client, admin_headers, employee["id"])
 
     response = client.put(
         f"/hr/leave-balances/{created['id']}",
         json={"employee_id": str(uuid.uuid4())},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 404
@@ -539,12 +619,13 @@ def test_update_leave_balance_rejects_negative_allocated_days(
     client: TestClient, user_headers: dict[str, str]
 ):
     employee = _create_employee(client, user_headers)
-    created = _create_leave_balance(client, user_headers, employee["id"])
+    admin_headers = _location_admin_headers(client)
+    created = _create_leave_balance(client, admin_headers, employee["id"])
 
     response = client.put(
         f"/hr/leave-balances/{created['id']}",
         json={"allocated_days": -1},
-        headers=user_headers,
+        headers=admin_headers,
     )
 
     assert response.status_code == 422
@@ -552,9 +633,10 @@ def test_update_leave_balance_rejects_negative_allocated_days(
 
 def test_delete_leave_balance(client: TestClient, user_headers: dict[str, str]):
     employee = _create_employee(client, user_headers)
-    created = _create_leave_balance(client, user_headers, employee["id"])
+    admin_headers = _location_admin_headers(client)
+    created = _create_leave_balance(client, admin_headers, employee["id"])
 
-    response = client.delete(f"/hr/leave-balances/{created['id']}", headers=user_headers)
+    response = client.delete(f"/hr/leave-balances/{created['id']}", headers=admin_headers)
 
     assert response.status_code == 204
     assert (
@@ -562,7 +644,9 @@ def test_delete_leave_balance(client: TestClient, user_headers: dict[str, str]):
     )
 
 
-def test_delete_leave_balance_not_found(client: TestClient, user_headers: dict[str, str]):
-    response = client.delete(f"/hr/leave-balances/{uuid.uuid4()}", headers=user_headers)
+def test_delete_leave_balance_not_found(client: TestClient):
+    admin_headers = _location_admin_headers(client)
+
+    response = client.delete(f"/hr/leave-balances/{uuid.uuid4()}", headers=admin_headers)
 
     assert response.status_code == 404

@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from eop_api.dependencies.auth import CurrentUser
 from eop_api.dependencies.pagination import Pagination
+from eop_api.dependencies.rbac import RequireRole
 from eop_api.dependencies.search import Search
 from eop_api.schemas.job_grade import JobGradeCreate, JobGradeResponse, JobGradeUpdate
 from eop_api.schemas.pagination import Page
@@ -24,6 +25,12 @@ def get_job_grade_service() -> JobGradeService:
 
 JobGradeServiceDep = Annotated[JobGradeService, Depends(get_job_grade_service)]
 
+# HR Master/Reference Data Authorization Policy: Role Based (`RequireRole("admin")`)
+# for create/update/delete; reads remain open to any authenticated user.
+# Reopened per CTO decision H2 (`HOLIDAY_CALENDAR_DESIGN.md` addendum) -- see
+# `api/holidays.py`'s identical comment for the full rationale.
+RequireHrMasterDataAdmin = Annotated[CurrentUser, Depends(RequireRole("admin"))]
+
 
 def get_job_grade_filters(
     level: Annotated[int | None, Query()] = None,
@@ -40,7 +47,7 @@ JobGradeFilters = Annotated[FilterParams, Depends(get_job_grade_filters)]
 
 @router.post("", response_model=JobGradeResponse, status_code=status.HTTP_201_CREATED)
 async def create_job_grade(
-    data: JobGradeCreate, service: JobGradeServiceDep, _: CurrentUser
+    data: JobGradeCreate, service: JobGradeServiceDep, _: RequireHrMasterDataAdmin
 ) -> JobGradeResponse:
     try:
         job_grade = await service.create(data)
@@ -95,7 +102,7 @@ async def update_job_grade(
     job_grade_id: uuid.UUID,
     data: JobGradeUpdate,
     service: JobGradeServiceDep,
-    _: CurrentUser,
+    _: RequireHrMasterDataAdmin,
 ) -> JobGradeResponse:
     try:
         job_grade = await service.update(job_grade_id, data)
@@ -116,7 +123,7 @@ async def update_job_grade(
 
 @router.delete("/{job_grade_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job_grade(
-    job_grade_id: uuid.UUID, service: JobGradeServiceDep, _: CurrentUser
+    job_grade_id: uuid.UUID, service: JobGradeServiceDep, _: RequireHrMasterDataAdmin
 ) -> None:
     deleted = await service.delete(job_grade_id)
     if not deleted:

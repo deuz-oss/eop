@@ -137,15 +137,17 @@ def _create_employee(client: TestClient, headers: dict[str, str], *, user_id: st
     job_grade = client.post(
         "/hr/job-grades",
         json={"name": "Engineer I", "code": f"L1-{suffix}", "level": int(suffix[:4], 16) + 1},
-        headers=headers,
+        headers=location_admin_headers,
     ).json()
     employment_type = client.post(
-        "/hr/employment-types", json={"name": "Full-Time", "code": f"FT-{suffix}"}, headers=headers
+        "/hr/employment-types",
+        json={"name": "Full-Time", "code": f"FT-{suffix}"},
+        headers=location_admin_headers,
     ).json()
     employment_status = client.post(
         "/hr/employment-statuses",
         json={"name": "Active", "code": f"ACTIVE-{suffix}"},
-        headers=headers,
+        headers=location_admin_headers,
     ).json()
     shift = client.post(
         "/hr/shifts",
@@ -155,7 +157,7 @@ def _create_employee(client: TestClient, headers: dict[str, str], *, user_id: st
             "start_time": "09:00:00",
             "end_time": "17:00:00",
         },
-        headers=headers,
+        headers=location_admin_headers,
     ).json()
 
     response = client.post(

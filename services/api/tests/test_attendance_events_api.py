@@ -283,11 +283,13 @@ def _create_employee(
         client, location_admin_headers, location_type_id=location_type["id"], code=f"HQ-{suffix}"
     )
     job_grade = _create_job_grade(
-        client, headers, code=f"L1-{suffix}", level=int(suffix[:4], 16) + 1
+        client, location_admin_headers, code=f"L1-{suffix}", level=int(suffix[:4], 16) + 1
     )
-    employment_type = _create_employment_type(client, headers, code=f"FT-{suffix}")
-    employment_status = _create_employment_status(client, headers, code=f"ACTIVE-{suffix}")
-    shift = _create_shift(client, headers, code=f"DAY-{suffix}")
+    employment_type = _create_employment_type(client, location_admin_headers, code=f"FT-{suffix}")
+    employment_status = _create_employment_status(
+        client, location_admin_headers, code=f"ACTIVE-{suffix}"
+    )
+    shift = _create_shift(client, location_admin_headers, code=f"DAY-{suffix}")
 
     payload: dict = {
         "employee_number": employee_number,
@@ -758,7 +760,7 @@ def test_update_attendance_event(client: TestClient, user: User, user_headers: d
     """`shift_id` is the only field still updatable through generic CRUD."""
     employee = _create_employee(client, user_headers, user_id=str(user.id))
     created = _create_attendance_event(client, user_headers, employee["id"], employee["shift_id"])
-    new_shift = _create_shift(client, user_headers, code="EVENING")
+    new_shift = _create_shift(client, _location_admin_headers(client), code="EVENING")
 
     response = client.put(
         f"/hr/attendance-events/{created['id']}",
